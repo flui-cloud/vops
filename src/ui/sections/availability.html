@@ -1,0 +1,54 @@
+      <section x-show="view==='availability'">
+        <div x-show="loading" class="card space-y-3 p-5">
+          <div class="skel h-5 w-56"></div>
+          <template x-for="i in 5" :key="i"><div class="skel h-8 w-full"></div></template>
+        </div>
+        <div x-show="!availabilityRows.length && !loading" class="card p-14 text-center text-sm" style="color:var(--text-dim)">
+          No per-location availability data for <span class="capitalize" x-text="provider"></span>.
+        </div>
+        <div x-show="availabilityRows.length" class="space-y-4">
+          <div class="card overflow-hidden" style="border-color:var(--warn-soft)">
+            <div class="flex items-start justify-between gap-4 px-5 py-4">
+              <div>
+                <div class="text-base font-bold" style="color:var(--warn)">Limited &amp; sold-out capacity</div>
+                <div class="mt-0.5 text-[12.5px]" style="color:var(--text-dim)">Plans not available in every datacenter — pick a location where they're up.</div>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <span class="chip" x-show="watchCount() > 0" style="color:var(--warn)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span x-text="watchCount() + ' watching'"></span></span>
+                <span class="badge-warn font-mono" x-text="availGroups.limited.length + ' / ' + availGroups.total"></span>
+              </div>
+            </div>
+            <template x-for="p in availGroups.limited" :key="p.id">
+              <div class="row flex flex-wrap items-center gap-3 px-5 py-3.5">
+                <span class="w-24 shrink-0 font-mono text-sm font-semibold" style="color:var(--text)" x-text="p.name"></span>
+                <span :class="p.s.status==='soldout' ? 'badge-danger' : 'badge-warn'" x-text="p.s.status==='soldout' ? 'sold-out' : (p.s.up + '/' + p.s.total + ' regions')"></span>
+                <span class="w-28 shrink-0 font-mono text-xs" style="color:var(--text-dim)" x-text="p.cores != null ? (p.cores + ' vCPU · ' + p.memoryGb + ' GB') : ''"></span>
+                <span class="w-24 shrink-0 font-mono text-xs" :style="p.monthly != null ? 'color:var(--text)' : 'color:var(--text-faint)'" x-text="p.monthly != null ? 'from €' + money(p.monthly, 2) : ''" title="Indicative list price, net of VAT"></span>
+                <div class="flex flex-wrap gap-1.5">
+                  <template x-for="l in p.locations" :key="l.location">
+                    <span class="rounded-md px-2 py-1 font-mono text-[12px] font-semibold"
+                      :style="l.available ? 'color:var(--ok);background:var(--ok-soft)' : 'color:var(--text-faint);background:var(--panel-3);text-decoration:line-through'"
+                      x-text="l.location"></span>
+                  </template>
+                </div>
+                <button class="btn-xs ml-auto shrink-0" @click="openNotify(p.name)"
+                  :style="isWatched(p.name) ? 'color:var(--warn);border-color:var(--warn-soft);background:var(--warn-soft)' : ''"
+                  :title="isWatched(p.name) ? 'Alert set — manage notification' : 'Notify me when this plan is available again'">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                  <span x-text="isWatched(p.name) ? 'Alert set' : 'Notify me'"></span>
+                </button>
+              </div>
+            </template>
+            <div x-show="!availGroups.limited.length" class="px-5 py-6 text-center text-sm" style="color:var(--text-dim)">Everything is available in all locations right now. 🎉</div>
+          </div>
+          <div class="card p-5" x-show="availGroups.full.length">
+            <div class="mb-3.5 text-[15px] font-bold">Available everywhere</div>
+            <div class="flex flex-wrap gap-2.5">
+              <template x-for="p in availGroups.full" :key="p.id">
+                <span class="rounded-md px-3 py-1.5 font-mono text-[13px] font-semibold" style="color:var(--ok);background:var(--ok-soft)" x-text="p.name"></span>
+              </template>
+            </div>
+          </div>
+          <p class="text-xs" style="color:var(--text-faint)"><span style="color:var(--text-dim)">Notify me</span> on a sold-out plan to be alerted when it's back. Delivery runs on the vops-landing service — <span style="color:var(--text-dim)">phone push</span> (open the QR on your phone) or your own <span style="color:var(--text-dim)">ntfy</span> topic. Your client token stays on this machine.</p>
+        </div>
+      </section>

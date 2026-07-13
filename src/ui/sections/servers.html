@@ -1,0 +1,73 @@
+      <section x-show="view==='servers'">
+        <div class="mb-4 flex items-center justify-between">
+          <div class="text-sm" style="color:var(--text-dim)"><span x-text="fleet().length"></span> server(s) <span x-text="serverTab==='all' ? 'across all providers' : 'on ' + serverTab"></span> · keys stay on this machine</div>
+          <button class="btn-xs" @click="openHostForm()">+ Add external server</button>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead><tr>
+                <th class="th">Server</th><th class="th">Type</th><th class="th">Location</th><th class="th">Status</th><th class="th">Price /mo</th><th class="th">Public IP</th><th class="th text-right">Monitoring</th>
+              </tr></thead>
+              <tbody>
+                <template x-if="loading">
+                  <template x-for="i in 4" :key="i">
+                    <tr class="row">
+                      <td class="td"><div class="skel h-4 w-44"></div></td>
+                      <td class="td"><div class="skel h-4 w-14"></div></td><td class="td"><div class="skel h-4 w-16"></div></td>
+                      <td class="td"><div class="skel h-4 w-16"></div></td><td class="td"><div class="skel h-4 w-14"></div></td>
+                      <td class="td"><div class="skel h-4 w-24"></div></td><td class="td"><div class="skel h-4 w-28"></div></td>
+                    </tr>
+                  </template>
+                </template>
+                <template x-if="!loading">
+                  <template x-for="row in fleet()" :key="row.provider + row.id">
+                    <tr class="row" :style="hostBusy===row.id ? 'opacity:.5' : ''">
+                      <td class="td">
+                        <div class="flex items-center gap-2.5">
+                          <span class="h-2 w-2 shrink-0 rounded-full" :style="'background:' + (row.external ? 'var(--text-faint)' : pinColor(row.provider))"></span>
+                          <div class="min-w-0">
+                            <div class="max-w-[220px] truncate font-semibold" style="color:var(--text)" x-text="row.name"></div>
+                            <div class="flex items-center gap-1.5 font-mono text-[11px]" style="color:var(--text-faint)">
+                              <span class="capitalize" x-text="row.provider"></span><span>·</span><span x-text="row.id"></span>
+                              <template x-if="providerOnly(row)">
+                                <button class="inline-flex items-center gap-1 hover:underline" style="color:var(--text-faint)" title="Provider-only — watched via the API, not managed over SSH. Click to change." @click="openManage(row)">
+                                  <span>·</span><span>provider-only</span>
+                                </button>
+                              </template>
+                              <template x-if="!providerOnly(row) && row.host?.conn">
+                                <button class="inline-flex items-center gap-1 hover:underline" :style="'color:' + connMeta(connState(row)).color" :title="row.host.conn.message + ' — click to configure'" @click="openManage(row)">
+                                  <span>·</span><span class="h-1 w-1 rounded-full" :style="'background:' + connMeta(connState(row)).color"></span><span x-text="connMeta(connState(row)).label"></span>
+                                </button>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="td font-mono" x-text="row.type"></td>
+                      <td class="td" x-text="row.location"></td>
+                      <td class="td"><span :class="statusBadge(row.status)"><span class="h-1.5 w-1.5 rounded-full" :style="'background:currentColor'"></span><span x-text="row.status"></span></span></td>
+                      <td class="td font-mono" :style="row.monthly != null ? 'color:var(--text)' : 'color:var(--text-faint)'"
+                        x-text="row.monthly != null ? '€' + money(row.monthly, 2) : '—'"
+                        :title="row.monthly != null ? 'Indicative list price' : 'No catalogue plan matches this type'"></td>
+                      <td class="td font-mono text-xs" x-text="row.publicIp || '—'"></td>
+                      <td class="td">
+                        <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                          <span x-show="monitored(row)" class="inline-flex items-center gap-1.5 text-[12px]" style="color:var(--ok)" title="Monitoring on">
+                            <span class="h-1.5 w-1.5 rounded-full" style="background:var(--ok)"></span>on
+                          </span>
+                          <button x-show="!monitored(row) && !providerOnly(row)" class="btn-xs btn-xs-muted" :disabled="hostBusy===row.id || sshBlocked(row)" :title="sshBlocked(row) ? row.host.conn.message : 'Turn on the external dead-man monitor with safe defaults'" @click="enableMonitor(row)">Enable</button>
+                        <span x-show="!monitored(row) && providerOnly(row)" class="text-[11px]" style="color:var(--text-faint)">—</span>
+                          <button class="btn-xs" :disabled="hostBusy===row.id" @click="openManage(row)">Manage</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </template>
+                <tr x-show="!fleet().length && !loading"><td class="td" style="color:var(--text-faint)" colspan="7" x-text="serverTab==='all' ? 'No servers yet. Spin one up from Compare, or add an external server.' : ('No servers on ' + serverTab + ' yet. Spin one up from Compare.')"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="mt-3 text-xs" style="color:var(--text-faint)">Prices are <span style="color:var(--text-dim)">indicative list prices, net of VAT</span>, matched by plan type. <span style="color:var(--text-dim)">Manage</span> runs status, hardening, updates, ssh and the ops key over SSH — keys never leave this machine. <span style="color:var(--text-dim)">Enable</span> turns on the external dead-man monitor with safe defaults.</p>
+      </section>

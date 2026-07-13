@@ -1,0 +1,21 @@
+node_modules
+lib
+*.tsbuildinfo
+.DS_Store
+dev-tmp
+.env
+.env.local
+.sonar/
+.scannerwork/
+Vops_ UI
+
+# secrets / personal account files
+ovh.openrc.sh
+*.openrc.sh
+
+# scratch plan artifacts
+bm.json
+vops-plan.json
+
+# internal working notes
+CLAUDE.md

@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme tokens ── light is the default; `data-theme="dark"` on <html> flips
+ *    them. Every surface/colour in the UI resolves through these variables so a
+ *    single attribute toggles the whole dashboard. No web fonts (offline). ── */
+@layer base {
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f7f8fa; --panel-3: #eef0f4;
+    --border: #e4e7ec; --border-2: #eceef2;
+    --text: #12151b; --text-dim: #565e6b; --text-faint: #8a93a1;
+    --accent: #2f7ff0;
+    --accent-2: color-mix(in srgb, var(--accent) 72%, #ffffff);
+    --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 32%, transparent);
+    --ok: #12a150; --ok-soft: rgba(18, 161, 80, .12);
+    --warn: #c8790a; --warn-soft: rgba(200, 121, 10, .12);
+    --danger: #e5484d; --danger-soft: rgba(229, 72, 77, .12);
+    --hetzner: #2f7ff0; --scaleway: #12b5b5; --contabo: #ef8f0a; --ovh: #a855f7;
+    --map-bg: #eaeef4; --map-land: #d9dfe9; --map-land-eu: #cdd6e6; --dot: #c6cdda;
+    --shadow: 0 1px 2px rgba(16, 22, 34, .05), 0 6px 20px rgba(16, 22, 34, .06);
+    --side: #ffffff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0c11; --panel: #12141b; --panel-2: #161923; --panel-3: #1b1f2a;
+    --border: #242a36; --border-2: #1e232e;
+    --text: #eef1f6; --text-dim: #9aa3b2; --text-faint: #69707e;
+    --accent: #4a90f5;
+    --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 42%, transparent);
+    --ok: #34d399; --ok-soft: rgba(52, 211, 153, .14);
+    --warn: #f5a623; --warn-soft: rgba(245, 166, 35, .14);
+    --danger: #ff6b6b; --danger-soft: rgba(255, 107, 107, .14);
+    --map-bg: #0c0f15; --map-land: #1b2230; --map-land-eu: #212c3f; --dot: #2a303d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .32), 0 10px 30px rgba(0, 0, 0, .4);
+    --side: #0c0e14;
+  }
+  body { background: var(--bg); color: var(--text); }
+  ::selection { background: var(--accent-soft); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border); border-radius: 6px;
+    border: 3px solid transparent; background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Surfaces */
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: var(--shadow);
+  }
+  .stat {
+    @apply rounded-2xl p-[18px];
+    background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+  .stat-label {
+    @apply flex items-center justify-between text-xs font-semibold uppercase tracking-wide;
+    color: var(--text-faint);
+  }
+  .stat-value {
+    @apply font-mono text-[34px] font-semibold leading-none tracking-tight;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn text-white;
+    background: linear-gradient(150deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 14px var(--accent-soft);
+  }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-ghost {
+    @apply btn;
+    color: var(--text); background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+  .btn-ghost:hover { border-color: var(--accent-border); color: var(--accent); }
+  .btn-danger {
+    @apply btn text-white;
+    background: var(--danger);
+  }
+  .btn-danger:hover { filter: brightness(1.06); }
+  .btn-xs {
+    @apply inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition;
+    color: var(--accent); background: transparent; border: 1px solid var(--accent-border);
+  }
+  .btn-xs:hover { background: var(--accent-soft); }
+  .btn-xs-muted {
+    color: var(--text-dim); background: var(--panel-2); border-color: var(--border);
+  }
+  .icon-btn {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-[9px] text-lg transition;
+    color: var(--text-dim); background: var(--panel); border: 1px solid var(--border);
+  }
+  .icon-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+
+  /* Segmented controls (provider tabs, map zones, theme toggle) */
+  .seg {
+    @apply flex gap-1 rounded-[10px] p-1;
+    background: var(--panel-3);
+  }
+  .seg-btn {
+    @apply cursor-pointer rounded-lg border-0 px-3.5 py-1.5 text-[13px] font-semibold transition;
+    color: var(--text-dim); background: transparent;
+  }
+  .seg-btn:hover { color: var(--text); }
+  .seg-btn-active {
+    color: var(--accent); background: var(--panel); box-shadow: var(--shadow);
+  }
+
+  /* Forms */
+  .field {
+    @apply w-full rounded-[9px] px-3 py-2.5 text-sm outline-none transition;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  }
+  .field::placeholder { color: var(--text-faint); }
+  .field:focus { border-color: var(--accent-border); }
+  .label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-wide;
+    color: var(--text-faint);
+  }
+
+  /* Badges / chips */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+  }
+  .badge-ok { @apply badge; color: var(--ok); background: var(--ok-soft); }
+  .badge-warn { @apply badge; color: var(--warn); background: var(--warn-soft); }
+  .badge-danger { @apply badge; color: var(--danger); background: var(--danger-soft); }
+  .badge-off { @apply badge; color: var(--text-faint); background: var(--panel-3); }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px];
+    color: var(--text-dim); background: var(--panel-3);
+  }
+  .count-pill {
+    @apply ml-auto rounded-full px-2 py-0.5 font-mono text-[11.5px] font-medium;
+    color: var(--text-faint); background: var(--panel-3);
+  }
+
+  /* Tables */
+  .th {
+    @apply px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider;
+    color: var(--text-faint);
+  }
+  .td {
+    @apply whitespace-nowrap px-5 py-3.5 text-sm;
+    color: var(--text-dim);
+  }
+  .row { border-top: 1px solid var(--border-2); }
+  .row:hover { background: var(--panel-2); }
+
+  /* Sidebar nav */
+  .nav-item {
+    @apply relative flex w-full cursor-pointer items-center gap-3 rounded-[9px] px-3 py-2.5 text-sm transition;
+    color: var(--text-dim); background: transparent;
+  }
+  .nav-item:hover { background: var(--panel-3); color: var(--text); }
+  .nav-item-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .nav-item-active:hover { background: var(--accent-soft); color: var(--accent); }
+  .nav-section {
+    @apply px-2.5 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase;
+    letter-spacing: .09em; color: var(--text-faint);
+  }
+
+  /* Clickable stat cards (link into the servers list) */
+  .stat-link { @apply cursor-pointer transition; }
+  .stat-link:hover { border-color: var(--accent-border); }
+
+  /* Skeleton placeholders — every remote fetch shows one until data lands */
+  .skel {
+    position: relative; overflow: hidden;
+    background: var(--panel-3); border-radius: 7px;
+  }
+  .skel::after {
+    content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    animation: vops-skel 1.4s ease-in-out infinite;
+  }
+  @keyframes vops-skel { 100% { transform: translateX(100%); } }
+}
+
+/* ── World map ── country outlines + region pins share one projected SVG, so
+ *    pins stay glued to geography while the viewBox pans/zooms. Colours resolve
+ *    through the theme tokens; borders keep a non-scaling stroke to stay crisp. ── */
+.em-country { fill: var(--map-land); stroke: var(--border); stroke-width: 0.6; vector-effect: non-scaling-stroke; }
+.em-country--eu { fill: var(--map-land-eu); }
+.map-dot { fill: var(--dot); }
+.map-pin-svg { cursor: pointer; }
+.pin-pulse-svg {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: vops-pulse 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes vops-pulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  70% { transform: scale(3.2); opacity: 0; }
+  100% { opacity: 0; }
+}

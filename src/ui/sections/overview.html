@@ -1,0 +1,244 @@
+      <!-- ============ OVERVIEW ============ -->
+      <section x-show="view==='overview'">
+        <!-- Stat cards -->
+        <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="stat stat-link" @click="openServers()" title="Open the servers list">
+            <div class="stat-label">Active servers
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--accent)"><rect x="3" y="4" width="18" height="6" rx="1.6"/><rect x="3" y="14" width="18" height="6" rx="1.6"/></svg>
+            </div>
+            <template x-if="ov.serverCount == null">
+              <div class="mt-2"><div class="skel h-8 w-16"></div><div class="skel mt-3 h-3.5 w-40"></div></div>
+            </template>
+            <template x-if="ov.serverCount != null">
+              <div>
+                <div class="stat-value mb-0.5 mt-2" x-text="ov.serverCount"></div>
+                <div class="mb-3 text-[12.5px]" style="color:var(--text-dim)" x-text="'running across ' + ov.byProvider.length + ' provider(s)'"></div>
+                <div class="flex flex-wrap gap-1.5">
+                  <template x-for="b in ov.byProvider" :key="b.id">
+                    <span class="chip"><span class="h-[7px] w-[7px] rounded-full" :style="'background:' + pinColor(b.id)"></span><span class="capitalize" x-text="b.id + ' ' + b.count"></span></span>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="stat stat-link" @click="openServers()" title="Open the servers list">
+            <div class="stat-label">Est. monthly spend
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--accent)"><path d="M4 18V9m5 9V5m5 13v-6m5 6V8"/></svg>
+            </div>
+            <template x-if="ov.serverCount == null">
+              <div class="mt-2"><div class="skel h-8 w-24"></div><div class="skel mt-3 h-3.5 w-32"></div></div>
+            </template>
+            <template x-if="ov.serverCount != null">
+              <div>
+                <div class="mb-0.5 mt-2 flex items-baseline gap-0.5">
+                  <span class="font-mono text-xl font-medium" style="color:var(--text-dim)" x-show="ov.spend?.monthly != null">€</span>
+                  <span class="stat-value" x-text="ov.spend?.monthly != null ? money(ov.spend.monthly, 2) : '—'"></span>
+                </div>
+                <div class="mb-3 text-[12.5px]" style="color:var(--text-dim)"
+                  x-text="ov.spend?.monthly != null ? ('≈ €' + money(ov.spend.monthly / 730, 3) + ' / hour blended · excl. VAT') : 'no server priced yet'"></div>
+                <div class="flex w-fit items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs" style="color:var(--ok);background:var(--ok-soft)"
+                  x-show="ov.spend && ov.spend.priced === ov.spend.total">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg><span x-text="ov.spend ? (ov.spend.total + ' server(s) priced') : ''"></span>
+                </div>
+                <div class="flex w-fit items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs" style="color:var(--warn);background:var(--warn-soft)"
+                  x-show="ov.spend && ov.spend.priced < ov.spend.total"
+                  x-text="ov.spend ? (ov.spend.priced + ' of ' + ov.spend.total + ' priced · ' + (ov.spend.total - ov.spend.priced) + ' unknown plan') : ''"></div>
+                <div class="mt-1.5 text-[11px]" style="color:var(--text-faint)" x-show="ov.spend?.monthly != null">list prices · + VAT varies by country</div>
+              </div>
+            </template>
+          </div>
+
+          <div class="stat stat-link" @click="go('availability')" title="Open availability" :style="(ov.alerts?.count||0) > 0 ? 'border-color:var(--warn-soft)' : ''">
+            <div class="stat-label" :style="(ov.alerts?.count||0) > 0 ? 'color:var(--warn)' : ''">Availability alerts
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17v.5"/></svg>
+            </div>
+            <template x-if="ov.alerts == null">
+              <div class="mt-2"><div class="skel h-8 w-20"></div><div class="skel mt-3 h-3.5 w-36"></div></div>
+            </template>
+            <template x-if="ov.alerts != null">
+              <div>
+                <div class="mb-0.5 mt-2 flex items-baseline gap-1.5">
+                  <span class="stat-value" :style="(ov.alerts.count||0) > 0 ? 'color:var(--warn)' : ''" x-text="ov.alerts.count"></span>
+                  <span class="font-mono text-base" style="color:var(--text-faint)" x-text="'/ ' + ov.alerts.total"></span>
+                </div>
+                <div class="mb-3 text-[12.5px]" style="color:var(--text-dim)">plans limited or sold-out</div>
+                <div class="text-xs" style="color:var(--warn)" x-show="ov.alerts.detail" x-text="ov.alerts.detail"></div>
+                <div class="text-xs" style="color:var(--ok)" x-show="!ov.alerts.count">all plans available right now</div>
+              </div>
+            </template>
+          </div>
+
+          <div class="stat">
+            <div class="stat-label">Cheapest region now
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--ok)"><path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>
+            </div>
+            <template x-if="!regions.length">
+              <div class="mt-2.5"><div class="skel h-6 w-32"></div><div class="skel mt-3 h-6 w-24"></div><div class="skel mt-3 h-3.5 w-40"></div></div>
+            </template>
+            <template x-if="regions.length && ov.cheapest">
+              <div>
+                <div class="mb-1 mt-2.5 flex items-center gap-2.5">
+                  <span class="h-2.5 w-2.5 rounded-full" :style="'background:' + pinColor(ov.cheapest.provider)"></span>
+                  <span class="text-xl font-bold tracking-tight capitalize" x-text="ov.cheapest.provider + ' · ' + ov.cheapest.code"></span>
+                </div>
+                <div class="mb-3 flex items-baseline gap-1">
+                  <span class="font-mono text-[22px] font-semibold" style="color:var(--ok)" x-text="ov.cheapest.fromMonthly != null ? '€' + money(ov.cheapest.fromMonthly, 2) : '—'"></span>
+                  <span class="text-[12.5px]" style="color:var(--text-dim)" x-text="'/mo · ' + ov.cheapest.city"></span>
+                </div>
+                <div class="text-xs" style="color:var(--text-dim)" x-text="ov.cheapest.fromHourly != null ? 'from €' + money(ov.cheapest.fromHourly) + '/h · hourly available' : 'monthly billing'"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="mb-5 flex flex-wrap gap-2.5">
+          <button class="btn-primary" @click="go('compare')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>New server</button>
+          <button class="btn-ghost" @click="go('compare')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 8h13M7 8 4 5m3 3-3 3"/><path d="M17 16H4m13 0 3-3m-3 3 3 3"/></svg>Compare plans</button>
+          <button class="btn-ghost" @click="go('sshkeys')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="8" cy="12" r="4.5"/><path d="M12 12h9m-3 0v3m-3-3v2"/></svg>Generate SSH key</button>
+        </div>
+
+        <!-- Map + right column -->
+        <div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-[1fr_328px]">
+          <!-- Map -->
+          <div class="card overflow-hidden">
+            <div class="flex flex-wrap items-start justify-between gap-5 px-5 pb-3.5 pt-4">
+              <div>
+                <div class="text-base font-bold tracking-tight">Cloud regions</div>
+                <div class="mt-0.5 text-[12.5px]" style="color:var(--text-dim)">Every provider region on one map — drag to pan, scroll to zoom, hover for the cheapest plan.</div>
+              </div>
+              <div class="flex flex-wrap items-center gap-4">
+                <template x-for="pid in providerIds" :key="pid">
+                  <span class="flex items-center gap-1.5 text-xs capitalize" style="color:var(--text-dim)"><span class="h-2.5 w-2.5 rounded-full" :style="'background:' + pinColor(pid)"></span><span x-text="pid"></span></span>
+                </template>
+                <span class="badge-ok" :class="regionsSource!=='live' && 'badge-warn'" x-text="regionsSource==='live' ? 'live prices' : 'indicative'"></span>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-3 px-5 pb-3.5">
+              <div class="seg">
+                <template x-for="z in mapZones" :key="z.id">
+                  <button class="seg-btn" :class="mapZone===z.id && 'seg-btn-active'" x-show="geo.views && geo.views[z.id]" @click="jumpTo(z.id)" x-text="z.label"></button>
+                </template>
+              </div>
+              <div class="flex gap-1.5">
+                <button class="icon-btn" @click="zoomBy(0.8)">−</button>
+                <button class="icon-btn" @click="zoomBy(1.25)">+</button>
+              </div>
+            </div>
+            <div class="relative w-full select-none" style="background:var(--map-bg);border-top:1px solid var(--border)" :style="'padding-bottom:' + (geo.height / geo.width * 100) + '%'">
+              <svg x-ref="map" viewBox="0 0 1000 700"
+                x-effect="$el.setAttribute('viewBox', mapViewBox)" preserveAspectRatio="xMidYMid meet"
+                class="absolute inset-0 h-full w-full touch-none" :class="mapDrag ? 'cursor-grabbing' : 'cursor-grab'"
+                @wheel.prevent="onWheel($event)"
+                @mousedown.prevent="panStart($event)" @mousemove="panMove($event)"
+                @mouseup="panEnd()" @mouseleave="panEnd(); hoverCode=''"
+                @mouseover="onPinHover($event)">
+                <g x-html="countriesSvg"></g>
+                <g x-html="pinsSvg"></g>
+              </svg>
+              <div x-show="hoverCode && pinOnScreen()" x-cloak :style="tooltipStyle()"
+                class="pointer-events-none absolute z-20 w-44 -translate-x-1/2 -translate-y-full rounded-[10px] p-2.5"
+                style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)">
+                <div class="flex items-center gap-2">
+                  <span class="h-2 w-2 rounded-full" :style="'background:' + pinColor(hoverPin().provider)"></span>
+                  <span class="text-[13px] font-semibold" x-text="hoverPin().city"></span>
+                  <span class="font-mono text-[11px]" style="color:var(--text-faint)" x-text="hoverPin().code"></span>
+                </div>
+                <div class="mt-1 text-xs capitalize" style="color:var(--text-dim)">
+                  <span x-text="hoverPin().provider"></span> · <span class="font-mono font-semibold" style="color:var(--ok)" x-text="fromLabel(regionByCode(hoverCode))"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div class="flex flex-col gap-4">
+            <div class="card px-[18px] pb-2 pt-[18px]">
+              <div class="mb-1 flex items-center justify-between">
+                <div class="text-[14.5px] font-bold tracking-tight">Best value now</div>
+                <button class="text-[11.5px] font-semibold" style="color:var(--accent)" @click="go('compare')">Compare all →</button>
+              </div>
+              <div class="mb-2.5 text-[11px]" style="color:var(--text-faint)">Best €/GB at each size · hourly favoured · net of VAT</div>
+              <template x-for="(r, i) in ov.bestValue" :key="r.tier">
+                <div class="flex items-center gap-3 py-2.5" :style="i < ov.bestValue.length-1 ? 'border-bottom:1px solid var(--border-2)' : ''">
+                  <span class="flex h-[34px] w-[34px] shrink-0 flex-col items-center justify-center rounded-[9px]" style="background:var(--panel-3)">
+                    <span class="font-mono text-[11px] font-semibold" x-text="r.memoryGb + 'G'"></span>
+                    <span class="mt-0.5 h-[6px] w-[6px] rounded-full" :style="'background:' + pinColor(r.key)"></span></span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="truncate text-[13px] font-semibold" x-text="r.provider + ' · ' + r.plan"></span>
+                      <span x-show="r.isHourly" class="shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-semibold" style="color:var(--ok);background:var(--ok-soft)">hourly</span>
+                    </div>
+                    <div class="text-[11.5px]" style="color:var(--text-faint)" x-text="r.cores + ' vCPU · ' + r.memoryGb + ' GB · ' + r.region"></div>
+                  </div>
+                  <div class="text-right">
+                    <div class="font-mono text-sm font-semibold" style="color:var(--ok)" x-text="'€' + money(r.monthly, 2)"></div>
+                    <div class="font-mono text-[10.5px]" style="color:var(--text-faint)" x-text="'€' + money(r.perGb, 2) + '/GB'"></div>
+                  </div>
+                </div>
+              </template>
+              <template x-if="!ov.bvLoaded">
+                <div>
+                  <template x-for="i in 3" :key="i">
+                    <div class="flex items-center gap-3 py-2.5">
+                      <div class="skel h-[34px] w-[34px] shrink-0 rounded-[9px]"></div>
+                      <div class="flex-1"><div class="skel h-3.5 w-28"></div><div class="skel mt-1.5 h-3 w-24"></div></div>
+                      <div class="skel h-4 w-12"></div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <div x-show="ov.bvLoaded && !ov.bestValue.length" class="py-6 text-center text-sm" style="color:var(--text-faint)">No plan data available.</div>
+            </div>
+
+            <div class="card p-[18px]">
+              <div class="mb-3.5 text-[14.5px] font-bold tracking-tight">Provider surface</div>
+              <div class="flex flex-col gap-3.5">
+                <template x-for="p in providers" :key="p.provider">
+                  <div class="flex items-start gap-3">
+                    <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :style="'background:' + pinColor(p.provider)"></span>
+                    <div class="min-w-0">
+                      <div class="text-[13px] leading-tight"><span class="font-semibold" x-text="p.displayName"></span> · <span style="color:var(--text-dim)" x-text="p.billingModel + '-billed'"></span></div>
+                      <div class="mt-1 flex flex-wrap gap-1.5">
+                        <span class="badge-ok" :class="!p.features.firewall && 'badge-off'">firewall</span>
+                        <span class="badge-ok" :class="!p.features.privateNetwork && 'badge-off'">private net</span>
+                        <span class="badge-ok" :class="!p.writeEnabled && 'badge-off'" x-text="p.writeEnabled ? 'writable' : 'guided'"></span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- All regions table -->
+        <div class="card mt-4 overflow-hidden">
+          <div class="flex items-center justify-between border-b px-5 py-3.5" style="border-color:var(--border)">
+            <div class="text-base font-bold tracking-tight">All regions</div>
+            <span class="text-xs" style="color:var(--text-faint)" x-text="regions.length + ' regions · ' + providerIds.length + ' providers'"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead><tr>
+                <th class="th">Provider</th><th class="th">Region</th><th class="th">City</th><th class="th">Country</th>
+                <th class="th">From /mo</th><th class="th">From /h</th><th class="th">Prices</th>
+              </tr></thead>
+              <tbody>
+                <template x-for="r in regions" :key="r.provider + r.code">
+                  <tr class="row" @mouseenter="hoverCode = r.code" @mouseleave="hoverCode = ''">
+                    <td class="td"><span class="inline-flex items-center gap-2 capitalize"><span class="h-2 w-2 rounded-full" :style="'background:' + pinColor(r.provider)"></span><span x-text="r.provider"></span></span></td>
+                    <td class="td font-mono text-xs" x-text="r.code"></td>
+                    <td class="td" style="color:var(--text)" x-text="r.city"></td>
+                    <td class="td" x-text="r.country"></td>
+                    <td class="td font-mono font-semibold" style="color:var(--text)" x-text="r.fromMonthly != null ? money(r.fromMonthly, 2) + ' ' + r.currency : '—'"></td>
+                    <td class="td font-mono" x-text="money(r.fromHourly)"></td>
+                    <td class="td"><span class="badge-ok" :class="!r.live && 'badge-warn'" x-text="r.live ? 'live' : 'seed'"></span></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>

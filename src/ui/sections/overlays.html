@@ -1,0 +1,404 @@
+    <!-- ===================== DRAWER (firewall / vnet) ===================== -->
+    <div x-show="drawer.open" class="fixed inset-0 z-40" x-cloak>
+      <div class="absolute inset-0" style="background:rgba(8,10,16,.45)" @click="closeDrawer()"></div>
+      <div class="absolute right-0 top-0 flex h-full w-full max-w-[412px] flex-col" style="background:var(--panel);border-left:1px solid var(--border);box-shadow:-12px 0 40px rgba(0,0,0,.28)"
+        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0">
+        <div class="flex items-center justify-between border-b px-6 py-5" style="border-color:var(--border)">
+          <div>
+            <div class="text-lg font-bold" x-text="drawer.item?.name"></div>
+            <div class="font-mono text-xs" style="color:var(--text-faint)" x-text="drawer.item?.id"></div>
+          </div>
+          <button class="icon-btn" @click="closeDrawer()">✕</button>
+        </div>
+        <div class="flex-1 space-y-5 overflow-y-auto p-6">
+          <template x-if="drawer.kind==='firewall'">
+            <div class="space-y-5">
+              <div>
+                <div class="mb-2 flex items-center justify-between">
+                  <span class="label mb-0">Rules (JSON)</span>
+                  <button class="btn-xs" @click="saveRules()">Save rules</button>
+                </div>
+                <textarea class="field h-56 font-mono text-xs" x-model="drawer.rulesJson"></textarea>
+              </div>
+              <div>
+                <span class="label">Apply / remove servers</span>
+                <div class="flex gap-2">
+                  <input class="field" placeholder="server ids, comma-separated" x-model="drawer.serverIds" />
+                  <button class="btn-ghost shrink-0" @click="applyFirewall(false)">Apply</button>
+                  <button class="btn-ghost shrink-0" @click="applyFirewall(true)">Remove</button>
+                </div>
+                <div class="mt-2 text-xs" style="color:var(--text-faint)">Applied to: <span x-text="(drawer.item?.appliedTo||[]).map(t=>t.serverId).join(', ') || 'none'"></span></div>
+              </div>
+              <button class="btn-danger w-full" @click="confirmDelete('firewall', drawer.item)">Delete firewall</button>
+            </div>
+          </template>
+          <template x-if="drawer.kind==='vnet'">
+            <div class="space-y-5">
+              <div class="grid grid-cols-2 gap-3.5">
+                <div><div class="label">IP range</div><div class="font-mono text-[15px] font-semibold" x-text="drawer.item?.ipRange"></div></div>
+                <div><div class="label">Servers</div><div class="font-mono text-[15px] font-semibold" x-text="(drawer.item?.attachedServerIds||[]).length"></div></div>
+              </div>
+              <div>
+                <div class="label">Subnets</div>
+                <div class="space-y-2">
+                  <template x-for="sn in (drawer.item?.subnets||[])" :key="sn.ipRange">
+                    <div class="flex items-center justify-between rounded-[10px] px-3.5 py-3" style="background:var(--panel-2);border:1px solid var(--border)">
+                      <span class="font-mono text-[13px]" x-text="sn.ipRange + ' · ' + sn.networkZone"></span>
+                      <button class="text-[12.5px] font-medium" style="color:var(--danger)" @click="deleteSubnet(sn.ipRange)">remove</button>
+                    </div>
+                  </template>
+                  <template x-if="!(drawer.item?.subnets||[]).length"><div class="text-xs" style="color:var(--text-faint)">none</div></template>
+                </div>
+                <div class="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+                  <input class="field font-mono text-xs" placeholder="10.0.1.0/24" x-model="drawer.subnetRange" />
+                  <input class="field text-xs" placeholder="zone" x-model="drawer.subnetZone" />
+                  <button class="btn-xs" @click="addSubnet()">Add</button>
+                </div>
+              </div>
+              <div>
+                <div class="label">Attach / detach server</div>
+                <div class="flex gap-2">
+                  <input class="field font-mono text-xs" placeholder="server id" x-model="drawer.serverIds" />
+                  <button class="btn-ghost shrink-0" @click="attachServer(false)">Attach</button>
+                  <button class="btn-ghost shrink-0" @click="attachServer(true)">Detach</button>
+                </div>
+              </div>
+              <button class="btn-danger w-full" @click="confirmDelete('vnet', drawer.item)">Delete network</button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== MODAL ===================== -->
+    <div x-show="modal.open" class="fixed inset-0 z-50 flex items-center justify-center" x-cloak>
+      <div class="absolute inset-0" style="background:rgba(8,10,16,.55)" @click="closeModal()"></div>
+      <div class="card relative w-full max-w-md p-6">
+        <h3 class="mb-4 text-base font-bold" x-text="modal.title">Modal</h3>
+
+        <template x-if="modal.type==='firewall'">
+          <div class="space-y-3">
+            <div><label class="label" for="fw-name">Name</label><input id="fw-name" class="field" x-model="modal.fw.name" /></div>
+            <div><label class="label" for="fw-rules">Rules (JSON array)</label><textarea id="fw-rules" class="field h-40 font-mono text-xs" x-model="modal.fw.rules"></textarea></div>
+            <div><label class="label" for="fw-apply">Apply to servers (optional)</label><input id="fw-apply" class="field" placeholder="ids, comma-separated" x-model="modal.fw.apply" /></div>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='vnet'">
+          <div class="space-y-3">
+            <div><label class="label" for="vn-name">Name</label><input id="vn-name" class="field" x-model="modal.vn.name" /></div>
+            <div><label class="label" for="vn-iprange">IP range (CIDR, min /24)</label><input id="vn-iprange" class="field" placeholder="10.0.0.0/16" x-model="modal.vn.ipRange" /></div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="label" for="vn-zone">Subnet zone</label><input id="vn-zone" class="field" placeholder="optional" x-model="modal.vn.zone" /></div>
+              <div><label class="label" for="vn-subnet">Subnet CIDR</label><input id="vn-subnet" class="field" placeholder="optional" x-model="modal.vn.subnetRange" /></div>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='sshkey'">
+          <div class="space-y-3">
+            <div><label class="label" for="sk-name">Key name</label><input id="sk-name" class="field" placeholder="laptop" x-model="modal.sk.name" /></div>
+            <template x-if="modal.sk.mode==='import'">
+              <div class="space-y-3">
+                <div><label class="label" for="sk-from">Existing private key path <span style="color:var(--text-faint)">(referenced, never copied)</span></label><input id="sk-from" class="field font-mono text-xs" placeholder="~/.ssh/id_ed25519" x-model="modal.sk.from" /></div>
+                <div class="text-center text-[11px]" style="color:var(--text-faint)">— or paste a public key (register-only) —</div>
+                <div><label class="label" for="sk-pubkey">Public key</label><textarea id="sk-pubkey" class="field h-20 font-mono text-xs" placeholder="ssh-ed25519 AAAA..." x-model="modal.sk.publicKey"></textarea></div>
+              </div>
+            </template>
+            <template x-if="modal.sk.mode==='create'">
+              <p class="text-xs" style="color:var(--text-dim)">Generates an ed25519 keypair. The private key is written to your vops profile dir at 0600 and never leaves this machine.</p>
+            </template>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='register'">
+          <div class="space-y-3">
+            <p class="text-sm" style="color:var(--text-dim)">Upload the <span style="color:var(--ok)">public</span> half of <span class="font-mono" style="color:var(--text)" x-text="modal.reg.name"></span> to a provider.</p>
+            <div><label class="label" for="reg-provider">Provider</label>
+              <select id="reg-provider" class="field" x-model="modal.reg.provider">
+                <template x-for="p in providerIds" :key="p"><option :value="p" x-text="p"></option></template>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='connect'">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="label" for="conn-user">User</label><input id="conn-user" class="field" x-model="modal.conn.user" @change="doConnect()" /></div>
+              <div><label class="label" for="conn-key">Key</label>
+                <select id="conn-key" class="field" x-model="modal.conn.key" @change="doConnect()">
+                  <option value="">auto</option>
+                  <template x-for="k in modal.conn.keys" :key="k.name"><option :value="k.name" x-text="k.name"></option></template>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="label" for="conn-command">Run this in your terminal</label>
+              <div class="flex gap-2">
+                <input id="conn-command" class="field font-mono text-xs" readonly :value="modal.conn.command" />
+                <button class="btn-ghost shrink-0" @click="copy(modal.conn.command)" :disabled="!modal.conn.command">Copy</button>
+              </div>
+            </div>
+            <p class="text-[11px]" style="color:var(--text-faint)">An interactive session opens in your terminal, not the browser — the private key stays local. From the CLI: <span class="font-mono" style="color:var(--text-dim)">vops ssh &lt;provider&gt; &lt;server&gt;</span></p>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='host'">
+          <div class="space-y-3">
+            <div class="flex gap-1 rounded-lg p-1" style="background:var(--panel-3)">
+              <button class="btn-xs flex-1" :style="modal.hs.mode==='add' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="modal.hs.mode='add'">Add by address</button>
+              <button class="btn-xs flex-1" :style="modal.hs.mode==='import' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="modal.hs.mode='import'">Import from provider</button>
+            </div>
+            <template x-if="modal.hs.mode==='add'">
+              <div class="space-y-3">
+                <div><label class="label" for="hs-name">Host name</label><input id="hs-name" class="field" placeholder="web1" x-model="modal.hs.name" /></div>
+                <div><label class="label" for="hs-address">Address (IP or FQDN)</label><input id="hs-address" class="field font-mono text-xs" placeholder="203.0.113.10" x-model="modal.hs.address" /></div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div><label class="label" for="hs-user">User</label><input id="hs-user" class="field" x-model="modal.hs.user" /></div>
+                  <div><label class="label" for="hs-port">Port</label><input id="hs-port" class="field" type="number" x-model="modal.hs.port" /></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div><label class="label" for="hs-key">User key</label>
+                    <select id="hs-key" class="field" x-model="modal.hs.key">
+                      <option value="">auto</option>
+                      <template x-for="k in sshKeys.filter(k=>k.hasPrivateKey && k.role!=='ops')" :key="k.name"><option :value="k.name" x-text="k.name"></option></template>
+                    </select>
+                  </div>
+                  <div><label class="label" for="hs-tags">Tags</label><input id="hs-tags" class="field" placeholder="prod, web" x-model="modal.hs.tags" /></div>
+                </div>
+              </div>
+            </template>
+            <template x-if="modal.hs.mode==='import'">
+              <div class="space-y-3">
+                <div><label class="label" for="hs-provider">Provider</label>
+                  <select id="hs-provider" class="field" x-model="modal.hs.provider">
+                    <template x-for="p in providerIds" :key="p"><option :value="p" x-text="p"></option></template>
+                  </select>
+                </div>
+                <div><label class="label" for="hs-server">Server id or name</label><input id="hs-server" class="field font-mono text-xs" placeholder="vops-web-abc" x-model="modal.hs.server" /></div>
+                <p class="text-[11px]" style="color:var(--text-faint)">Resolves the server's public IP from the provider and adds it as a host.</p>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='hostreport'">
+          <div class="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            <template x-for="f in modal.report.findings" :key="f.id">
+              <div class="flex items-start gap-2.5 rounded-lg px-3 py-2" style="background:var(--panel-2)">
+                <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :style="'background:' + sevColor(f.severity)"></span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-[11px]" style="color:var(--text-faint)" x-text="f.id"></span>
+                    <span class="text-[13px]" style="color:var(--text)" x-text="f.summary"></span>
+                    <span x-show="f.value!==undefined && f.value!==null" class="text-[11px]" style="color:var(--text-faint)" x-text="'(' + f.value + ')'"></span>
+                  </div>
+                  <div x-show="f.detail" class="mt-0.5 whitespace-pre-wrap font-mono text-[10.5px]" style="color:var(--text-faint)" x-text="f.detail"></div>
+                </div>
+              </div>
+            </template>
+            <div x-show="!modal.report.findings.length" class="text-sm" style="color:var(--text-faint)">No findings.</div>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='manage'">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between text-[12px]">
+              <span class="font-mono" style="color:var(--text-dim)" x-text="modal.mg.host ? (modal.mg.host.user + '@' + modal.mg.host.address + ':' + modal.mg.host.port) : '…'"></span>
+              <span style="color:var(--text-faint)" x-text="modal.mg.host?.os?.pretty || ''"></span>
+            </div>
+
+            <!-- Provider-only: watched via the API, SSH management intentionally off -->
+            <div x-show="modal.mg.host?.sshManaged === false" class="space-y-2 rounded-lg px-3 py-3" style="background:var(--panel-2)">
+              <span class="text-[12px] font-semibold" style="color:var(--text)">Provider-only</span>
+              <p class="text-[11px]" style="color:var(--text-dim)">Watched via the provider API (power state, metrics, price) — no SSH key needed. Turn on SSH management to harden, update, monitor or open a session.</p>
+              <button class="btn-xs" :disabled="modal.mg.busy" @click="setSshManaged(true)">Manage over SSH…</button>
+            </div>
+
+            <!-- Connection: a structural ladder (reachable → key → authorized), the gate for everything below -->
+            <div x-show="modal.mg.host?.sshManaged !== false" class="space-y-2 rounded-lg px-3 py-3" style="background:var(--panel-2)">
+              <div class="flex items-center justify-between">
+                <span class="text-[12px] font-semibold" style="color:var(--text)">Connection</span>
+                <button class="btn-xs" :disabled="modal.mg.busy || !modal.mg.name" @click="manageCheck()" x-text="modal.mg.busy ? '…' : 'Check'"></button>
+              </div>
+
+              <p x-show="modal.mg.host?.conn && modal.mg.host?.conn?.state==='no-key'" class="text-[11px]" style="color:var(--text-faint)">Adopted server — SSH management is optional. Set it up to harden / update / monitor over SSH, or leave it API-only.</p>
+
+              <div class="flex items-start gap-2 text-[12px]">
+                <span class="mt-0.5 w-3.5 shrink-0 text-center font-bold" :style="'color:' + (modal.mg.host?.conn?.reachable ? 'var(--ok)' : 'var(--danger)')" x-text="modal.mg.host?.conn?.reachable ? '✓' : '✗'"></span>
+                <div class="min-w-0 flex-1">
+                  <span style="color:var(--text)">Reachable</span>
+                  <span class="font-mono text-[11px]" style="color:var(--text-faint)" x-text="modal.mg.host ? ' · ' + modal.mg.host.address + ':' + modal.mg.host.port : ''"></span>
+                  <p x-show="modal.mg.host?.conn && !modal.mg.host?.conn?.reachable" class="mt-0.5 text-[11px]" style="color:var(--text-dim)">The host must accept SSH from this machine — open the port/firewall to your IP, or run vops from a machine that can reach it.</p>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-2 text-[12px]">
+                <span class="mt-0.5 w-3.5 shrink-0 text-center font-bold" :style="'color:' + (modal.mg.host?.conn?.hasKey ? 'var(--ok)' : 'var(--warn)')" x-text="modal.mg.host?.conn?.hasKey ? '✓' : '✗'"></span>
+                <div class="min-w-0 flex-1">
+                  <span style="color:var(--text)">SSH key configured</span>
+                  <span x-show="modal.mg.host?.conn?.hasKey" class="text-[11px]" style="color:var(--text-faint)" x-text="' · ' + (modal.mg.host?.conn?.keyName || '') + ' (' + (modal.mg.host?.conn?.keyKind || '') + ')'"></span>
+                  <div x-show="modal.mg.host?.conn && !modal.mg.host?.conn?.hasKey" class="mt-1 flex flex-wrap items-center gap-2">
+                    <span class="text-[11px]" style="color:var(--text-dim)">No key assigned.</span>
+                    <select class="field text-[11px]" style="max-width:160px" @change="assignUserKey($event.target.value)" aria-label="Assign a key">
+                      <option value="">Assign a key…</option>
+                      <template x-for="k in userKeysAvail()" :key="k.name"><option :value="k.name" x-text="k.name"></option></template>
+                    </select>
+                    <button class="btn-xs" :disabled="modal.mg.busy" @click="generateKeyFor()">Generate</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-2 text-[12px]">
+                <span class="mt-0.5 w-3.5 shrink-0 text-center font-bold"
+                  :style="'color:' + (modal.mg.host?.conn?.authorized ? 'var(--ok)' : (modal.mg.host?.conn?.reachable && modal.mg.host?.conn?.hasKey ? 'var(--warn)' : 'var(--text-faint)'))"
+                  x-text="modal.mg.host?.conn?.authorized ? '✓' : (modal.mg.host?.conn?.reachable && modal.mg.host?.conn?.hasKey ? '✗' : '·')"></span>
+                <div class="min-w-0 flex-1">
+                  <span style="color:var(--text)">Key authorized on the server</span>
+                  <div x-show="modal.mg.host?.conn?.reachable && modal.mg.host?.conn?.hasKey && !modal.mg.host?.conn?.authorized && modal.mg.host?.conn?.publicKey" class="mt-1 space-y-1.5">
+                    <p class="text-[11px]" style="color:var(--text-dim)">Add this public key to the server (provider console → SSH keys, or <span class="font-mono">~/.ssh/authorized_keys</span>), then Check:</p>
+                    <div class="flex gap-2">
+                      <input class="field font-mono text-[10.5px]" readonly :value="modal.mg.host?.conn?.publicKey" aria-label="Public key" />
+                      <button class="btn-ghost shrink-0" @click="copy(modal.mg.host?.conn?.publicKey)">Copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p class="text-[11px]" style="color:var(--text-faint)"><span style="color:var(--text-dim)">User key</span>: your key for interactive access. <span style="color:var(--text-dim)">Ops key</span> (vops-ops): vops' managed key for automated ops — "Install ops key" authorizes it on the host.</p>
+              <button x-show="!mgReady()" class="text-[11px] hover:underline" style="color:var(--text-faint)" @click="setSshManaged(false)">Only watching this via the API? Mark provider-only</button>
+            </div>
+
+            <div x-show="modal.mg.host?.sshManaged !== false" class="flex flex-wrap gap-2">
+              <button class="btn-xs" :disabled="modal.mg.busy || !mgReady()" @click="modal.mg.host?.monitorHostId ? manageMonitor(false) : manageMonitor(true)"
+                x-text="modal.mg.host?.monitorHostId ? 'Disable monitoring' : 'Enable monitoring'"></button>
+              <button class="btn-xs" :disabled="modal.mg.busy || !mgReady()" @click="modal.mg.host?.opsKeyInstalled ? manageOps(false) : manageOps(true)"
+                x-text="modal.mg.host?.opsKeyInstalled ? 'Revoke ops key' : 'Install ops key'"></button>
+              <button class="btn-xs btn-xs-muted" :disabled="modal.mg.busy || !modal.mg.name || !mgReady()" @click="hardenHost({name: modal.mg.name}, true)">Harden…</button>
+              <button class="btn-xs btn-xs-muted" :disabled="modal.mg.busy || !modal.mg.name || !mgReady()" @click="updateHost({name: modal.mg.name})">Update</button>
+              <button x-show="modal.mg.row?.publicIp && !modal.mg.row?.external" class="btn-xs btn-xs-muted" @click="openConnect(modal.mg.row)">Connect (SSH)</button>
+              <button x-show="modal.mg.row?.managed" class="btn-xs" style="color:var(--danger);border-color:var(--danger-soft)" @click="confirmDelete('server', modal.mg.row)">Delete server</button>
+              <button x-show="modal.mg.row?.external" class="btn-xs" style="color:var(--danger);border-color:var(--danger-soft)" @click="confirmDelete('host', modal.mg.host)">Forget host</button>
+            </div>
+
+            <div x-show="modal.mg.host?.sshManaged !== false">
+              <div class="mb-1.5 flex items-center justify-between">
+                <span class="text-[12px]" style="color:var(--text-faint)">Status <span x-show="modal.mg.latencyMs!=null" x-text="'· ' + modal.mg.latencyMs + 'ms'"></span></span>
+                <button class="btn-xs" :disabled="modal.mg.statusLoading || !modal.mg.name || !mgReady()" @click="loadManageStatus()" x-text="modal.mg.statusLoading ? '…' : 'Refresh'"></button>
+              </div>
+              <div class="space-y-1.5 max-h-[42vh] overflow-y-auto">
+                <div x-show="modal.mg.statusLoading" class="text-sm" style="color:var(--text-faint)">Probing over SSH…</div>
+                <div x-show="!mgReady() && !modal.mg.statusLoading" class="text-sm" style="color:var(--text-faint)">Status unavailable until SSH is ready — fix the connection above.</div>
+                <template x-for="f in (modal.mg.findings || [])" :key="f.id">
+                  <div class="flex items-start gap-2.5 rounded-lg px-3 py-2" style="background:var(--panel-2)">
+                    <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :style="'background:' + sevColor(f.severity)"></span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-[11px]" style="color:var(--text-faint)" x-text="f.id"></span>
+                        <span class="text-[13px]" style="color:var(--text)" x-text="f.summary"></span>
+                        <span x-show="f.value!==undefined && f.value!==null" class="text-[11px]" style="color:var(--text-faint)" x-text="'(' + f.value + ')'"></span>
+                      </div>
+                      <div x-show="f.detail" class="mt-0.5 whitespace-pre-wrap font-mono text-[10.5px]" style="color:var(--text-faint)" x-text="f.detail"></div>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="mgReady() && !modal.mg.statusLoading && modal.mg.findings && !modal.mg.findings.length" class="text-sm" style="color:var(--text-faint)">No findings.</div>
+              </div>
+            </div>
+            <p x-show="modal.mg.host?.sshManaged !== false" class="text-[11px]" style="color:var(--text-faint)">Monitoring is the external dead-man switch (needs the relay — <span class="font-mono" style="color:var(--text-dim)">vops watch login</span>). Everything else runs locally over SSH with the ops key.</p>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='provision'">
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span style="color:var(--text-faint)">Provider</span><span class="capitalize" x-text="modal.plan?.provider"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-faint)">Plan</span><span x-text="modal.plan?.plan"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-faint)">Location</span><span x-text="modal.plan?.location"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-faint)">Image</span><span x-text="modal.plan?.image"></span></div>
+            <div class="flex justify-between"><span style="color:var(--text-faint)">Est. cost</span><span x-text="money(modal.plan?.estimatedCost?.hourly) + ' ' + (modal.plan?.estimatedCost?.currency||'') + '/h'"></span></div>
+            <div class="mt-2 rounded-lg px-3 py-2 text-xs"
+              :style="modal.plan?.billingGate?.allowed ? 'color:var(--ok);background:var(--ok-soft)' : 'color:var(--danger);background:var(--danger-soft)'"
+              x-text="modal.plan?.billingGate?.allowed ? 'Cost-control gate: allowed' : modal.plan?.billingGate?.reason"></div>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='confirm'">
+          <p class="text-sm" style="color:var(--text-dim)" x-text="modal.message"></p>
+        </template>
+
+        <template x-if="modal.type==='guided'">
+          <ul class="space-y-2 text-sm" style="color:var(--text-dim)">
+            <template x-for="(line, i) in modal.howTo" :key="i">
+              <li class="flex gap-2"><span style="color:var(--warn)">•</span><span x-text="line"></span></li>
+            </template>
+          </ul>
+        </template>
+
+        <template x-if="modal.type==='notify'">
+          <div class="space-y-3 text-sm">
+            <p style="color:var(--text-faint)">Get alerted when <span class="font-mono" style="color:var(--text-dim)" x-text="nfy.plan"></span> on <span class="capitalize" x-text="provider"></span> is available again. Delivered by the vops-landing service.</p>
+
+            <!-- Not connected: point vops at a vops-landing API (verified before saving) -->
+            <div x-show="!nfy.connected" class="space-y-2 rounded-lg px-3 py-3" style="background:var(--panel-3)">
+              <label class="label" for="nfy-api">vops-landing API URL</label>
+              <div class="flex gap-2">
+                <input id="nfy-api" class="field font-mono text-xs" placeholder="https://vops.flui.cloud" x-model="nfy.apiUrl" />
+                <button class="btn-primary shrink-0" @click="connectLanding()" :disabled="nfy.busy" x-text="nfy.busy ? '…' : 'Connect'"></button>
+              </div>
+              <p class="text-[11px]" style="color:var(--text-faint)">Checked for reachability before it's saved. Or from the CLI: <span class="font-mono" style="color:var(--text-dim)">vops watch login --api-url &lt;url&gt;</span></p>
+            </div>
+
+            <!-- Connected: choose a delivery channel -->
+            <div x-show="nfy.connected" class="space-y-3">
+              <div class="flex gap-1 rounded-lg p-1" style="background:var(--panel-3)">
+                <button class="btn-xs flex-1" :style="nfy.tab==='push' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="nfy.tab='push'">Phone push</button>
+                <button class="btn-xs flex-1" :style="nfy.tab==='ntfy' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="nfy.tab='ntfy'">ntfy topic</button>
+              </div>
+
+              <!-- Web Push: the vops notification app -->
+              <div x-show="nfy.tab==='push'" class="space-y-2">
+                <div x-show="!nfy.result">
+                  <button class="btn-primary w-full" @click="notifyPush()" :disabled="nfy.busy" x-text="nfy.busy ? 'Creating…' : 'Get push on my phone'"></button>
+                  <p class="mt-1.5 text-[11px]" style="color:var(--text-faint)">Creates a pending alert and a one-time activation link — open it on your phone to subscribe the vops notification app.</p>
+                </div>
+                <div x-show="nfy.result" class="space-y-2 text-center">
+                  <img :src="nfy.result?.qr" alt="Scan to activate push" class="mx-auto rounded-lg bg-white p-2" width="200" height="200" />
+                  <p class="text-[12px]" style="color:var(--text-dim)">Scan with your phone to enable push for this plan.</p>
+                  <div class="flex gap-2">
+                    <input class="field font-mono text-[11px]" readonly aria-label="Activation URL" :value="nfy.result?.activationUrl" />
+                    <button class="btn-ghost shrink-0" @click="copy(nfy.result?.activationUrl)">Copy</button>
+                  </div>
+                  <p class="text-[11px]" style="color:var(--text-faint)">Link expires <span x-text="nfy.result?.expiresAt ? new Date(nfy.result.expiresAt).toLocaleString() : ''"></span>.</p>
+                </div>
+              </div>
+
+              <!-- ntfy channel -->
+              <div x-show="nfy.tab==='ntfy'" class="space-y-2">
+                <label class="label" for="nfy-topic">ntfy topic</label>
+                <input id="nfy-topic" class="field font-mono text-xs" placeholder="my-vops-alerts" x-model="nfy.topic" />
+                <label class="label" for="nfy-server">ntfy server <span style="color:var(--text-faint)">(optional)</span></label>
+                <input id="nfy-server" class="field font-mono text-xs" placeholder="https://ntfy.sh" x-model="nfy.server" />
+                <button class="btn-primary w-full" @click="notifyNtfy()" :disabled="nfy.busy" x-text="nfy.busy ? 'Creating…' : 'Create ntfy alert'"></button>
+                <p class="text-[11px]" style="color:var(--text-faint)">Subscribe to this topic in the ntfy app to receive alerts.</p>
+              </div>
+            </div>
+
+            <p x-show="nfy.err" class="text-[12px]" style="color:var(--danger)" x-text="nfy.err"></p>
+          </div>
+        </template>
+
+        <div class="mt-6 flex justify-end gap-2">
+          <button class="btn-ghost" x-show="modal.type!=='guided'" @click="closeModal()" x-text="(modal.type==='notify' || modal.readonly) ? 'Close' : 'Cancel'"></button>
+          <button class="btn-ghost" x-show="modal.dryRun" @click="submitModal(true)">Dry-run</button>
+          <button x-show="modal.type!=='notify' && !modal.readonly" :class="modal.danger ? 'btn-danger' : 'btn-primary'" @click="submitModal(false)" x-text="modal.cta"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== TOAST ===================== -->
+    <div x-show="toast.show" x-cloak class="fixed bottom-5 right-5 z-[60] max-w-sm rounded-[10px] px-4 py-3 text-sm"
+      :style="toast.kind==='error' ? 'color:var(--danger);background:var(--danger-soft);border:1px solid var(--accent-border);box-shadow:var(--shadow)' : 'color:var(--ok);background:var(--ok-soft);border:1px solid var(--accent-border);box-shadow:var(--shadow)'"
+      x-transition>
+      <span x-text="toast.msg"></span>
+    </div>

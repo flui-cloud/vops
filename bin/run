@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+
+const dotenv = require('dotenv');
+const path = require('path');
+const os = require('os');
+
+// Local config dir and project root .env (tokens stay local; no telemetry).
+dotenv.config({ path: path.join(os.homedir(), '.config', 'vops', '.env') });
+dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+require('@oclif/core')
+  .run()
+  .then(require('@oclif/core').flush)
+  .catch(require('@oclif/core').Errors.handle);

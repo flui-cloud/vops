@@ -1,0 +1,39 @@
+      <section x-show="view==='sshkeys'">
+        <div class="mb-4 text-sm" style="color:var(--text-dim)"><span x-text="sshKeys.length"></span> local key(s) · private keys stay on this machine</div>
+        <div class="card overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead><tr>
+                <th class="th">Name</th><th class="th">Fingerprint</th><th class="th">Source</th><th class="th">SSH-ready</th><th class="th"></th>
+              </tr></thead>
+              <tbody>
+                <template x-if="loading">
+                  <template x-for="i in 3" :key="i">
+                    <tr class="row"><td class="td" colspan="5"><div class="skel h-4 w-full max-w-[520px]"></div></td></tr>
+                  </template>
+                </template>
+                <template x-for="k in sshKeys" :key="k.name">
+                  <tr class="row">
+                    <td class="td font-semibold" style="color:var(--text)" x-text="k.name"></td>
+                    <td class="td font-mono text-[11px]" x-text="k.fingerprint"></td>
+                    <td class="td"><span class="badge-off" x-text="k.imported ? 'imported' : 'generated'"></span></td>
+                    <td class="td">
+                      <span x-show="k.hasPrivateKey" class="badge-ok">yes</span>
+                      <span x-show="!k.hasPrivateKey" class="badge-off" title="Public-only — can register to a provider but not used for direct SSH">public-only</span>
+                    </td>
+                    <td class="td">
+                      <div class="flex items-center justify-end gap-2">
+                        <button class="btn-xs btn-xs-muted" @click="copy(k.publicKey)">Copy pub</button>
+                        <button class="btn-xs" @click="openRegister(k)">Register →</button>
+                        <button class="btn-xs" style="color:var(--danger);border-color:var(--danger-soft)" @click="confirmDelete('sshkey', k)">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <tr x-show="!sshKeys.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="5">No local keys. Generate one, or import a key you already use.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="mt-4 text-xs" style="color:var(--text-faint)">Registering uploads only the <span style="color:var(--accent);font-weight:600">public</span> half to a provider, to reference at server creation. The private key is never uploaded.</p>
+      </section>

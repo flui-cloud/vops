@@ -1,0 +1,29 @@
+      <section x-show="view==='firewalls'">
+        <div class="mb-4 text-sm" style="color:var(--text-dim)"><span x-text="firewalls.length"></span> firewall(s) on <span class="capitalize" x-text="provider"></span></div>
+        <div class="card overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead><tr>
+                <th class="th">ID</th><th class="th">Name</th><th class="th">Rules</th><th class="th">Applied to</th><th class="th"></th>
+              </tr></thead>
+              <tbody>
+                <template x-if="loading">
+                  <template x-for="i in 3" :key="i">
+                    <tr class="row"><td class="td" colspan="5"><div class="skel h-4 w-full max-w-[520px]"></div></td></tr>
+                  </template>
+                </template>
+                <template x-for="f in firewalls" :key="f.id">
+                  <tr class="row cursor-pointer" @click="openDrawer('firewall', f)">
+                    <td class="td font-mono text-xs" style="color:var(--text-faint)" x-text="f.id"></td>
+                    <td class="td font-semibold" style="color:var(--text)" x-text="f.name"></td>
+                    <td class="td font-mono" x-text="f.rules.length"></td>
+                    <td class="td" x-text="f.appliedTo.length + ' server(s)'"></td>
+                    <td class="td text-right" style="color:var(--text-faint)">›</td>
+                  </tr>
+                </template>
+                <tr x-show="!firewalls.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="5">No firewalls.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>

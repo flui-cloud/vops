@@ -1,0 +1,484 @@
+{
+ "catalogId": 9403,
+ "locale": {
+  "currencyCode": "EUR",
+  "subsidiary": "FR"
+ },
+ "addons": [
+  {
+   "planCode": "s1-2.consumption",
+   "product": "publiccloud-instance",
+   "pricings": [
+    {
+     "price": 880000,
+     "intervalUnit": "hour",
+     "capacities": [
+      "consumption"
+     ]
+    }
+   ],
+   "configurations": [
+    {
+     "name": "region",
+     "isCustom": false,
+     "isMandatory": false,
+     "values": [
+      "BHS1",
+      "BHS3",
+      "BHS5",
+      "DE1",
+      "GRA1",
+      "GRA3",
+      "GRA5",
+      "SBG1",
+      "SBG3",
+      "SBG5",
+      "SGP1",
+      "SYD1",
+      "UK1",
+      "WAW1",
+      "GRA7"
+     ]
+    }
+   ],
+   "blobs": {
+    "commercial": {
+     "brick": "",
+     "brickSubtype": null,
+     "name": "s1-2",
+     "price": {
+      "interval": "PT1H",
+      "precision": 4,
+      "unit": "h"
+     }
+    },
+    "tags": [
+     "legacy"
+    ],
+    "technical": {
+     "bandwidth": {
+      "guaranteed": false,
+      "level": 100,
+      "unlimited": false
+     },
+     "cpu": {
+      "cores": 1,
+      "frequency": 2.1,
+      "model": "vCore",
+      "type": "vCore"
+     },
+     "memory": {
+      "size": 2
+     },
+     "name": "s1-2",
+     "os": {
+      "family": "linux"
+     },
+     "storage": {
+      "disks": [
+       {
+        "capacity": 10,
+        "iops": 1000,
+        "technology": "SSD"
+       }
+      ],
+      "raid": "local"
+     },
+     "vrack": {
+      "guaranteed": false,
+      "level": 100,
+      "unlimited": false
+     }
+    }
+   }
+  },
+  {
+   "planCode": "s1-2.monthly.postpaid",
+   "product": "publiccloud-instance",
+   "pricings": [
+    {
+     "price": 329000000,
+     "intervalUnit": "month",
+     "capacities": [
+      "consumption"
+     ]
+    }
+   ],
+   "configurations": [
+    {
+     "name": "region",
+     "isCustom": false,
+     "isMandatory": false,
+     "values": [
+      "BHS1",
+      "BHS3",
+      "BHS5",
+      "DE1",
+      "GRA1",
+      "GRA3",
+      "GRA5",
+      "SBG1",
+      "SBG3",
+      "SBG5",
+      "SGP1",
+      "SYD1",
+      "UK1",
+      "WAW1",
+      "GRA7"
+     ]
+    }
+   ],
+   "blobs": {
+    "commercial": {
+     "brick": "",
+     "brickSubtype": null,
+     "name": "s1-2",
+     "price": {
+      "interval": "P1M"
+     }
+    },
+    "tags": [
+     "legacy"
+    ],
+    "technical": {
+     "bandwidth": {
+      "guaranteed": false,
+      "level": 100,
+      "unlimited": false
+     },
+     "cpu": {
+      "cores": 1,
+      "frequency": 2.1,
+      "model": "vCore",
+      "type": "vCore"
+     },
+     "memory": {
+      "size": 2
+     },
+     "name": "s1-2",
+     "os": {
+      "family": "linux"
+     },
+     "storage": {
+      "disks": [
+       {
+        "capacity": 10,
+        "iops": 1000,
+        "technology": "SSD"
+       }
+      ],
+      "raid": "local"
+     },
+     "vrack": {
+      "guaranteed": false,
+      "level": 100,
+      "unlimited": false
+     }
+    }
+   }
+  },
+  {
+   "planCode": "b2-7.consumption",
+   "product": "publiccloud-instance",
+   "pricings": [
+    {
+     "price": 7090000,
+     "intervalUnit": "hour",
+     "capacities": [
+      "consumption"
+     ]
+    }
+   ],
+   "configurations": [
+    {
+     "name": "region",
+     "isCustom": false,
+     "isMandatory": false,
+     "values": [
+      "BHS1",
+      "BHS3",
+      "BHS5",
+      "DE1",
+      "GRA1",
+      "GRA3",
+      "GRA5",
+      "SBG1",
+      "SBG3",
+      "SBG5",
+      "SGP1",
+      "SYD1",
+      "UK1",
+      "WAW1",
+      "GRA7"
+     ]
+    }
+   ],
+   "blobs": {
+    "commercial": {
+     "brick": "guaranteed-resources",
+     "brickSubtype": "general-purpose",
+     "name": "b2-7",
+     "price": {
+      "interval": "PT1H",
+      "precision": 4,
+      "unit": "h"
+     }
+    },
+    "tags": [
+     "active"
+    ],
+    "technical": {
+     "bandwidth": {
+      "guaranteed": true,
+      "level": 250,
+      "unlimited": false
+     },
+     "cpu": {
+      "cores": 2,
+      "frequency": 2,
+      "model": "vCore",
+      "type": "vCore"
+     },
+     "memory": {
+      "size": 7
+     },
+     "name": "b2-7",
+     "os": {
+      "family": "linux"
+     },
+     "storage": {
+      "disks": [
+       {
+        "capacity": 50,
+        "iops": 2000,
+        "technology": "SSD"
+       }
+      ],
+      "raid": "local"
+     },
+     "vrack": {
+      "guaranteed": false,
+      "level": 300,
+      "unlimited": false
+     }
+    }
+   }
+  },
+  {
+   "planCode": "b2-7.monthly.postpaid",
+   "product": "publiccloud-instance",
+   "pricings": [
+    {
+     "price": 2517000000,
+     "intervalUnit": "month",
+     "capacities": [
+      "consumption"
+     ]
+    }
+   ],
+   "configurations": [
+    {
+     "name": "region",
+     "isCustom": false,
+     "isMandatory": false,
+     "values": [
+      "BHS1",
+      "BHS3",
+      "BHS5",
+      "DE1",
+      "GRA1",
+      "GRA3",
+      "GRA5",
+      "SBG1",
+      "SBG3",
+      "SBG5",
+      "SGP1",
+      "SYD1",
+      "UK1",
+      "WAW1",
+      "GRA7"
+     ]
+    }
+   ],
+   "blobs": {
+    "commercial": {
+     "brick": "guaranteed-resources",
+     "brickSubtype": "general-purpose",
+     "name": "b2-7",
+     "price": {
+      "interval": "P1M"
+     }
+    },
+    "tags": [
+     "active"
+    ],
+    "technical": {
+     "bandwidth": {
+      "guaranteed": true,
+      "level": 250,
+      "unlimited": false
+     },
+     "cpu": {
+      "cores": 2,
+      "frequency": 2,
+      "model": "vCore",
+      "type": "vCore"
+     },
+     "memory": {
+      "size": 7
+     },
+     "name": "b2-7",
+     "os": {
+      "family": "linux"
+     },
+     "storage": {
+      "disks": [
+       {
+        "capacity": 50,
+        "iops": 2000,
+        "technology": "SSD"
+       }
+      ],
+      "raid": "local"
+     },
+     "vrack": {
+      "guaranteed": false,
+      "level": 300,
+      "unlimited": false
+     }
+    }
+   }
+  },
+  {
+   "planCode": "c3-4.consumption",
+   "product": "publiccloud-instance",
+   "pricings": [
+    {
+     "price": 4570000,
+     "intervalUnit": "hour",
+     "capacities": [
+      "consumption"
+     ]
+    }
+   ],
+   "configurations": [],
+   "blobs": {
+    "commercial": {
+     "brick": "guaranteed-resources",
+     "brickSubtype": "cpu",
+     "name": "c3-4",
+     "price": {
+      "interval": "PT1H",
+      "precision": 4,
+      "unit": "h"
+     }
+    },
+    "tags": [
+     "active",
+     "coming_soon",
+     "is_top",
+     "savings_plans"
+    ],
+    "technical": {
+     "bandwidth": {
+      "guaranteed": false,
+      "level": 250,
+      "unlimited": false
+     },
+     "cpu": {
+      "cores": 2,
+      "frequency": 2.3,
+      "model": "vCore",
+      "type": "vCore"
+     },
+     "memory": {
+      "size": 4
+     },
+     "name": "c3-4",
+     "os": {
+      "family": "linux"
+     },
+     "storage": {
+      "disks": [
+       {
+        "capacity": 50,
+        "number": 1,
+        "technology": "NVMe"
+       }
+      ],
+      "raid": "local"
+     },
+     "vrack": {
+      "guaranteed": false,
+      "level": 4000,
+      "unlimited": false
+     }
+    }
+   }
+  },
+  {
+   "planCode": "d2-2.consumption",
+   "product": "publiccloud-instance",
+   "pricings": [
+    {
+     "price": 1040000,
+     "intervalUnit": "hour",
+     "capacities": [
+      "consumption"
+     ]
+    }
+   ],
+   "configurations": [],
+   "blobs": {
+    "commercial": {
+     "brick": "guaranteed-resources",
+     "brickSubtype": "discovery",
+     "name": "d2-2",
+     "price": {
+      "interval": "PT1H",
+      "precision": 4,
+      "unit": "h"
+     }
+    },
+    "tags": [
+     "active"
+    ],
+    "technical": {
+     "bandwidth": {
+      "guaranteed": false,
+      "level": 100,
+      "unlimited": false
+     },
+     "cpu": {
+      "cores": 1,
+      "frequency": 2,
+      "model": "vCore",
+      "type": "vCore"
+     },
+     "memory": {
+      "size": 2
+     },
+     "name": "d2-2",
+     "os": {
+      "family": "linux"
+     },
+     "storage": {
+      "disks": [
+       {
+        "capacity": 25,
+        "interface": "NVMe",
+        "number": 1
+       }
+      ],
+      "raid": "local"
+     },
+     "vrack": {
+      "guaranteed": false,
+      "level": 100,
+      "unlimited": false
+     }
+    }
+   }
+  }
+ ]
+}

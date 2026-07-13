@@ -1,0 +1,55 @@
+      <section x-show="view==='compare'">
+        <div class="card mb-4 grid grid-cols-2 items-end gap-4 p-5 md:grid-cols-4 xl:grid-cols-6">
+          <div><label class="label" for="cmp-cpu">vCPU min</label><input id="cmp-cpu" class="field" type="number" min="1" placeholder="any" x-model="cmp.cpu" @keydown.enter="runCompare()" /></div>
+          <div><label class="label" for="cmp-ram">RAM GB min</label><input id="cmp-ram" class="field" type="number" min="1" placeholder="any" x-model="cmp.ramGb" @keydown.enter="runCompare()" /></div>
+          <div><label class="label" for="cmp-region">Region</label><input id="cmp-region" class="field" placeholder="any" x-model="cmp.region" @keydown.enter="runCompare()" /></div>
+          <div><label class="label" for="cmp-provider">Provider</label>
+            <select id="cmp-provider" class="field" x-model="cmp.provider">
+              <option value="">any</option>
+              <template x-for="p in providerIds" :key="p"><option :value="p" x-text="p"></option></template>
+            </select>
+          </div>
+          <label class="flex items-center gap-2 pb-2.5 text-[13px]" style="color:var(--text-dim)"><input type="checkbox" x-model="cmp.hourlyOnly" style="accent-color:var(--accent)" class="h-4 w-4" /> hourly</label>
+          <label class="flex items-center gap-2 pb-2.5 text-[13px]" style="color:var(--text-dim)" title="Show retired plans/regions (not purchasable — existing servers keep running)"><input type="checkbox" x-model="showDeprecated" @change="runCompare()" style="accent-color:var(--accent)" class="h-4 w-4" /> deprecated</label>
+          <button class="btn-primary" @click="runCompare()">Compare</button>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead><tr>
+                <th class="th">Provider</th><th class="th">Plan</th><th class="th">vCPU</th><th class="th">RAM</th>
+                <th class="th">Region</th><th class="th">Availability</th><th class="th">EUR/h</th><th class="th">EUR/mo</th><th class="th">Create</th>
+              </tr></thead>
+              <tbody>
+                <template x-if="loading">
+                  <template x-for="i in 5" :key="i">
+                    <tr class="row"><td class="td" colspan="9"><div class="skel h-4 w-full max-w-[620px]"></div></td></tr>
+                  </template>
+                </template>
+                <template x-for="r in compareRows" :key="r.provider + r.plan + r.region">
+                  <tr class="row">
+                    <td class="td"><span class="inline-flex items-center gap-2 capitalize"><span class="h-2 w-2 rounded-full" :style="'background:' + pinColor(r.provider)"></span><span x-text="r.provider"></span></span></td>
+                    <td class="td font-semibold" style="color:var(--text)" x-text="r.plan"></td>
+                    <td class="td font-mono" x-text="r.cores"></td>
+                    <td class="td font-mono" x-text="r.memoryGb + 'G'"></td>
+                    <td class="td font-mono text-xs" x-text="r.region"></td>
+                    <td class="td"><span :class="availBadgeClass(r)" :title="availTitle(r)" class="cursor-help" x-text="availBadgeText(r)"></span></td>
+                    <td class="td font-mono" style="color:var(--text-faint)" x-text="money(r.hourly)"></td>
+                    <td class="td font-mono font-semibold" style="color:var(--text)" x-text="money(r.monthly, 2)"></td>
+                    <td class="td">
+                      <div class="flex items-center gap-2.5">
+                        <span :class="createBadgeClass(r)" x-text="createBadgeText(r)"></span>
+                        <button class="btn-xs" x-show="canProvision(r)" @click="openPlan(r)">Provision →</button>
+                        <span x-show="r.createAllowed && !r.deprecated && isSoldOut(r)" class="text-[12px]" style="color:var(--text-faint)">out of stock</span>
+                        <button class="btn-xs btn-xs-muted" x-show="r.guided" @click="openHowTo(r)">How to create</button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <tr x-show="!compareRows.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="9" x-text="comparedOnce ? 'No matching plans.' : 'Set filters and compare.'"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="mt-3 text-xs" style="color:var(--text-faint)">All prices are <span style="color:var(--text-dim)">net of VAT</span> — VAT is added per your country.</p>
+      </section>

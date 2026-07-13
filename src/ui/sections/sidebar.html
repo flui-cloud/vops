@@ -1,0 +1,65 @@
+  <aside class="flex w-[252px] shrink-0 flex-col px-3 pb-3.5 pt-4" style="background:var(--side);border-right:1px solid var(--border)">
+    <div class="flex items-center gap-3 px-2 pb-4 pt-1.5">
+      <img src="assets/icon_transparent.png" alt="vops" width="38" height="38" class="h-[38px] w-[38px] shrink-0" />
+      <div class="leading-tight">
+        <div class="text-[15px] font-bold tracking-tight">vops</div>
+        <div class="text-[11.5px]" style="color:var(--text-faint)">control plane</div>
+      </div>
+    </div>
+
+    <nav class="flex flex-col">
+      <template x-for="sec in nav" :key="sec.section">
+        <div>
+          <div class="nav-section" x-text="sec.section"></div>
+          <template x-for="item in sec.items" :key="item.id">
+            <button class="nav-item" :class="view===item.id && 'nav-item-active'" @click="go(item.id)">
+              <span x-show="view===item.id" class="absolute -left-3 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded" style="background:var(--accent)"></span>
+              <span x-html="item.icon" class="flex" :style="view===item.id ? '' : 'color:var(--text-faint)'"></span>
+              <span x-text="item.label"></span>
+              <template x-if="item.id==='availability' && (ov.alerts?.count||0) > 0">
+                <span class="ml-auto flex items-center gap-1.5 text-[11px] font-semibold" style="color:var(--warn)">
+                  <span class="h-1.5 w-1.5 rounded-full" style="background:var(--warn)"></span><span x-text="ov.alerts.count"></span>
+                </span>
+              </template>
+              <template x-if="item.pill !== undefined && countFor(item.id) !== null">
+                <span class="count-pill" x-text="countFor(item.id)"></span>
+              </template>
+            </button>
+          </template>
+        </div>
+      </template>
+    </nav>
+
+    <!-- Providers panel -->
+    <div class="mt-4 rounded-xl p-3 pb-1.5" style="background:var(--panel-2);border:1px solid var(--border)">
+      <div class="flex items-center justify-between px-0.5 pb-2">
+        <span class="text-[10.5px] font-semibold uppercase" style="letter-spacing:.09em;color:var(--text-faint)">Providers</span>
+        <span class="text-[11px] font-semibold" style="color:var(--text-dim)" x-text="providers.length + ' providers'"></span>
+      </div>
+      <template x-for="p in providers" :key="p.provider">
+        <div class="flex items-center gap-2.5 px-0.5 py-1.5">
+          <span class="h-2 w-2 shrink-0 rounded-full" :style="'background:' + pinColor(p.provider)"></span>
+          <span class="flex-1 text-[12.5px]" style="color:var(--text-dim)" x-text="p.displayName"></span>
+          <span class="text-[10.5px] font-medium"
+            :style="'color:' + (p.writeEnabled ? 'var(--ok)' : 'var(--text-faint)')"
+            x-text="p.writeEnabled ? 'writable' : (p.guided ? 'guided' : 'read-only')"></span>
+        </div>
+      </template>
+    </div>
+
+    <div class="min-h-3 flex-1"></div>
+
+    <!-- Theme toggle -->
+    <div class="seg mx-0.5 mb-3">
+      <button class="seg-btn flex-1" :class="theme==='light' && 'seg-btn-active'" @click="setTheme('light')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2m0 16v2M4 12H2m20 0h-2M5 5 3.5 3.5M20.5 20.5 19 19M19 5l1.5-1.5M3.5 20.5 5 19"/></svg> Light
+      </button>
+      <button class="seg-btn flex-1" :class="theme==='dark' && 'seg-btn-active'" @click="setTheme('dark')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.3 6.3 0 0 0 10.5 10.5Z"/></svg> Dark
+      </button>
+    </div>
+    <div class="flex items-center gap-2 px-2">
+      <span class="h-[7px] w-[7px] rounded-full" style="background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)"></span>
+      <div class="text-[11.5px] leading-snug" style="color:var(--text-faint)">tokens stay on this machine<br />no telemetry · offline</div>
+    </div>
+  </aside>

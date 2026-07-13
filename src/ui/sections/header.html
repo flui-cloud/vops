@@ -1,0 +1,32 @@
+      <div class="mb-6 flex flex-wrap items-start justify-between gap-5">
+        <div>
+          <h1 class="text-[26px] font-bold leading-none tracking-tight" x-text="pageTitle">Overview</h1>
+          <p class="mt-1.5 text-sm" style="color:var(--text-dim)" x-text="subtitle"></p>
+        </div>
+        <div class="flex flex-none items-center gap-2.5">
+          <div class="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[12.5px]" x-show="view==='overview'"
+            style="color:var(--text-faint);background:var(--panel);border:1px solid var(--border)">
+            <span class="h-1.5 w-1.5 rounded-full" style="background:var(--ok)"></span>synced <span x-text="syncedLabel"></span>
+          </div>
+          <div class="seg" x-show="showsProvider">
+            <template x-for="p in providerIds" :key="p">
+              <button class="seg-btn capitalize" :class="provider===p && 'seg-btn-active'" @click="setProvider(p)" x-text="p"></button>
+            </template>
+          </div>
+          <div class="seg" x-show="view==='servers'">
+            <template x-for="t in serverTabs" :key="t">
+              <button class="seg-btn capitalize" :class="serverTab===t && 'seg-btn-active'" @click="setServerTab(t)" x-text="t"></button>
+            </template>
+          </div>
+          <button class="btn-ghost" x-show="view!=='sshkeys'" @click="reload()" :disabled="loading">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              class="transition-transform duration-500" :style="loading ? 'transform:rotate(360deg)' : ''"><path d="M20 11A8 8 0 1 0 18 16"/><path d="M20 5v6h-6"/></svg>Refresh
+          </button>
+          <button class="btn-primary" x-show="primaryAction" @click="runPrimary()" x-text="primaryAction"></button>
+          <button class="btn-ghost" x-show="view==='sshkeys'" @click="openImportForm()">Import existing</button>
+        </div>
+      </div>
+
+      <div x-show="error" class="mb-4 rounded-[10px] px-4 py-3 text-sm" style="color:var(--danger);background:var(--danger-soft);border:1px solid var(--accent-border)">
+        <span x-text="error"></span>
+      </div>
