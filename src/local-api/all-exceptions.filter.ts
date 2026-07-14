@@ -17,7 +17,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       res.status(exception.getStatus()).json(exception.getResponse());
       return;
     }
-    const message = exception instanceof Error ? exception.message : String(exception);
+    let message = 'Unexpected error';
+    if (exception instanceof Error) message = exception.message;
+    else if (typeof exception === 'string') message = exception;
     this.logger.error(message);
     res
       .status(HttpStatus.BAD_GATEWAY)

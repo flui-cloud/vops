@@ -3,7 +3,16 @@
  * but a host needs no provider (users have machines vops did not create). The
  * provider-plane (`servers`) and this SSH-plane are deliberately separate worlds.
  */
+import { VopsFirewallRule } from '../dto/firewall.dto';
+
 export type OsFamily = 'debian' | 'rhel' | 'alpine' | 'unknown';
+
+/** vops-managed host firewall (nftables engine) — the intended ruleset, persisted. */
+export interface VopsHostFirewall {
+  rules: VopsFirewallRule[];
+  policy: 'drop' | 'accept';
+  appliedAt: string;
+}
 
 export interface VopsHostOs {
   family: OsFamily;
@@ -59,10 +68,12 @@ export interface VopsHost {
    * not decided (SSH management available, opt-in).
    */
   sshManaged?: boolean;
-  /** Relay host id when `host monitor` is set up (dead-man switch). */
+  /** Relay host id when `watch host` is set up (dead-man switch). */
   monitorHostId?: string;
   /** Whether the optional vops metrics agent is installed on the host. */
   agentInstalled?: boolean;
+  /** vops-managed nftables firewall intent (engine for providers without a native one). */
+  firewall?: VopsHostFirewall;
   tags: string[];
   addedAt: string;
 }

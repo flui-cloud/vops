@@ -38,11 +38,18 @@ export function buildBatteryScript(family: OsFamily): string {
     ...s('nproc', 'nproc 2>/dev/null'),
     ...s('load', 'cat /proc/loadavg 2>/dev/null'),
     ...s('uptime_s', 'uptime -s 2>/dev/null'),
-    ...s('failed', 'systemctl --failed --no-legend 2>/dev/null'),
+    // Per failed unit: "<unit>\t<Result>\t<Description>" — Result + description
+    // give the "why" inline. The per-unit `systemctl show` runs only when something
+    // is actually failed (free when healthy).
+    ...s(
+      'failed',
+      String.raw`systemctl --failed --no-legend 2>/dev/null | while read -r a b c; do case "$a" in *.*) u=$a;; *) u=$b;; esac; case "$u" in *.*) printf '%s\t%s\t%s\n' "$u" "$(systemctl show -p Result --value "$u" 2>/dev/null)" "$(systemctl show -p Description --value "$u" 2>/dev/null)";; esac; done`,
+    ),
     ...s('oom', "journalctl -k --no-pager -g 'Out of memory' -q 2>/dev/null | tail -n 5"),
     ...s('listen', 'ss -tlnpH 2>/dev/null'),
     ...s('sshcfg', String.raw`sshd -T 2>/dev/null | grep -Ei '^(permitrootlogin|passwordauthentication)' || grep -Ei '^\s*(PermitRootLogin|PasswordAuthentication)' /etc/ssh/sshd_config 2>/dev/null`),
-    ...s('logins', "journalctl -u ssh -u sshd --since -24h -g 'Failed password' -q 2>/dev/null | wc -l"),
+    ...s('logins', "journalctl -u ssh -u sshd --since -24h -g 'Failed password' -q -o cat 2>/dev/null | tail -n 2000"),
+    ...s('logins_ok', "journalctl -u ssh -u sshd --since -24h -g 'Accepted' -q -o cat 2>/dev/null | tail -n 2000"),
     ...s('updates', updates),
     ...s('reboot', reboot),
     ...s('fp_etc', 'ls -1 /etc/vops 2>/dev/null'),
@@ -108,6 +115,7 @@ export function parseBattery(
     listen(s.listen ?? ''),
     sshcfg(s.sshcfg ?? ''),
     logins(s.logins ?? '', t),
+    loginsOk(s.logins_ok ?? ''),
     footprint(s.fp_etc ?? '', s.fp_cron ?? '', s.fp_ak ?? ''),
   ];
 }
@@ -160,11 +168,31 @@ function uptime(text: string, now: number, t: BatteryThresholds): Finding {
   return f('sys.uptime', sev, sev === 'info' ? `Rebooted ${Math.round(secs / 60)} min ago` : 'Uptime nominal');
 }
 
+// systemctl --failed prefixes a status glyph (● in UTF-8, * under LC_ALL=C) before
+// the unit name — take the first token that actually looks like a unit name.
+function unitName(line: string): string {
+  return line.trim().split(/\s+/).find((tok) => /^[A-Za-z0-9]/.test(tok)) ?? '';
+}
+
 function failedUnits(text: string): Finding {
-  const units = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  return units.length
-    ? f('svc.failed', 'warn', `${units.length} failed unit(s)`, { detail: units.map((u) => u.split(/\s+/)[0]).join(', ') })
-    : f('svc.failed', 'ok', 'No failed units');
+  const units = text
+    .split('\n')
+    .map((l) => l.split('\t'))
+    .map(([name, result, ...rest]) => ({
+      unit: unitName(name ?? ''),
+      result: (result ?? '').trim(),
+      description: rest.join('\t').trim(),
+    }))
+    .filter((u) => u.unit);
+  if (!units.length) return f('svc.failed', 'ok', 'No failed units');
+  const detail = units
+    .map((u) => {
+      const reason = u.result && u.result !== 'success' ? ` — ${u.result}` : '';
+      const desc = u.description ? ` · ${u.description}` : '';
+      return `${u.unit}${reason}${desc}`;
+    })
+    .join('\n');
+  return f('svc.failed', 'warn', `${units.length} failed unit(s)`, { detail });
 }
 
 function oom(text: string): Finding {
@@ -190,25 +218,41 @@ function reboot(text: string): Finding {
   return f('pkg.reboot', 'ok', 'No reboot required');
 }
 
-/** Ports listening on all interfaces (0.0.0.0/::) — exported for the cross-plane check. */
-export function listenPorts(text: string): number[] {
-  const ports = new Set<number>();
+interface Listener {
+  port: number;
+  proc: string;
+}
+
+// `ss -tlnpH` rows: State Recv-Q Send-Q Local:Port Peer:Port users:(("proc",…)).
+// Keep only wildcard binds (0.0.0.0/::) — those the host offers to any network —
+// and pull the program name (needs -p/root; blank otherwise, we degrade to a bare port).
+function publicListeners(text: string): Listener[] {
+  const byPort = new Map<number, string>();
   for (const line of text.split('\n')) {
     const local = line.trim().split(/\s+/)[3];
     if (!local) continue;
     const isWildcard = local.startsWith('0.0.0.0:') || local.startsWith('*:') || local.startsWith('[::]:') || local.startsWith(':::');
     if (!isWildcard) continue;
     const port = Number(local.slice(local.lastIndexOf(':') + 1));
-    if (Number.isFinite(port)) ports.add(port);
+    if (!Number.isFinite(port)) continue;
+    const proc = /"([^"]+)"/.exec(line)?.[1] ?? '';
+    if (!byPort.get(port)) byPort.set(port, proc);
   }
-  return [...ports].sort((a, b) => a - b);
+  return [...byPort.entries()].map(([port, proc]) => ({ port, proc })).sort((a, b) => a.port - b.port);
+}
+
+/** Public listening ports (0.0.0.0/::) — exported for the cross-plane check. */
+export function listenPorts(text: string): number[] {
+  return publicListeners(text).map((l) => l.port);
 }
 
 function listen(text: string): Finding {
-  const ports = listenPorts(text);
-  return ports.length
-    ? f('net.listen', 'info', `Listening on ${ports.length} public port(s)`, { detail: ports.join(', ') })
-    : f('net.listen', 'ok', 'No public listeners');
+  const ls = publicListeners(text);
+  if (!ls.length) return f('net.listen', 'ok', 'Nothing listening beyond localhost');
+  const detail = ls.map((l) => (l.proc ? `${l.port} (${l.proc})` : String(l.port))).join(', ');
+  // "listening on all interfaces" ≠ "reachable" — a firewall may still block these.
+  // The Firewall card reconciles this into actually-reachable vs blocked.
+  return f('net.listen', 'info', `Listening on ${ls.length} port(s)`, { detail });
 }
 
 function sshcfg(text: string): Finding {
@@ -217,19 +261,44 @@ function sshcfg(text: string): Finding {
     const [k, v] = line.trim().split(/\s+/);
     if (k) map[k.toLowerCase()] = (v ?? '').toLowerCase();
   }
-  const pwAuth = map.passwordauthentication === 'yes';
-  const rootPw = map.permitrootlogin === 'yes';
-  if (pwAuth || rootPw) {
-    const which = [pwAuth ? 'password auth' : '', rootPw ? 'root password login' : ''].filter(Boolean).join(' + ');
-    return f('sec.sshcfg', 'warn', `SSH allows ${which}`);
+  // This check is about *password* login exposure — what "Disable password
+  // login" remediates. PasswordAuthentication no closes it for every account,
+  // root included, regardless of PermitRootLogin (which then only governs root
+  // *key* login). So root-with-password is a risk only while password auth is on.
+  if (map.passwordauthentication === 'yes') {
+    const rootToo = map.permitrootlogin === 'yes';
+    return f('sec.sshcfg', 'warn', `SSH allows password login${rootToo ? ' (root included)' : ''}`);
   }
-  return f('sec.sshcfg', 'ok', 'SSH login hardened');
+  return f('sec.sshcfg', 'ok', 'SSH login hardened (key-only)');
+}
+
+// Source-IP rollup shared by the failed / successful login checks. Journal lines
+// read "… from <ip> port …"; we surface only the IPs (busiest first, ×count), how
+// many are distinct, and the event total. `tail -n 2000` upstream bounds transfer.
+function loginSummary(lines: string[]): { total: number; capped: boolean; distinct: number; top: string[] } {
+  const byIp = new Map<string, number>();
+  for (const line of lines) {
+    const m = /from (\S+)/.exec(line);
+    if (!m) continue;
+    byIp.set(m[1], (byIp.get(m[1]) ?? 0) + 1);
+  }
+  const top = [...byIp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([ip, c]) => `${ip} ×${c}`);
+  return { total: lines.length, capped: lines.length >= 2000, distinct: byIp.size, top };
 }
 
 function logins(text: string, t: BatteryThresholds): Finding {
-  const n = Number(text.trim()) || 0;
-  const sev: Severity = n > t.loginsWarn ? 'warn' : 'ok';
-  return f('sec.logins', sev, sev === 'warn' ? `${n} failed logins in 24h` : 'No login burst', { value: n });
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return f('sec.logins', 'ok', 'No failed logins in 24h');
+  const { total, capped, distinct, top } = loginSummary(lines);
+  const sev: Severity = total > t.loginsWarn ? 'warn' : 'ok';
+  return f('sec.logins', sev, `${capped ? '2000+' : total} failed logins from ${distinct} IP(s) · 24h`, { detail: top.join(', ') });
+}
+
+function loginsOk(text: string): Finding {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return f('sec.logins.ok', 'ok', 'No successful logins in 24h');
+  const { total, capped, distinct, top } = loginSummary(lines);
+  return f('sec.logins.ok', 'info', `${capped ? '2000+' : total} logins from ${distinct} IP(s) · 24h`, { detail: top.join(', ') });
 }
 
 function footprint(etc: string, cron: string, ak: string): Finding {

@@ -1,8 +1,10 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Finding } from '../lib/report';
 import { SshExec, SshTarget } from '../lib/ssh-exec';
 import { assertHostWritable } from '../safety/host-write-gate';
-import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
+import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
+import { resolveSshTarget } from './ssh-target';
+import { resolveNftBin, sudoPrefix } from './nft-exec';
 import { renderSshRateLimit } from '../host-firewall/nftables';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHost, OsFamily } from '../hosts/host.model';
@@ -93,7 +95,7 @@ export class VopsHostHardenService {
           dryRun,
         );
       case 'ssh-ratelimit':
-        return this.rateLimit(target, dryRun);
+        return this.rateLimit(target, host.port ?? 22, dryRun);
       default:
         return { id, severity: 'fail', summary: `Unknown step '${id}'` };
     }
@@ -137,17 +139,25 @@ export class VopsHostHardenService {
     return this.generic(target, id, sshdCheck(key.toLowerCase(), checkValue), sshdDirectiveScript(key, value), dryRun);
   }
 
-  private async rateLimit(target: SshTarget, dryRun: boolean): Promise<Finding> {
-    const ruleset = renderSshRateLimit();
-    const compliant = (await this.ssh.run(target, 'nft list table inet vops_ssh_ratelimit >/dev/null 2>&1 && echo VOPS_OK || true')).stdout.includes('VOPS_OK');
+  private async rateLimit(target: SshTarget, sshPort: number, dryRun: boolean): Promise<Finding> {
+    const sudo = sudoPrefix(target.host);
+    const ruleset = renderSshRateLimit({ port: sshPort });
+    const compliant = (await this.ssh.run(target, `${sudo}nft list table inet vops_ssh_ratelimit >/dev/null 2>&1 && echo VOPS_OK || true`)).stdout.includes('VOPS_OK');
     if (compliant) return { id: 'ssh-ratelimit', severity: 'ok', summary: 'SSH rate-limit already present' };
     if (dryRun) return { id: 'ssh-ratelimit', severity: 'info', summary: 'Would install nftables SSH rate-limit', detail: RATELIMIT_PATH };
-    const nft = await this.ssh.run(target, 'command -v nft >/dev/null 2>&1 && echo VOPS_OK || true');
-    if (!nft.stdout.includes('VOPS_OK')) {
+    const nftBin = await resolveNftBin(this.ssh, target);
+    if (!nftBin) {
       return { id: 'ssh-ratelimit', severity: 'fail', summary: 'nft not installed (install nftables first)' };
     }
-    await this.ssh.putFile(target, RATELIMIT_PATH, ruleset, '0644');
-    const applied = await this.ssh.run(target, `nft -f '${RATELIMIT_PATH}'`);
+    const script = [
+      'set -e',
+      `${sudo}tee ${RATELIMIT_PATH} >/dev/null <<'VOPS_RL_EOF'`,
+      ruleset.trimEnd(),
+      'VOPS_RL_EOF',
+      `${sudo}${nftBin} -f ${RATELIMIT_PATH}`,
+      '',
+    ].join('\n');
+    const applied = await this.ssh.runScript(target, script, { timeoutMs: 60_000 });
     return applied.code === 0
       ? { id: 'ssh-ratelimit', severity: 'info', summary: 'SSH rate-limit applied' }
       : { id: 'ssh-ratelimit', severity: 'fail', summary: 'Rate-limit apply failed', detail: applied.stderr.trim() };
@@ -172,15 +182,7 @@ export class VopsHostHardenService {
   }
 
   private target(host: VopsHost): SshTarget {
-    if (host.opsKeyInstalled) {
-      const ops = this.keys.list().find((k) => k.name === OPS_KEY_NAME && k.hasPrivateKey);
-      if (ops) return { host, keyPath: ops.privateKeyPath };
-    }
-    const userKeyPath = this.keys.keyPathFor(host.userKeyName);
-    if (userKeyPath) return { host, keyPath: userKeyPath };
-    throw new BadRequestException(
-      `No usable key for host '${host.name}'. Set a user key (vops host add --key) or install the ops key first.`,
-    );
+    return resolveSshTarget(host, this.keys);
   }
 }
 
@@ -190,6 +192,6 @@ function msg(err: unknown): string {
   try {
     return JSON.stringify(err);
   } catch {
-    return String(err);
+    return '[unserializable value]';
   }
 }

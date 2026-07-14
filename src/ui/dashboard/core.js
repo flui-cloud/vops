@@ -7,6 +7,7 @@ const ICONS = {
   vnets: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.3 3.6 8.5S14.4 18.2 12 20.5C9.6 18.2 8.4 15.2 8.4 12S9.6 5.8 12 3.5Z"/></svg>',
   sshkeys: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="12" r="4.5"/><path d="M12 12h9m-3 0v3m-3-3v2"/></svg>',
   hosts: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>',
+  monitoring: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 12h3l2.5 7 5-14L18 12h3"/></svg>',
 };
 
 function dashboardCore() {
@@ -14,6 +15,7 @@ function dashboardCore() {
     token: new URLSearchParams(location.search).get('session') || '',
     theme: 'dark',
     view: 'overview',
+    hvFrom: 'servers',
     provider: 'hetzner',
     providerIds: ['hetzner', 'scaleway', 'contabo', 'ovh'],
     loading: false,
@@ -21,13 +23,16 @@ function dashboardCore() {
     comparedOnce: false,
     syncedLabel: 'just now',
     nav: [
-      { section: 'MONITOR', items: [
+      { section: 'FLEET', items: [
         { id: 'overview', label: 'Overview', icon: ICONS.overview },
+        { id: 'monitoring', label: 'Monitoring', icon: ICONS.monitoring, pill: true },
+        { id: 'servers', label: 'Servers', icon: ICONS.servers, pill: true },
+      ] },
+      { section: 'MARKET', items: [
         { id: 'compare', label: 'Compare', icon: ICONS.compare },
         { id: 'availability', label: 'Availability', icon: ICONS.availability },
       ] },
-      { section: 'INFRASTRUCTURE', items: [
-        { id: 'servers', label: 'Servers', icon: ICONS.servers, pill: true },
+      { section: 'NETWORK', items: [
         { id: 'firewalls', label: 'Firewalls', icon: ICONS.firewalls },
         { id: 'vnets', label: 'Networks', icon: ICONS.vnets },
         { id: 'sshkeys', label: 'SSH Keys', icon: ICONS.sshkeys, pill: true },
@@ -49,37 +54,38 @@ function dashboardCore() {
     drawer: { open: false, kind: '', item: null, rulesJson: '', serverIds: '', subnetRange: '', subnetZone: '' },
     modal: { open: false, type: '', title: '', cta: '', danger: false, dryRun: false, readonly: false, message: '', plan: null, fw: { name: '', rules: '[]', apply: '' }, vn: { name: '', ipRange: '', zone: '', subnetRange: '' }, sk: { name: '', mode: 'create', publicKey: '', from: '' }, reg: { name: '', provider: 'hetzner' }, conn: { server: null, user: 'root', key: '', command: '', keys: [] }, hs: { mode: 'add', name: '', address: '', user: 'root', port: 22, key: '', tags: '', provider: 'ovh', server: '' }, report: { findings: [] }, ctx: null },
     toast: { show: false, msg: '', kind: 'ok' },
+    ask: { open: false, action: '', name: '', title: '', message: '', cta: '', danger: false },
 
-    get showsProvider() { return ['availability', 'firewalls', 'vnets'].includes(this.view); },
+    get showsProvider() { return ['availability', 'vnets'].includes(this.view); },
     get serverTabs() { return ['all', ...this.providerIds]; },
     get pageTitle() {
-      const m = { overview: 'Overview', compare: 'Compare', servers: 'Servers', availability: 'Availability',
+      const m = { overview: 'Overview', monitoring: 'Monitoring', compare: 'Compare', servers: 'Servers', availability: 'Availability',
         firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys' };
       return m[this.view] || '';
     },
     get subtitle() {
       const m = { overview: 'Your fleet at a glance — servers, spend and live regions across every provider.',
+        monitoring: 'Live health of your fleet — connection, resource metrics and status checks, refreshed over SSH.',
         compare: 'Real-time plan comparison across every provider.',
         servers: 'Your fleet — provision, monitor and manage every server in one place.',
         availability: 'Plans with limited or sold-out capacity, per location.',
-        firewalls: 'Rules and server targets.',
+        firewalls: 'Firewall per server — provider-native or vops nftables, one simple view.',
         vnets: 'Private networks, subnets and routes.',
         sshkeys: 'Local SSH keys — private keys never leave this machine.' };
       return m[this.view] || '';
     },
     get primaryAction() {
-      return ({ servers: '+ New server', firewalls: '+ New firewall', vnets: '+ New network', sshkeys: '+ Generate key', hosts: '+ Add host' })[this.view] || '';
+      return ({ servers: '+ New server', vnets: '+ New network', sshkeys: '+ Generate key', hosts: '+ Add host' })[this.view] || '';
     },
     runPrimary() {
       if (this.view === 'servers') return this.go('compare');
-      if (this.view === 'firewalls') return this.openFirewallForm();
       if (this.view === 'vnets') return this.openVnetForm();
       if (this.view === 'sshkeys') return this.openKeyForm();
     },
     countFor(id) {
       if (id === 'servers') return this.ov.serverCount;
       if (id === 'sshkeys') return this.sshKeys.length || (this.sshKeysLoaded ? 0 : null);
-      if (id === 'hosts') return this.hosts.length || (this.hostsLoaded ? 0 : null);
+      if (id === 'monitoring' || id === 'hosts') return this.hosts.length || (this.hostsLoaded ? 0 : null);
       return null;
     },
     get availGroups() {
@@ -152,11 +158,14 @@ function dashboardCore() {
     setProvider(p) { this.provider = p; this.reload(); },
 
     async reload() {
+      if (this.view !== 'monitoring' && this.view !== 'host') this.monStop();
       if (this.view === 'overview') return this.loadOverview();
+      if (this.view === 'monitoring') return this.loadMonitoring();
+      if (this.view === 'host') return this.loadHostView();
       if (this.view === 'compare') return this.runCompare();
       if (this.view === 'servers') { this.plansCache = {}; this.loadHosts(); return this.loadServers(); }
       if (this.view === 'availability') { this.plansCache = {}; return this.loadAvailability(); }
-      if (this.view === 'firewalls') return this.load('firewalls', '/firewalls?provider=' + this.provider);
+      if (this.view === 'firewalls') return this.loadHosts();
       if (this.view === 'vnets') return this.load('vnets', '/vnets?provider=' + this.provider);
       if (this.view === 'sshkeys') return this.load('sshKeys', '/ssh-keys');
     },

@@ -3,10 +3,13 @@ import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHostKeysService } from '../host-ops/vops-host-keys.service';
 import { VopsHostStatusService } from '../host-ops/vops-host-status.service';
 import { VopsHostHardenService } from '../host-ops/vops-host-harden.service';
+import { VopsSshLockdownService } from '../host-ops/vops-ssh-lockdown.service';
 import { VopsHostUpdateService } from '../host-ops/vops-host-update.service';
 import { VopsOpsRotationService } from '../host-ops/vops-ops-rotation.service';
 import { VopsHostConnService } from '../host-ops/vops-host-conn.service';
 import { VopsMonitorService } from '../monitor/vops-monitor.service';
+import { VopsServerFirewallService } from '../firewall/vops-server-firewall.service';
+import { FirewallService } from '../firewall/firewall-services';
 
 /** Host operations for the local UI — the same services the CLI uses. */
 @Controller('api/hosts')
@@ -20,6 +23,8 @@ export class HostsController {
     private readonly rotation: VopsOpsRotationService,
     private readonly monitor: VopsMonitorService,
     private readonly conn: VopsHostConnService,
+    private readonly firewall: VopsServerFirewallService,
+    private readonly sshLockdown: VopsSshLockdownService,
   ) {}
 
   @Get()
@@ -76,6 +81,11 @@ export class HostsController {
     return this.status.status(name);
   }
 
+  @Get(':name/unit-logs')
+  unitLogs(@Param('name') name: string, @Query('unit') unit?: string, @Query('lines') lines?: string) {
+    return this.status.unitLogs(name, unit ?? '', lines ? Number(lines) : 100);
+  }
+
   @Get(':name/ssh')
   sshConn(@Param('name') name: string) {
     return this.conn.check(name);
@@ -125,6 +135,42 @@ export class HostsController {
       reboot: body.reboot,
       dryRun: body.dryRun,
     });
+  }
+
+  @Post(':name/reboot')
+  hostReboot(@Param('name') name: string) {
+    return this.updates.reboot([name]);
+  }
+
+  @Get(':name/ssh-lockdown/preflight')
+  sshLockdownPreflight(@Param('name') name: string) {
+    return this.sshLockdown.preflight(name);
+  }
+
+  @Post(':name/ssh-lockdown')
+  sshLockdownDisable(@Param('name') name: string, @Body() body: { override?: boolean }) {
+    return this.sshLockdown.disable(name, { override: body.override });
+  }
+
+  @Get(':name/firewall')
+  firewallGet(@Param('name') name: string) {
+    return this.firewall.get(name);
+  }
+
+  @Post(':name/firewall')
+  firewallSet(@Param('name') name: string, @Body() body: { services?: FirewallService[] }) {
+    return this.firewall.set(name, body.services ?? []);
+  }
+
+  @Delete(':name/firewall')
+  async firewallClear(@Param('name') name: string) {
+    await this.firewall.clear(name);
+    return { cleared: name };
+  }
+
+  @Get(':name/my-ip')
+  async firewallMyIp(@Param('name') name: string) {
+    return { ip: await this.firewall.myIp(name) };
   }
 
   @Post('rotate-ops')

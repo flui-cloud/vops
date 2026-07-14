@@ -1,7 +1,8 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { SshExec, SshTarget } from '../lib/ssh-exec';
 import { assertHostWritable } from '../safety/host-write-gate';
-import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
+import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
+import { resolveSshTarget } from './ssh-target';
 import { LocalStore } from '../lib/store/local-store';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHostConnService } from './vops-host-conn.service';
@@ -14,6 +15,12 @@ export interface HostUpdateResult {
   rebooted: boolean;
   summary: string;
   detail?: string;
+}
+
+export interface HostRebootResult {
+  host: string;
+  rebooted: boolean;
+  summary: string;
 }
 
 /**
@@ -42,6 +49,28 @@ export class VopsHostUpdateService {
       results.push(await this.updateOne(this.hosts.show(name), opts));
     }
     return results;
+  }
+
+  /** `host reboot` — restart the host now and wait for SSH to return. */
+  async reboot(names: string[]): Promise<HostRebootResult[]> {
+    if (!names.length) throw new BadRequestException('No hosts selected.');
+    const results: HostRebootResult[] = [];
+    for (const name of names) {
+      results.push(await this.rebootOne(this.hosts.show(name)));
+    }
+    return results;
+  }
+
+  private async rebootOne(host: VopsHost): Promise<HostRebootResult> {
+    assertHostWritable(host);
+    await this.conn.assertReady(host.name);
+    const back = await this.rebootAndWait(this.target(host));
+    await this.store.appendAudit('host.reboot', { host: host.name });
+    return {
+      host: host.name,
+      rebooted: back,
+      summary: back ? 'rebooted' : 'reboot issued — host did not return within 3 min',
+    };
   }
 
   private async updateOne(
@@ -88,13 +117,7 @@ export class VopsHostUpdateService {
   }
 
   private target(host: VopsHost): SshTarget {
-    if (host.opsKeyInstalled) {
-      const ops = this.keys.list().find((k) => k.name === OPS_KEY_NAME && k.hasPrivateKey);
-      if (ops) return { host, keyPath: ops.privateKeyPath };
-    }
-    const userKeyPath = this.keys.keyPathFor(host.userKeyName);
-    if (userKeyPath) return { host, keyPath: userKeyPath };
-    throw new BadRequestException(`No usable key for host '${host.name}'.`);
+    return resolveSshTarget(host, this.keys);
   }
 }
 

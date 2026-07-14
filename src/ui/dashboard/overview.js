@@ -14,6 +14,7 @@ function dashboardOverview() {
       this.loadBestValue();
       this.loadFleetStats();
       this.loadKeyCount();
+      this.loadHosts().then(() => this.fleetHealthLoad());
     },
     computeRegionStats() {
       const priced = (this.regions || []).filter(r => r.fromMonthly != null)

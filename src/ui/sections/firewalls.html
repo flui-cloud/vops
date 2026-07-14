@@ -1,10 +1,10 @@
       <section x-show="view==='firewalls'">
-        <div class="mb-4 text-sm" style="color:var(--text-dim)"><span x-text="firewalls.length"></span> firewall(s) on <span class="capitalize" x-text="provider"></span></div>
+        <div class="mb-4 text-sm" style="color:var(--text-dim)">Firewall per server — <span style="color:var(--text)">provider-native</span> where available, otherwise <span style="color:var(--text)">vops nftables</span> over SSH. On the vops engine SSH stays open, so you can't lock yourself out.</div>
         <div class="card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full">
               <thead><tr>
-                <th class="th">ID</th><th class="th">Name</th><th class="th">Rules</th><th class="th">Applied to</th><th class="th"></th>
+                <th class="th">Server</th><th class="th">Provider</th><th class="th">Engine</th><th class="th">Firewall</th><th class="th text-right"></th>
               </tr></thead>
               <tbody>
                 <template x-if="loading">
@@ -12,16 +12,22 @@
                     <tr class="row"><td class="td" colspan="5"><div class="skel h-4 w-full max-w-[520px]"></div></td></tr>
                   </template>
                 </template>
-                <template x-for="f in firewalls" :key="f.id">
-                  <tr class="row cursor-pointer" @click="openDrawer('firewall', f)">
-                    <td class="td font-mono text-xs" style="color:var(--text-faint)" x-text="f.id"></td>
-                    <td class="td font-semibold" style="color:var(--text)" x-text="f.name"></td>
-                    <td class="td font-mono" x-text="f.rules.length"></td>
-                    <td class="td" x-text="f.appliedTo.length + ' server(s)'"></td>
-                    <td class="td text-right" style="color:var(--text-faint)">›</td>
-                  </tr>
+                <template x-if="!loading">
+                  <template x-for="h in hosts" :key="h.name">
+                    <tr class="row cursor-pointer" @click="monManage(h)">
+                      <td class="td font-semibold" style="color:var(--text)" x-text="h.name"></td>
+                      <td class="td capitalize" style="color:var(--text-dim)" x-text="h.provider || 'external'"></td>
+                      <td class="td">
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                          :style="fwEngineFor(h)==='none' ? 'color:var(--text-faint);background:var(--panel-3)' : 'color:var(--accent);background:var(--accent-soft)'"
+                          x-text="fwEngineLabel(fwEngineFor(h))"></span>
+                      </td>
+                      <td class="td" style="color:var(--text-dim)" x-text="fwHostSummary(h)"></td>
+                      <td class="td text-right"><button class="btn-xs" @click.stop="monManage(h)">Manage</button></td>
+                    </tr>
+                  </template>
                 </template>
-                <tr x-show="!firewalls.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="5">No firewalls.</td></tr>
+                <tr x-show="!hosts.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="5">No hosts yet. Add or adopt a server to manage its firewall.</td></tr>
               </tbody>
             </table>
           </div>

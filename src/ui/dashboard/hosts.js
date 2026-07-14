@@ -9,6 +9,7 @@ function dashboardHosts() {
     hosts: [],
     hostsLoaded: false,
     hostBusy: '',
+    ulog: { unit: '', output: '', busy: false, err: '' },
 
     async loadHosts() {
       await this.load('hosts', '/hosts');
@@ -55,31 +56,97 @@ function dashboardHosts() {
       finally { this.hostBusy = ''; }
     },
 
-    async hardenHost(h, dryRun) {
-      this.hostBusy = h.name;
-      try {
-        const res = await this.api('/hosts/' + encodeURIComponent(h.name) + '/harden', { method: 'POST', body: JSON.stringify({ dryRun }) });
-        this.openReport((dryRun ? 'Harden (dry-run) · ' : 'Harden · ') + h.name, res.findings);
-        if (!dryRun) this.reload();
-      } catch (e) { this.notify(e.message, 'error'); }
-      finally { this.hostBusy = ''; }
-    },
-
     async updateHost(h) {
+      const mg = this.modal.mg;
+      if (mg) { mg.busy = true; }
       this.hostBusy = h.name;
       try {
         const res = await this.api('/hosts/' + encodeURIComponent(h.name) + '/update', { method: 'POST', body: JSON.stringify({}) });
         const r = res[0] || {};
-        this.notify(h.name + ': ' + (r.summary || 'done') + (r.rebootRequired ? ' · reboot required' : ''), r.applied ? 'ok' : 'error');
-      } catch (e) { this.notify(e.message, 'error'); }
-      finally { this.hostBusy = ''; }
+        const summary = (r.summary || 'done') + (r.rebootRequired ? ' · reboot required' : '');
+        this.recordRun('update', !!r.applied, r.applied ? summary : (r.detail || summary));
+        this.notify(h.name + ': ' + summary, r.applied ? 'ok' : 'error');
+      } catch (e) { this.recordRun('update', false, e.message); this.notify(e.message, 'error'); }
+      finally { this.hostBusy = ''; if (mg) { mg.busy = false; } await this.hostRefresh(); }
+    },
+
+    async rebootHost(h) {
+      const mg = this.modal.mg;
+      if (mg) { mg.busy = true; }
+      this.hostBusy = h.name;
+      try {
+        const res = await this.api('/hosts/' + encodeURIComponent(h.name) + '/reboot', { method: 'POST', body: JSON.stringify({}) });
+        const r = res[0] || {};
+        this.recordRun('restart', !!r.rebooted, r.rebooted ? 'Rebooted and back online' : (r.summary || 'Reboot issued — not confirmed'));
+        this.notify(h.name + ': ' + (r.summary || 'reboot issued'), r.rebooted ? 'ok' : 'error');
+      } catch (e) { this.recordRun('restart', false, e.message); this.notify(e.message, 'error'); }
+      finally { this.hostBusy = ''; if (mg) { mg.busy = false; } await this.hostRefresh(); }
+    },
+
+    // Disable SSH password login — runs the lockout preflight, then opens a confirm
+    // (or a blocked list) before touching anything. Always key-only.
+    async sshHardenStart() {
+      const name = this.modal.mg?.name;
+      if (!name) return;
+      this.ask = { open: true, action: 'ssh-harden', name, busy: true, disabled: true,
+        title: 'Disable password login',
+        cta: '', danger: false, message: 'Checking lockout safety over SSH…', bullets: [] };
+      try {
+        const pre = await this.api('/hosts/' + encodeURIComponent(name) + '/ssh-lockdown/preflight');
+        this.ask = this.sshHardenAsk(name, pre);
+      } catch (e) {
+        this.ask = { ...this.ask, busy: false, disabled: true, cta: '', title: 'Cannot check', message: e.message, bullets: [] };
+      }
+    },
+    sshHardenAsk(name, pre) {
+      const title = 'Disable password login';
+      const base = { open: true, action: 'ssh-harden', name, busy: false, bullets: [] };
+      if (pre.alreadyHardened) return { ...base, disabled: true, cta: '', danger: false, message: 'Already hardened — nothing to do.' };
+      if (pre.ok) {
+        return { ...base, override: false, disabled: false, danger: false, title, cta: title,
+          message: 'Your own key is verified. This disables all SSH password login (key-only from now on). It auto-reverts in ' + pre.deadManMinutes + ' min if anything goes wrong.' };
+      }
+      return { ...base, override: !!pre.overridable, danger: true, title,
+        cta: pre.overridable ? 'Disable anyway' : '', disabled: !pre.overridable,
+        message: pre.overridable ? 'This would lock out accounts that still use a password:' : 'Not safe yet — fix these first:',
+        bullets: (pre.refusals || []).map((r) => r.message) };
+    },
+    async sshHardenRun() {
+      const name = this.ask.name, override = !!this.ask.override;
+      const mg = this.modal.mg;
+      if (mg) { mg.busy = true; }
+      try {
+        const res = await this.api('/hosts/' + encodeURIComponent(name) + '/ssh-lockdown', { method: 'POST', body: JSON.stringify({ override }) });
+        this.recordRun('ssh-harden', !!res.applied, res.message);
+        this.notify(name + ': ' + res.message, res.applied ? 'ok' : 'info');
+      } catch (e) { this.recordRun('ssh-harden', false, e.message); this.notify(e.message, 'error'); }
+      finally { if (mg) { mg.busy = false; } await this.hostRefresh(); }
+    },
+
+    // Read-only: fetch `systemctl status` + recent journal for one failed unit.
+    async openUnitLogs(unit) {
+      const name = this.modal.mg?.name;
+      if (!name || !unit) return;
+      this.ulog = { unit, output: '', busy: false, err: '' };
+      this.modal = { ...this.modal, open: true, type: 'unitlogs', title: 'Logs · ' + unit, readonly: true };
+      await this.refreshUnitLogs();
+    },
+    async refreshUnitLogs() {
+      const name = this.modal.mg?.name, unit = this.ulog.unit;
+      if (!name || !unit) return;
+      this.ulog.busy = true; this.ulog.err = '';
+      try {
+        const r = await this.api('/hosts/' + encodeURIComponent(name) + '/unit-logs?unit=' + encodeURIComponent(unit) + '&lines=100');
+        this.ulog.output = r.output || '(no output)';
+      } catch (e) { this.ulog.err = e.message; }
+      finally { this.ulog.busy = false; }
     },
 
     async installOps(h) {
       this.hostBusy = h.name;
       try {
         await this.api('/hosts/' + encodeURIComponent(h.name) + '/key/install-ops', { method: 'POST', body: JSON.stringify({}) });
-        this.notify('Ops key installed on ' + h.name); this.reload();
+        this.notify('Automation key installed on ' + h.name); this.reload();
       } catch (e) { this.notify(e.message, 'error'); }
       finally { this.hostBusy = ''; }
     },
@@ -88,7 +155,7 @@ function dashboardHosts() {
       this.hostBusy = h.name;
       try {
         await this.api('/hosts/' + encodeURIComponent(h.name) + '/key', { method: 'DELETE' });
-        this.notify('Ops key revoked from ' + h.name); this.reload();
+        this.notify('Automation key revoked from ' + h.name); this.reload();
       } catch (e) { this.notify(e.message, 'error'); }
       finally { this.hostBusy = ''; }
     },
@@ -97,7 +164,7 @@ function dashboardHosts() {
       try {
         const rep = await this.api('/hosts/rotate-ops', { method: 'POST', body: JSON.stringify({}) });
         const findings = (rep.results || []).map(r => ({ id: r.host, severity: rotateOutcomeSeverity(r.outcome), summary: r.message || r.outcome }));
-        this.openReport('Rotate ops key' + (rep.promoted ? ' · promoted' : ''), findings);
+        this.openReport('Rotate automation key' + (rep.promoted ? ' · promoted' : ''), findings);
         this.reload();
       } catch (e) { this.notify(e.message, 'error'); }
     },
@@ -203,31 +270,70 @@ function dashboardHosts() {
       await this.assignUserKey(name);
     },
 
-    async openManage(row) {
-      this.modal = { ...this.modal, open: true, type: 'manage', title: 'Manage · ' + (row.name || ''),
-        readonly: true, dryRun: false,
-        mg: { row, name: row.host?.name || null, host: row.host || null, busy: false, statusLoading: false, findings: null, latencyMs: null } };
-      try {
-        if (!this.sshKeys?.length) { try { this.sshKeys = await this.api('/ssh-keys'); } catch { /* optional */ } }
-        if (!this.modal.mg.name) {
-          const name = await this.ensureHostName(row);
-          this.modal.mg.name = name;
-          this.modal.mg.host = (this.hosts || []).find(x => x.name === name) || null;
-        }
-        await this.manageCheck();
-        // Only run the (slow) SSH status battery when the host is actually reachable.
-        if (this.modal.mg.host?.conn?.state === 'ready') await this.loadManageStatus();
-      } catch (e) { this.modal.mg.statusLoading = false; this.notify(e.message, 'error'); }
+    // Open the dedicated host detail page. modal.mg carries the host state (the
+    // manage.* methods read it); the page — not a modal — renders from it.
+    async openHost(row) {
+      if (this.view !== 'host') this.hvFrom = this.view;
+      this.modal.mg = { row, name: row.host?.name || row.name || null, host: row.host || null, busy: false, statusLoading: false, findings: null, latencyMs: null };
+      this.view = 'host';
+      if (this.$refs.main) this.$refs.main.scrollTop = 0;
+      await this.loadHostView();
     },
 
-    async loadManageStatus() {
-      const mg = this.modal.mg; if (!mg?.name) return;
-      mg.statusLoading = true;
+    async loadHostView() {
+      this.monStop();
+      const mg = this.modal.mg;
+      if (!mg) return;
+      if (!this.sshKeys?.length) { try { this.sshKeys = await this.api('/ssh-keys'); } catch { /* optional */ } }
+      await this.loadHosts();
       try {
-        const res = await this.api('/hosts/' + encodeURIComponent(mg.name) + '/status');
-        mg.findings = res.report?.findings || []; mg.latencyMs = res.latencyMs;
-      } catch (e) { mg.findings = []; this.notify(e.message, 'error'); }
-      finally { mg.statusLoading = false; }
+        if (!mg.name && mg.row) mg.name = await this.ensureHostName(mg.row);
+        mg.host = (this.hosts || []).find(x => x.name === mg.name) || mg.host;
+        await this.manageCheck();
+        if (mg.name) this.fwLoad(mg.name);
+        this.monBindVisibility();
+        if (this.mgReady() && mg.host) {
+          await this.monPoll(mg.host);
+          this.mon.interval = setInterval(() => this.hostTick(), MON_INTERVAL);
+        }
+      } catch (e) { this.notify(e.message, 'error'); }
+    },
+
+    hostTick() {
+      if (this.view !== 'host') { this.monStop(); return; }
+      const h = this.modal.mg?.host;
+      if (h) this.monPoll(h);
+    },
+
+    async hostRefresh() {
+      await this.manageCheck();
+      const h = this.modal.mg?.host;
+      if (this.mgReady() && h) await this.monPoll(h);
+    },
+
+    hvBack() { this.go(this.hvFrom || 'servers'); },
+    hvLive() { return this.mon.live[this.modal.mg?.name] || {}; },
+
+    // Live-status derived state for the primary actions.
+    hvFinding(id) { return (this.hvLive().findings || []).find(f => f.id === id) || null; },
+    updatesState() {
+      const f = this.hvFinding('pkg.updates');
+      if (!f) return 'unknown';
+      if (f.severity === 'ok') return 'current';
+      if (f.value) return f.severity === 'warn' ? 'security' : 'pending';
+      return 'unknown';
+    },
+    updatesCount() { return this.hvFinding('pkg.updates')?.value || 0; },
+    rebootPending() { return this.hvFinding('pkg.reboot')?.severity === 'warn'; },
+
+    hvLastRun() { return this.modal.mg?.lastRun || null; },
+    recordRun(kind, ok, summary) { if (this.modal.mg) this.modal.mg.lastRun = { kind, ok, summary, at: Date.now() }; },
+    agoShort(ts) {
+      if (!ts) return '';
+      const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+      if (s < 45) return 'just now';
+      if (s < 3600) return Math.round(s / 60) + 'm ago';
+      return Math.round(s / 3600) + 'h ago';
     },
 
     async refreshManageHost() {
@@ -249,8 +355,8 @@ function dashboardHosts() {
     async manageOps(install) {
       const mg = this.modal.mg; mg.busy = true;
       try {
-        if (install) { await this.api('/hosts/' + encodeURIComponent(mg.name) + '/key/install-ops', { method: 'POST', body: JSON.stringify({}) }); this.notify('Ops key installed · ' + mg.name); }
-        else { await this.api('/hosts/' + encodeURIComponent(mg.name) + '/key', { method: 'DELETE' }); this.notify('Ops key revoked · ' + mg.name); }
+        if (install) { await this.api('/hosts/' + encodeURIComponent(mg.name) + '/key/install-ops', { method: 'POST', body: JSON.stringify({}) }); this.notify('Automation key installed · ' + mg.name); }
+        else { await this.api('/hosts/' + encodeURIComponent(mg.name) + '/key', { method: 'DELETE' }); this.notify('Automation key revoked · ' + mg.name); }
         await this.refreshManageHost();
       } catch (e) { this.notify(e.message, 'error'); }
       finally { mg.busy = false; }

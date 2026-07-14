@@ -1,32 +1,5 @@
 function dashboardFirewallsVnets() {
   return {
-    openFirewallForm() {
-      this.modal = { ...this.modal, open: true, type: 'firewall', title: 'New firewall', cta: 'Create',
-        danger: false, dryRun: true, fw: { name: '', rules: '[]', apply: '' } };
-    },
-    async doFirewallCreate(dryRun) {
-      const body = { provider: this.provider, name: this.modal.fw.name,
-        rules: JSON.parse(this.modal.fw.rules || '[]'),
-        applyToServerIds: this.csv(this.modal.fw.apply), dryRun, yes: !dryRun };
-      const out = await this.api('/firewalls', { method: 'POST', body: JSON.stringify(body) });
-      if (dryRun) return this.notify('Dry-run OK — would create firewall. Nothing changed.');
-      this.closeModal(); this.notify('Firewall created: ' + (out.firewall?.id || '')); this.reload();
-    },
-    async saveRules() {
-      try {
-        await this.api('/firewalls/' + this.drawer.item.id + '/rules', { method: 'PUT',
-          body: JSON.stringify({ provider: this.provider, rules: JSON.parse(this.drawer.rulesJson) }) });
-        this.notify('Rules saved'); this.reload();
-      } catch (e) { this.notify(e.message, 'error'); }
-    },
-    async applyFirewall(remove) {
-      try {
-        await this.api('/firewalls/' + this.drawer.item.id + '/apply', { method: 'POST',
-          body: JSON.stringify({ provider: this.provider, serverIds: this.csv(this.drawer.serverIds), remove }) });
-        this.notify(remove ? 'Removed from servers' : 'Applied to servers'); this.reload();
-      } catch (e) { this.notify(e.message, 'error'); }
-    },
-
     openVnetForm() {
       this.modal = { ...this.modal, open: true, type: 'vnet', title: 'New network', cta: 'Create',
         danger: false, dryRun: true, vn: { name: '', ipRange: '', zone: '', subnetRange: '' } };

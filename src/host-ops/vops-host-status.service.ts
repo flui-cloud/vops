@@ -49,6 +49,21 @@ export class VopsHostStatusService {
     return results;
   }
 
+  /** Read-only: `systemctl status` + recent journal for one unit, over SSH. */
+  async unitLogs(name: string, unit: string, lines = 100): Promise<{ host: string; unit: string; output: string }> {
+    const clean = (unit ?? '').trim();
+    if (!/^[A-Za-z0-9@._:-]+$/.test(clean)) {
+      throw new BadRequestException('Invalid unit name.');
+    }
+    const n = Math.min(Math.max(Math.trunc(Number(lines)) || 100, 1), 1000);
+    const host = this.hosts.show(name);
+    const cmd =
+      `systemctl status --no-pager -n 0 '${clean}' 2>&1; echo; ` +
+      `journalctl -u '${clean}' -n ${n} --no-pager 2>&1`;
+    const res = await this.ssh.run(this.target(host), cmd, { timeoutMs: 30_000 });
+    return { host: name, unit: clean, output: (res.stdout || res.stderr || '(no output)').trim() };
+  }
+
   private async run(host: VopsHost): Promise<HostStatusResult> {
     const started = Date.now();
     const res = await this.probeSsh(host);

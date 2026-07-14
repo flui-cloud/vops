@@ -6,7 +6,11 @@ import { OsFamily } from '../hosts/host.model';
  * run would apply. All changes are reversible text under /etc/ssh/sshd_config.d/
  * and /etc/vops/; harden never edits distro-owned files in place.
  */
-export const SSHD_DROPIN_PATH = '/etc/ssh/sshd_config.d/50-vops.conf';
+// Sorts FIRST in sshd_config.d/: sshd uses first-obtained-value-wins, so a lower
+// prefix beats a distro/cloud drop-in like 50-cloud-init.conf that would otherwise
+// pin `PasswordAuthentication yes` and silently neutralise our hardening.
+export const SSHD_DROPIN_PATH = '/etc/ssh/sshd_config.d/00-vops.conf';
+export const SSHD_LEGACY_DROPIN_PATH = '/etc/ssh/sshd_config.d/50-vops.conf';
 export const RATELIMIT_PATH = '/etc/vops/nftables-ssh.conf';
 
 export const sudoGroup = (family: OsFamily): string => (family === 'debian' ? 'sudo' : 'wheel');

@@ -53,7 +53,7 @@ describe('parseOsRelease', () => {
 describe('harden-steps renderers', () => {
   it('sshd directive script validates before reload and self-reverts', () => {
     const s = sshdDirectiveScript('PasswordAuthentication', 'no');
-    expect(s).toContain('50-vops.conf');
+    expect(s).toContain('00-vops.conf');
     expect(s).toContain('sshd -t');
     expect(s).toContain('PasswordAuthentication no');
     expect(sshdCheck('passwordauthentication', 'no')).toContain('sshd -T');

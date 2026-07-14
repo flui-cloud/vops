@@ -31,12 +31,12 @@
                             <div class="flex items-center gap-1.5 font-mono text-[11px]" style="color:var(--text-faint)">
                               <span class="capitalize" x-text="row.provider"></span><span>·</span><span x-text="row.id"></span>
                               <template x-if="providerOnly(row)">
-                                <button class="inline-flex items-center gap-1 hover:underline" style="color:var(--text-faint)" title="Provider-only — watched via the API, not managed over SSH. Click to change." @click="openManage(row)">
+                                <button class="inline-flex items-center gap-1 hover:underline" style="color:var(--text-faint)" title="Provider-only — watched via the API, not managed over SSH. Click to change." @click="openHost(row)">
                                   <span>·</span><span>provider-only</span>
                                 </button>
                               </template>
                               <template x-if="!providerOnly(row) && row.host?.conn">
-                                <button class="inline-flex items-center gap-1 hover:underline" :style="'color:' + connMeta(connState(row)).color" :title="row.host.conn.message + ' — click to configure'" @click="openManage(row)">
+                                <button class="inline-flex items-center gap-1 hover:underline" :style="'color:' + connMeta(connState(row)).color" :title="row.host.conn.message + ' — click to configure'" @click="openHost(row)">
                                   <span>·</span><span class="h-1 w-1 rounded-full" :style="'background:' + connMeta(connState(row)).color"></span><span x-text="connMeta(connState(row)).label"></span>
                                 </button>
                               </template>
@@ -58,7 +58,7 @@
                           </span>
                           <button x-show="!monitored(row) && !providerOnly(row)" class="btn-xs btn-xs-muted" :disabled="hostBusy===row.id || sshBlocked(row)" :title="sshBlocked(row) ? row.host.conn.message : 'Turn on the external dead-man monitor with safe defaults'" @click="enableMonitor(row)">Enable</button>
                         <span x-show="!monitored(row) && providerOnly(row)" class="text-[11px]" style="color:var(--text-faint)">—</span>
-                          <button class="btn-xs" :disabled="hostBusy===row.id" @click="openManage(row)">Manage</button>
+                          <button class="btn-xs" :disabled="hostBusy===row.id" @click="openHost(row)">Manage</button>
                         </div>
                       </td>
                     </tr>
@@ -69,5 +69,5 @@
             </table>
           </div>
         </div>
-        <p class="mt-3 text-xs" style="color:var(--text-faint)">Prices are <span style="color:var(--text-dim)">indicative list prices, net of VAT</span>, matched by plan type. <span style="color:var(--text-dim)">Manage</span> runs status, hardening, updates, ssh and the ops key over SSH — keys never leave this machine. <span style="color:var(--text-dim)">Enable</span> turns on the external dead-man monitor with safe defaults.</p>
+        <p class="mt-3 text-xs" style="color:var(--text-faint)">Prices are <span style="color:var(--text-dim)">indicative list prices, net of VAT</span>, matched by plan type. <span style="color:var(--text-dim)">Manage</span> runs status, hardening, updates, ssh and the automation key over SSH — keys never leave this machine. <span style="color:var(--text-dim)">Enable</span> turns on the external dead-man monitor with safe defaults.</p>
       </section>

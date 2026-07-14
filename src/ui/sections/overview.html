@@ -99,6 +99,40 @@
           <button class="btn-ghost" @click="go('sshkeys')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="8" cy="12" r="4.5"/><path d="M12 12h9m-3 0v3m-3-3v2"/></svg>Generate SSH key</button>
         </div>
 
+        <!-- Fleet health -->
+        <div class="card mb-5 p-[18px]" x-show="hostsLoaded && fleetHosts().length">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <div class="text-[14.5px] font-bold tracking-tight">Fleet health</div>
+              <div class="mt-0.5 text-[11.5px]" style="color:var(--text-faint)">Configured hosts · live status over SSH</div>
+            </div>
+            <button class="text-[11.5px] font-semibold" style="color:var(--accent)" @click="go('monitoring')">Monitoring →</button>
+          </div>
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <template x-for="h in fleetHosts()" :key="h.name">
+              <button class="rounded-lg px-3.5 py-3 text-left transition hover:brightness-110" style="background:var(--panel-2)" @click="monManage(h)" :title="'Manage · ' + h.name">
+                <div class="flex items-center gap-2.5">
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="'background:' + fleetDot(h)"></span>
+                  <span class="min-w-0 flex-1 truncate text-[13px] font-semibold" x-text="h.name"></span>
+                  <span x-show="h.opsKeyInstalled" class="badge-ok" title="Automation key installed">auto</span>
+                  <span x-show="h.monitorHostId" class="badge-ok" title="Dead-man monitor on">watch</span>
+                </div>
+                <div class="mt-1 truncate font-mono text-[11px]" style="color:var(--text-faint)" x-text="(h.provider || 'external') + ' · ' + h.address + (h.os?.pretty ? ' · ' + h.os.pretty : '')"></div>
+                <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                  <span x-show="(!mon.live[h.name] || mon.live[h.name]?.loading) && !mon.live[h.name]?.findings?.length" style="color:var(--text-faint)">checking…</span>
+                  <span x-show="mon.live[h.name]?.reachable === false" style="color:var(--danger)">● unreachable</span>
+                  <template x-if="mon.live[h.name]?.reachable !== false && mon.live[h.name]?.findings?.length">
+                    <span class="font-semibold" :style="'color:' + (monIssues(h.name) ? 'var(--warn)' : 'var(--ok)')" x-text="monIssues(h.name) ? (monIssues(h.name) + ' to check') : 'all healthy'"></span>
+                  </template>
+                  <template x-for="k in ['mem','load','disk']" :key="k">
+                    <span x-show="monSig(h.name, k)" class="font-mono" style="color:var(--text-faint)"><span x-text="monSig(h.name, k)?.label + ' '"></span><span :style="monSig(h.name, k) ? ('color:' + monColor(monSig(h.name, k))) : ''" x-text="monSig(h.name, k) ? (monSig(h.name, k).value + (monSig(h.name, k).unit || '')) : ''"></span></span>
+                  </template>
+                </div>
+              </button>
+            </template>
+          </div>
+        </div>
+
         <!-- Map + right column -->
         <div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-[1fr_328px]">
           <!-- Map -->

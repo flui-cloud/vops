@@ -16,8 +16,28 @@ describe('host-firewall nftables renderer', () => {
     expect(nft).toContain('ct state established,related accept');
     expect(nft).toContain('ct state invalid drop');
     expect(nft).toContain('iif "lo" accept');
-    expect(nft).toContain('chain forward');
     expect(nft).toContain('chain output');
+  });
+
+  it('owns only its own table — no flush ruleset, no forward hook', () => {
+    const nft = renderNftables([]);
+    expect(nft).not.toContain('flush ruleset');
+    expect(nft).toContain('delete table inet vops_fw'); // idempotent self-replace
+    expect(nft).not.toContain('chain forward'); // leaves routing/Docker untouched
+  });
+
+  it('accepts ICMPv6 by l4proto (catches ext-header ICMPv6)', () => {
+    expect(renderNftables([])).toContain('meta l4proto icmpv6 accept');
+  });
+
+  it('renders a mixed port list (ranges + singles) as an nft set', () => {
+    const nft = renderNftables([inRule({ port: '8000-8100,9000' })]);
+    expect(nft).toContain('tcp dport { 8000-8100, 9000 } accept');
+  });
+
+  it('throws on a malformed port spec instead of opening every port', () => {
+    expect(() => renderNftables([inRule({ port: '80-90-100' })])).toThrow(/Invalid port/);
+    expect(() => renderNftables([inRule({ port: '0-65535' })])).not.toThrow();
   });
 
   it('keeps SSH open by default so a drop policy cannot lock you out', () => {
@@ -39,6 +59,16 @@ describe('host-firewall nftables renderer', () => {
   it('omits the SSH guard when keepSshOpen=false', () => {
     const nft = renderNftables([], { keepSshOpen: false });
     expect(nft).not.toContain('keep-ssh-open');
+  });
+
+  it('sshAlwaysOpen keeps SSH open even when a rule tries to restrict it (managed engine)', () => {
+    const nft = renderNftables([inRule({ port: '22', sourceIps: ['203.0.113.4/32'] })], { sshAlwaysOpen: true });
+    expect(nft).toContain('tcp dport 22 accept comment "vops: keep-ssh-open (not closable)"');
+  });
+
+  it('sshAlwaysOpen honours a custom SSH port', () => {
+    const nft = renderNftables([], { sshAlwaysOpen: true, sshPort: 2222 });
+    expect(nft).toContain('tcp dport 2222 accept comment "vops: keep-ssh-open (not closable)"');
   });
 
   it('single port from anywhere → no saddr filter', () => {

@@ -1,0 +1,116 @@
+      <!-- ============ MONITORING ============ -->
+      <section x-show="view==='monitoring'">
+        <div class="mb-4 flex items-center justify-between">
+          <div class="text-sm" style="color:var(--text-dim)">
+            <span x-text="monHosts().length"></span> managed host(s) · live over SSH
+            <span x-show="mon.lastAt" style="color:var(--text-faint)" x-text="' · updated ' + mon.lastAt"></span>
+          </div>
+          <button class="btn-xs" @click="monPollAll()">Refresh all</button>
+        </div>
+
+        <div class="mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-[12px]" style="background:var(--panel-3);color:var(--text-faint)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="mt-px shrink-0" style="color:var(--text-dim)"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+          <span>Live view — updates only while this page is open, nothing is stored. All of it is read locally over SSH; no signal leaves your machine. To be alerted <em>when you're away</em>, set a watch (Availability → “Notify me”, or <span class="font-mono" style="color:var(--text-dim)">vops watch</span>) — that path is separate and opt-in.</span>
+        </div>
+
+        <template x-if="hostsLoaded && !monHosts().length">
+          <div class="card px-6 py-10 text-center text-sm" style="color:var(--text-faint)">
+            No managed hosts yet. Add a server or an external host and set it up over SSH — then it shows up here with live metrics and status checks.
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <template x-for="h in monHosts()" :key="h.name">
+            <div class="card p-5">
+              <!-- Header -->
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="'background:' + monDotColor(h)" :title="monDotColor(h)===('var(--ok)') ? 'reachable' : 'not reachable'"></span>
+                    <span class="truncate text-[15px] font-bold tracking-tight" x-text="h.name"></span>
+                    <span x-show="h.monitorHostId" class="badge-ok" title="External dead-man monitor on">watch</span>
+                    <span x-show="h.opsKeyInstalled" class="badge-ok" title="Automation key installed">auto</span>
+                  </div>
+                  <div class="mt-0.5 truncate font-mono text-[11px]" style="color:var(--text-faint)">
+                    <span class="capitalize" x-text="h.provider || 'external'"></span> · <span x-text="h.user + '@' + h.address + ':' + h.port"></span>
+                    <span x-show="h.os?.pretty" x-text="' · ' + h.os.pretty"></span>
+                  </div>
+                </div>
+                <div class="shrink-0 text-right">
+                  <div class="font-mono text-[11px]" style="color:var(--text-faint)" title="How long this check took from your machine — not the server's own network latency" x-text="mon.live[h.name]?.latencyMs != null ? 'probe ' + (mon.live[h.name].latencyMs / 1000).toFixed(1) + 's' : ''"></div>
+                  <button class="btn-xs mt-1" :disabled="mon.live[h.name]?.loading || !monReady(h)" @click="monRefresh(h.name)" x-text="mon.live[h.name]?.loading ? '…' : 'Refresh'"></button>
+                </div>
+              </div>
+
+              <!-- Not connected -->
+              <div x-show="!monReady(h)" class="mt-4 rounded-lg px-3 py-3 text-[12px]" style="background:var(--panel-2);color:var(--text-dim)">
+                SSH not ready — set up the connection in <button class="hover:underline" style="color:var(--accent)" @click="monManage(h)">Manage</button> to see live metrics and checks.
+              </div>
+              <div x-show="monReady(h) && mon.live[h.name]?.error" class="mt-4 rounded-lg px-3 py-3 text-[12px]" style="background:var(--danger-soft);color:var(--danger)" x-text="mon.live[h.name]?.error"></div>
+
+              <template x-if="monReady(h) && !mon.live[h.name]?.error">
+                <div class="mt-4 space-y-4">
+                  <!-- Session uptime strip -->
+                  <div>
+                    <div class="mb-1.5 flex items-center justify-between text-[11px]">
+                      <span style="color:var(--text-faint)">Uptime · session</span>
+                      <span class="font-mono font-semibold" :style="'color:' + (monUp(h.name)===100 ? 'var(--ok)' : 'var(--warn)')" x-text="monUp(h.name) != null ? monUp(h.name) + '%' : '—'"></span>
+                    </div>
+                    <div class="flex items-end gap-[2px]">
+                      <template x-for="(v, i) in monSeries(h.name, 'up')" :key="i">
+                        <span class="h-4 flex-1 rounded-sm" :style="'min-width:2px;background:' + (v ? 'var(--ok)' : 'var(--danger)')"></span>
+                      </template>
+                      <span x-show="!monSeries(h.name, 'up').length" class="text-[11px]" style="color:var(--text-faint)">collecting…</span>
+                    </div>
+                  </div>
+
+                  <!-- Metric tiles: value + gauge (%) + live sparkline -->
+                  <div class="grid grid-cols-2 gap-2.5">
+                    <template x-for="sig in (mon.live[h.name]?.signals || [])" :key="sig.key">
+                      <div class="rounded-lg px-3 py-2.5" style="background:var(--panel-2)" :title="sig.summary || ''">
+                        <div class="flex items-baseline justify-between">
+                          <span class="text-[11px]" style="color:var(--text-faint)" x-text="sig.label + (sig.key==='load' && sig.cores ? ' · ' + sig.cores + ' cores' : '')"></span>
+                          <span class="font-mono text-[13px] font-semibold" :style="'color:' + monColor(sig)" x-text="sig.value + (sig.unit ? ' ' + sig.unit : '')"></span>
+                        </div>
+                        <div class="mt-2 h-1.5 overflow-hidden rounded-full" style="background:var(--panel-3)">
+                          <div class="h-full rounded-full transition-all" :style="'width:' + monBarPct(sig) + '%;background:' + monColor(sig)"></div>
+                        </div>
+                        <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="mt-2 h-7 w-full">
+                          <polyline :points="monSpark(monSeries(h.name, sig.key))" fill="none" :stroke="monColor(sig)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" />
+                        </svg>
+                      </div>
+                    </template>
+                    <div x-show="!(mon.live[h.name]?.signals || []).length && !mon.live[h.name]?.loading" class="col-span-2 text-[12px]" style="color:var(--text-faint)">No metrics reported.</div>
+                  </div>
+
+                  <!-- Status checks: full grid, nothing hidden below a scroll -->
+                  <div>
+                    <div class="mb-1.5 text-[11px]" style="color:var(--text-faint)">Checks</div>
+                    <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      <template x-for="f in (mon.live[h.name]?.findings || [])" :key="f.id">
+                        <div class="flex items-start gap-2 rounded-lg px-2.5 py-2" style="background:var(--panel-2)" :title="monHelp(f.id) + (f.detail ? '\n\n' + f.detail : '')">
+                          <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" :style="'background:' + sevColor(f.severity)"></span>
+                          <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-1.5">
+                              <span class="text-[12px] font-semibold" style="color:var(--text)" x-text="monTitle(f.id)"></span>
+                              <span class="font-mono text-[9.5px]" style="color:var(--text-faint)" x-text="f.id"></span>
+                              <span x-show="monHelp(f.id)" class="cursor-help text-[10px]" style="color:var(--text-faint)" title="hover the row for what this means">&#9432;</span>
+                            </div>
+                            <div class="truncate text-[11.5px]" style="color:var(--text-dim)" x-text="f.summary + (f.value !== undefined && f.value !== null ? ' (' + f.value + ')' : '')"></div>
+                            <div x-show="f.detail" class="mt-1 break-words font-mono text-[10.5px] leading-relaxed" style="color:var(--text-faint)" x-text="f.detail"></div>
+                          </div>
+                        </div>
+                      </template>
+                      <div x-show="mon.live[h.name]?.loading && !(mon.live[h.name]?.findings || []).length" class="col-span-2 text-[12px]" style="color:var(--text-faint)">Probing over SSH…</div>
+                    </div>
+                  </div>
+
+                  <div class="flex flex-wrap gap-2 pt-1">
+                    <button class="btn-xs btn-xs-muted" @click="monManage(h)">Manage</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </section>

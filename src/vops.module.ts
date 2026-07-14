@@ -31,6 +31,7 @@ import { VopsCatalogService } from './catalog/vops-catalog.service';
 import { VopsWriteGateService } from './safety/vops-write-gate.service';
 import { VopsServersService } from './servers/vops-servers.service';
 import { VopsFirewallService } from './firewall/vops-firewall.service';
+import { VopsServerFirewallService } from './firewall/vops-server-firewall.service';
 import { VopsVnetService } from './vnet/vops-vnet.service';
 import { VopsRegionsService } from './regions/vops-regions.service';
 import { VopsSshKeysService } from './ssh-keys/vops-ssh-keys.service';
@@ -40,7 +41,9 @@ import { VopsHostKeysService } from './host-ops/vops-host-keys.service';
 import { VopsHostConnService } from './host-ops/vops-host-conn.service';
 import { VopsHostStatusService } from './host-ops/vops-host-status.service';
 import { VopsHostHardenService } from './host-ops/vops-host-harden.service';
+import { VopsSshLockdownService } from './host-ops/vops-ssh-lockdown.service';
 import { VopsHostUpdateService } from './host-ops/vops-host-update.service';
+import { VopsHostFirewallService } from './host-ops/vops-host-firewall.service';
 import { VopsOpsRotationService } from './host-ops/vops-ops-rotation.service';
 import { VopsMonitorService } from './monitor/vops-monitor.service';
 import { VopsBackupService } from './backup/vops-backup.service';
@@ -160,7 +163,10 @@ const ENV_FILES = [
     VopsHostConnService,
     VopsHostStatusService,
     VopsHostHardenService,
+    VopsSshLockdownService,
     VopsHostUpdateService,
+    VopsHostFirewallService,
+    VopsServerFirewallService,
     VopsOpsRotationService,
     VopsMonitorService,
     VopsBackupService,
@@ -179,7 +185,10 @@ const ENV_FILES = [
     VopsHostConnService,
     VopsHostStatusService,
     VopsHostHardenService,
+    VopsSshLockdownService,
     VopsHostUpdateService,
+    VopsHostFirewallService,
+    VopsServerFirewallService,
     VopsOpsRotationService,
     VopsMonitorService,
     VopsBackupService,

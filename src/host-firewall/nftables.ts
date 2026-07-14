@@ -12,8 +12,17 @@ import { VopsFirewallRule } from '../dto/firewall.dto';
 export interface HostFirewallOptions {
   /** Inbound policy when no rule matches. Default 'drop' (deny-by-default). */
   defaultInboundPolicy?: 'drop' | 'accept';
-  /** Always keep inbound SSH (22) open so a drop policy can't lock you out. Default true. */
+  /** Always keep inbound SSH open so a drop policy can't lock you out. Default true. */
   keepSshOpen?: boolean;
+  /** SSH port to keep open. Default 22. */
+  sshPort?: number;
+  /**
+   * Managed-engine guarantee (flui model): keep the SSH port open to the whole
+   * world unconditionally — even if a rule tries to restrict/close it. Makes the
+   * host firewall lock-out-proof by construction, so no rollback dance is needed.
+   * Default false (the CLI renderer keeps the softer keepSshOpen behaviour).
+   */
+  sshAlwaysOpen?: boolean;
   /** Allow all outbound. Default true (egress filtering is opt-out, not the common case). */
   allowOutbound?: boolean;
   /** Accept inbound ICMP / ICMPv6 (ping, PMTU). Default true. */
@@ -35,22 +44,27 @@ export function renderNftables(
 ): string {
   const policy = opts.defaultInboundPolicy ?? 'drop';
   const keepSsh = opts.keepSshOpen ?? true;
+  const sshPort = opts.sshPort ?? 22;
+  const sshAlwaysOpen = opts.sshAlwaysOpen ?? false;
   const allowOutbound = opts.allowOutbound ?? true;
   const allowPing = opts.allowPing ?? true;
 
   const inbound = rules.filter((r) => r.direction === 'in');
   const pingWanted = allowPing || inbound.some((r) => r.protocol === 'icmp');
-  // Only inject the broad anti-lockout SSH rule if the user hasn't opened 22 themselves
-  // (an explicit — even source-restricted — SSH rule is respected, not overridden).
-  const needsSshGuard = keepSsh && policy === 'drop' && !inbound.some((r) => coversPort22(r));
+  // Keep SSH reachable. Managed engine (sshAlwaysOpen): unconditional — the port
+  // can't be closed. CLI renderer: the softer guard — inject only when the policy
+  // drops AND the user hasn't opened the SSH port themselves (an explicit,
+  // even source-restricted, SSH rule is respected there).
+  const keepSshLine = sshAlwaysOpen || (keepSsh && policy === 'drop' && !inbound.some((r) => coversPort(r, sshPort)));
+  const sshComment = sshAlwaysOpen ? 'vops: keep-ssh-open (not closable)' : 'vops: keep-ssh-open';
 
   const inputChain = [
     `    type filter hook input priority 0; policy ${policy};`,
     '    ct state established,related accept',
     '    ct state invalid drop',
     '    iif "lo" accept',
-    ...(pingWanted ? ['    ip protocol icmp accept', '    ip6 nexthdr icmpv6 accept'] : []),
-    ...(needsSshGuard ? ['    tcp dport 22 accept comment "vops: keep-ssh-open"'] : []),
+    ...(pingWanted ? ['    ip protocol icmp accept', '    meta l4proto icmpv6 accept'] : []),
+    ...(keepSshLine ? [`    tcp dport ${sshPort} accept comment "${sshComment}"`] : []),
     ...buildInboundLines(inbound).map((l) => `    ${renderInbound(l)}`),
   ];
 
@@ -59,17 +73,19 @@ export function renderNftables(
     ...(allowOutbound ? [] : ['    ct state established,related accept', '    oif "lo" accept']),
   ];
 
+  // Own ONLY our table — never `flush ruleset`, which would wipe Docker/fail2ban/ufw
+  // and vops' own harden rate-limit table. The empty declare makes the delete
+  // idempotent; the whole file applies atomically via `nft -f`. No forward hook:
+  // routing / Docker / WireGuard are left untouched (this firewall governs host inbound).
   const ruleset = [
     '#!/usr/sbin/nft -f',
     '',
-    'flush ruleset',
+    `table inet ${TABLE}`,
+    `delete table inet ${TABLE}`,
     '',
     `table inet ${TABLE} {`,
     '  chain input {',
     ...inputChain,
-    '  }',
-    '  chain forward {',
-    '    type filter hook forward priority 0; policy drop;',
     '  }',
     '  chain output {',
     ...outputChain,
@@ -110,8 +126,8 @@ export function renderCloudInit(
   rules: VopsFirewallRule[],
   opts: HostFirewallOptions = {},
 ): string {
-  const ruleset = renderNftables(rules, opts);
-  const indented = ruleset
+  const indented = renderNftables(rules, opts)
+    .trimEnd()
     .split('\n')
     .map((l) => (l.length ? `      ${l}` : ''))
     .join('\n');
@@ -125,7 +141,7 @@ export function renderCloudInit(
     '    permissions: "0755"',
     '    owner: root:root',
     '    content: |',
-    indented.replace(/\n+$/, ''),
+    indented,
     'runcmd:',
     '  - systemctl enable nftables',
     '  - nft -f /etc/nftables.conf',
@@ -170,22 +186,25 @@ function set(items: string[]): string {
   return items.length === 1 ? items[0] : `{ ${items.join(', ')} }`;
 }
 
-/** Does an inbound TCP rule already open port 22 (exact, list member, or range)? */
-function coversPort22(r: VopsFirewallRule): boolean {
+/** Does an inbound TCP rule already open `port` (exact, list member, or range)? */
+function coversPort(r: VopsFirewallRule, port: number): boolean {
   if (r.protocol !== 'tcp' || !r.port) return false;
   const p = r.port.trim();
-  if (p === '22') return true;
-  if (/^\d+(,\d+)+$/.test(p)) return p.split(',').includes('22');
+  const s = String(port);
+  if (p === s) return true;
+  if (/^\d+(?:,\d+)+$/.test(p)) return p.split(',').includes(s);
   const range = /^(\d+)-(\d+)$/.exec(p);
-  if (range) return Number(range[1]) <= 22 && 22 <= Number(range[2]);
+  if (range) return Number(range[1]) <= port && port <= Number(range[2]);
   return false;
 }
 
 function portExpr(port?: string): string {
-  if (!port) return '0-65535';
-  const trimmed = port.trim();
+  const trimmed = (port ?? '').trim();
+  if (trimmed === '') return '0-65535'; // portless rule = all ports for the protocol
   if (/^\d+$/.test(trimmed)) return trimmed;
   if (/^\d+-\d+$/.test(trimmed)) return trimmed;
-  if (/^\d+(,\d+)+$/.test(trimmed)) return `{ ${trimmed.split(',').join(', ')} }`;
-  return '0-65535';
+  // comma list whose members are each a port or a range → nft set
+  if (/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)+$/.test(trimmed)) return `{ ${trimmed.replaceAll(',', ', ')} }`;
+  // Never fall back to 0-65535: a malformed spec must fail closed, not open everything.
+  throw new Error(`Invalid port spec '${port}'. Use a port (8080), range (8000-8100), or list (80,443).`);
 }
