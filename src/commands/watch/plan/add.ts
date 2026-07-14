@@ -1,10 +1,13 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { CloudClient, ChannelInput, EventKind } from '../../lib/cloud-client';
+import { CloudClient, ChannelInput, EventKind } from '../../../lib/cloud-client';
 
-export default class WatchAdd extends Command {
+export default class WatchPlanAdd extends Command {
   static readonly description =
     'Watch a plan and get pushed when it comes back in stock (or changes price)';
+
+  static readonly aliases = ['watch:add'];
+  static readonly deprecateAliases = true;
 
   static readonly examples = [
     '<%= config.bin %> <%= command.id %> hetzner cx53 --location fsn1 --ntfy-topic my-vops-alerts',
@@ -30,7 +33,7 @@ export default class WatchAdd extends Command {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(WatchAdd);
+    const { args, flags } = await this.parse(WatchPlanAdd);
 
     const channels: ChannelInput[] = [
       ...(flags['ntfy-topic'] ? [{ type: 'ntfy' as const, topic: flags['ntfy-topic'], server: flags['ntfy-server'] }] : []),

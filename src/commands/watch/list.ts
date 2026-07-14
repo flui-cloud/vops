@@ -19,7 +19,7 @@ export default class WatchList extends Command {
         return;
       }
       if (!watches.length) {
-        this.log(chalk.dim('No watches. Add one: vops watch add <provider> <serverType> --ntfy-topic <topic>'));
+        this.log(chalk.dim('No watches. Add one: vops watch plan add <provider> <serverType> --ntfy-topic <topic>'));
         return;
       }
       this.log(

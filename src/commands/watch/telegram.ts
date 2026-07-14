@@ -27,13 +27,13 @@ export default class WatchTelegram extends Command {
         const { linked } = await client.telegramStatus(code);
         if (linked) {
           this.log(`${chalk.green('✓')} Telegram linked.`);
-          this.log(chalk.dim(`  Now create a watch: vops watch add <provider> <plan> --telegram-link ${code}`));
+          this.log(chalk.dim(`  Now create a watch: vops watch plan add <provider> <plan> --telegram-link ${code}`));
           return;
         }
         await sleep(3000);
       }
       this.log(chalk.yellow('Timed out waiting for /start.'));
-      this.log(chalk.dim(`  Once you've pressed Start, use: vops watch add … --telegram-link ${code}`));
+      this.log(chalk.dim(`  Once you've pressed Start, use: vops watch plan add … --telegram-link ${code}`));
     } catch (err) {
       this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
     }

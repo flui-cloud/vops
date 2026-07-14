@@ -94,19 +94,22 @@
         "description": "Local SSH keys (private stays on this machine) + provider upload"
       },
       "watch": {
-        "description": "Watch plans on the hosted service and get pushed when stock/price changes"
+        "description": "Get notified when you're away: plan stock/price, uptime, and host silence"
+      },
+      "watch:plan": {
+        "description": "Watch a plan and get pushed when it comes back in stock or changes price"
       },
       "watch:uptime": {
         "description": "External black-box uptime monitors (the hosted relay probes from outside)"
       },
+      "watch:host": {
+        "description": "Dead-man's-switch monitor: cron + readable script, alerts on silence"
+      },
       "host": {
-        "description": "Day-2 operations over SSH: inventory, health status, hardening, updates, ops key"
+        "description": "Day-2 operations over SSH: inventory, live health status, hardening, updates, ops key"
       },
       "host:key": {
         "description": "Manage the vops operations key on a host (install, revoke, status)"
-      },
-      "host:monitor": {
-        "description": "Dead-man's-switch monitor: cron + readable script, alerts on silence"
       },
       "host:agent": {
         "description": "Optional in-guest metrics agent (single static binary, sha256-verified)"

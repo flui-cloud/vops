@@ -3,8 +3,11 @@ import chalk from 'chalk';
 import { getVopsApp, closeVopsApp } from '../../../lib/nest';
 import { VopsMonitorService } from '../../../monitor/vops-monitor.service';
 
-export default class HostMonitorStatus extends Command {
-  static readonly description = 'Relay-side monitor status: last heartbeat and open alerts';
+export default class WatchHostTest extends Command {
+  static readonly description = 'Force one immediate monitor run over SSH (sends a heartbeat now)';
+
+  static readonly aliases = ['host:monitor:test'];
+  static readonly deprecateAliases = true;
 
   static readonly examples = ['<%= config.bin %> <%= command.id %> web1'];
 
@@ -17,19 +20,18 @@ export default class HostMonitorStatus extends Command {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(HostMonitorStatus);
+    const { args, flags } = await this.parse(WatchHostTest);
     try {
-      const res = await (await getVopsApp()).get(VopsMonitorService).status(args.name);
+      const res = await (await getVopsApp()).get(VopsMonitorService).test(args.name);
       if (flags.json) {
         this.log(JSON.stringify(res, null, 2));
         return;
       }
-      const state = { ok: chalk.green('ok'), alert: chalk.red('alert'), silent: chalk.red('silent') }[res.state] ?? chalk.dim(res.state);
-      this.log(`${chalk.bold(res.name)}  ${state}  ${chalk.dim('last seen ' + (res.lastSeen ?? 'never'))}`);
-      for (const a of res.openAlerts) {
-        this.log(`  ${chalk.yellow(a.severity)}  ${a.summary}`);
+      if (res.ran) {
+        this.log(chalk.green(`✓ Monitor ran on '${res.host}' (heartbeat sent to relay)`));
+      } else {
+        this.error(`Monitor run failed on '${res.host}': ${res.stderr ?? 'unknown'}`, { exit: 1 });
       }
-      if (!res.openAlerts.length) this.log(chalk.dim('  no open alerts'));
     } catch (err) {
       this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
     } finally {

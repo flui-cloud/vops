@@ -3,8 +3,11 @@ import chalk from 'chalk';
 import { getVopsApp, closeVopsApp } from '../../../lib/nest';
 import { VopsMonitorService } from '../../../monitor/vops-monitor.service';
 
-export default class HostMonitorSetup extends Command {
-  static readonly description = 'Install the dead-man monitor on a host (cron + readable script, no daemon)';
+export default class WatchHostAdd extends Command {
+  static readonly description = 'Watch a host for silence — install the dead-man monitor (cron + readable script, no daemon)';
+
+  static readonly aliases = ['host:monitor:setup'];
+  static readonly deprecateAliases = true;
 
   static readonly examples = [
     '<%= config.bin %> <%= command.id %> web1',
@@ -31,7 +34,7 @@ export default class HostMonitorSetup extends Command {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(HostMonitorSetup);
+    const { args, flags } = await this.parse(WatchHostAdd);
     const channels = [
       ...(flags['ntfy-topic'] ? [{ type: 'ntfy' as const, topic: flags['ntfy-topic'], server: flags['ntfy-server'] }] : []),
       ...(flags['webhook-url'] ? [{ type: 'webhook' as const, url: flags['webhook-url'], secret: flags['webhook-secret'] }] : []),
