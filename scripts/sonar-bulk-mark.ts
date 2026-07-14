@@ -33,7 +33,7 @@ interface SonarIssue {
 }
 
 // Populate only when a scan surfaces a genuine false positive — never guess
-// a rationale ahead of time. See CLAUDE.md's "no invention" rule.
+// a rationale ahead of time.
 const ISSUE_RATIONALE: Record<string, string> = {};
 
 const RATIONALE: Record<

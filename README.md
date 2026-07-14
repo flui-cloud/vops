@@ -152,8 +152,6 @@ node bin/run <command>           # run the built CLI without touching the global
 - If you change `@flui-cloud/infra`, rebuild it there (`npx tsc && npx tsc-alias`) and re-run `pnpm install` here **if files were added or removed** (pnpm hard-links `file:` deps at install time).
 - The stack is TypeScript — [oclif](https://oclif.io) for the CLI, NestJS for dependency injection and the local API.
 
-See [CLAUDE.md](CLAUDE.md) for the full architecture notes and [docs/](docs/) for the original design analysis.
-
 ## License
 
 vops is released under the [Apache License 2.0](LICENSE).

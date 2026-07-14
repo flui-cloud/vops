@@ -19,3 +19,8 @@ vops-plan.json
 
 # internal working notes
 CLAUDE.md
+
+# docs/ is internal analysis + implementation plans, not public documentation.
+# Keep only docs/assets (logo + screenshot referenced by the public README).
+docs/*
+!docs/assets/
