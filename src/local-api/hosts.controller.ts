@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { ChannelInput } from '../lib/cloud-client';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHostKeysService } from '../host-ops/vops-host-keys.service';
 import { VopsHostStatusService } from '../host-ops/vops-host-status.service';
@@ -60,9 +61,22 @@ export class HostsController {
     return this.monitor.status(name);
   }
 
+  /**
+   * A dead-man monitor with no channel can never alert — which defeats the only
+   * thing it exists for, silently. The caller must say where the alert goes.
+   */
   @Post(':name/monitor')
-  monitorSetup(@Param('name') name: string, @Body() body: { dryRun?: boolean }) {
-    return this.monitor.setup(name, { dryRun: body?.dryRun });
+  monitorSetup(
+    @Body() body: { dryRun?: boolean; channels?: ChannelInput[] },
+    @Param('name') name: string,
+  ) {
+    const channels = body?.channels ?? [];
+    if (!channels.length && !body?.dryRun) {
+      throw new BadRequestException(
+        'A monitor needs at least one delivery channel — otherwise a silent host alerts nobody.',
+      );
+    }
+    return this.monitor.setup(name, { channels, dryRun: body?.dryRun });
   }
 
   @Delete(':name/monitor')
@@ -84,6 +98,11 @@ export class HostsController {
   @Get(':name/unit-logs')
   unitLogs(@Param('name') name: string, @Query('unit') unit?: string, @Query('lines') lines?: string) {
     return this.status.unitLogs(name, unit ?? '', lines ? Number(lines) : 100);
+  }
+
+  @Get(':name/updates')
+  pendingUpdates(@Param('name') name: string) {
+    return this.status.pendingUpdates(name);
   }
 
   @Get(':name/ssh')

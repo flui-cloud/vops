@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as QRCode from 'qrcode';
-import { CloudClient, NotifyIntent, NotifyResult } from '../lib/cloud-client';
+import { CloudClient, CloudUptimeMonitor, CloudWatch, NotifyIntent, NotifyResult } from '../lib/cloud-client';
 
 export interface NotifyView extends NotifyResult {
   /** PNG data-URL of the activation URL, generated locally (nothing leaves the box). */
@@ -10,9 +10,9 @@ export interface NotifyView extends NotifyResult {
 /**
  * UI-facing bridge to the vops-landing notification API. The token stays in the
  * local encrypted store (via CloudClient) and never reaches the browser — the
- * local-api proxies every call. Delivery follows vops-landing: Web Push (the
- * "vops notification app", activated by opening the returned URL on a phone) and
- * ntfy topics.
+ * local-api proxies every call. Delivery follows vops-landing and offers the
+ * same three peer channels: Telegram, ntfy, and Web Push (the "vops notification
+ * app", activated by opening the returned URL on a phone).
  */
 @Injectable()
 export class VopsWatchService {
@@ -43,8 +43,56 @@ export class VopsWatchService {
       serverType: input.serverType,
       location: input.location,
       kinds: ['availability'],
-      channels: [{ type: 'ntfy', topic: input.topic, ...(input.server ? { url: input.server } : {}) }],
+      // `server`, not `url`: the landing reads `server` for ntfy and `url` only
+      // for webhooks, so sending `url` silently dropped a custom ntfy server and
+      // published to ntfy.sh instead.
+      channels: [{ type: 'ntfy', topic: input.topic, ...(input.server ? { server: input.server } : {}) }],
     });
     return { watchId: watch.id };
+  }
+
+  /**
+   * Telegram: mint a one-time link code and hand back the `t.me` deep link, plus
+   * a QR so the link can be followed from a phone while sitting at a desktop.
+   * The chat id is resolved server-side from the code and never reaches this box.
+   */
+  async telegramLink(): Promise<{ code: string; url: string | null; qr: string | null }> {
+    const link = await this.client.linkTelegram();
+    const qr = link.url ? await QRCode.toDataURL(link.url, { margin: 1, width: 200 }) : null;
+    return { ...link, qr };
+  }
+
+  telegramStatus(code: string): Promise<{ linked: boolean }> {
+    return this.client.telegramStatus(code);
+  }
+
+  /** Arm the watch once the user has tapped Start in Telegram. */
+  async telegram(input: NotifyIntent & { linkCode: string }): Promise<{ watchId: string }> {
+    const watch = await this.client.createWatch({
+      provider: input.provider,
+      serverType: input.serverType,
+      location: input.location,
+      kinds: ['availability'],
+      channels: [{ type: 'telegram', linkCode: input.linkCode }],
+    });
+    return { watchId: watch.id };
+  }
+
+  /** Availability/price watches — for the unified "My watchers" dashboard panel. */
+  list(): Promise<CloudWatch[]> {
+    return this.client.listWatches();
+  }
+
+  removeWatch(id: string): Promise<void> {
+    return this.client.removeWatch(id);
+  }
+
+  /** External black-box uptime monitors — same panel, different entity. */
+  uptimeList(): Promise<CloudUptimeMonitor[]> {
+    return this.client.listUptime();
+  }
+
+  removeUptime(id: string): Promise<void> {
+    return this.client.removeUptime(id);
   }
 }

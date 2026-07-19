@@ -41,6 +41,16 @@ export default class WatchHostAdd extends Command {
       ...(flags['telegram-chat'] ? [{ type: 'telegram' as const, chatId: flags['telegram-chat'] }] : []),
       ...(flags['telegram-link'] ? [{ type: 'telegram' as const, linkCode: flags['telegram-link'] }] : []),
     ];
+    // `watch plan add` already refuses a channel-less watch; the dead-man monitor
+    // needs the guard even more, since speaking up when the host stops is its only
+    // job. A dry run is exempt — it applies nothing.
+    if (!channels.length && !flags['dry-run']) {
+      this.error(
+        'A monitor needs at least one delivery channel — otherwise a silent host alerts nobody.\n' +
+          'Add one of: --ntfy-topic, --telegram-link (from `vops watch telegram`), --telegram-chat, --webhook-url',
+        { exit: 1 },
+      );
+    }
     try {
       const res = await (await getVopsApp()).get(VopsMonitorService).setup(args.name, {
         intervalMin: flags.interval,

@@ -1,0 +1,86 @@
+      <!-- ============ WATCHERS ============ -->
+      <section x-show="view==='watchers'">
+        <div class="mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-[12px]" style="background:var(--panel-3);color:var(--text-faint)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="mt-px shrink-0" style="color:var(--text-dim)"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+          <span>Every alert that can reach you while you're away from this machine, in one place — all delivered via the vops-landing relay (same account, three separate checks).
+            <span x-show="wt.lastAt" style="color:var(--text-faint)" x-text="' Updated ' + wt.lastAt + '.'"></span>
+            <a class="font-semibold hover:underline" style="color:var(--accent)" href="https://vops.flui.cloud/watch/" target="_blank" rel="noopener noreferrer">Open the monitor ↗</a></span>
+        </div>
+
+        <div x-show="wt.loading && watchersEmpty()" class="card space-y-3 p-5">
+          <div class="skel h-5 w-56"></div>
+          <template x-for="i in 3" :key="i"><div class="skel h-8 w-full"></div></template>
+        </div>
+
+        <div x-show="wt.err" class="mb-4 rounded-[10px] px-4 py-3 text-sm" style="color:var(--danger);background:var(--danger-soft);border:1px solid var(--accent-border)" x-text="wt.err"></div>
+
+        <template x-if="!wt.loading && watchersEmpty() && !wt.err">
+          <div class="card p-14 text-center text-sm" style="color:var(--text-dim)">
+            No active watchers yet. Set one from Availability (“Notify me”), <span class="font-mono" style="color:var(--text-dim)">vops watch uptime add</span>, or the host “Enable monitor” toggle.
+          </div>
+        </template>
+
+        <div x-show="!watchersEmpty()" class="space-y-4">
+          <!-- Availability / price watches -->
+          <div class="card overflow-hidden" x-show="wt.watches.length">
+            <div class="flex items-center justify-between px-5 py-4">
+              <div>
+                <div class="text-[15px] font-bold">Availability watches</div>
+                <div class="mt-0.5 text-[12px]" style="color:var(--text-faint)">Plans not yet bought — alerts when they come back in stock.</div>
+              </div>
+              <span class="badge-warn font-mono" x-text="wt.watches.length"></span>
+            </div>
+            <template x-for="w in wt.watches" :key="w.id">
+              <div class="row flex flex-wrap items-center gap-3 px-5 py-3">
+                <span class="w-20 shrink-0 rounded-md px-2 py-1 font-mono text-[12px] font-semibold capitalize" :style="'color:' + providerColors[w.provider]" x-text="w.provider"></span>
+                <span class="font-mono text-sm font-semibold" style="color:var(--text)" x-text="w.serverType"></span>
+                <span class="text-xs" style="color:var(--text-dim)" x-text="w.location || 'any location'"></span>
+                <span class="chip" x-text="(w.channels || []).join(', ') || 'no channel yet'"></span>
+                <button class="btn-xs ml-auto shrink-0" style="color:var(--danger)" @click="removeWatch(w)">Remove</button>
+              </div>
+            </template>
+          </div>
+
+          <!-- External uptime monitors -->
+          <div class="card overflow-hidden" x-show="wt.uptimes.length">
+            <div class="flex items-center justify-between px-5 py-4">
+              <div>
+                <div class="text-[15px] font-bold">Uptime monitors</div>
+                <div class="mt-0.5 text-[12px]" style="color:var(--text-faint)">Black-box checks — the relay probes these targets from the outside.</div>
+              </div>
+              <span class="badge-warn font-mono" x-text="wt.uptimes.length"></span>
+            </div>
+            <template x-for="u in wt.uptimes" :key="u.id">
+              <div class="row flex flex-wrap items-center gap-3 px-5 py-3">
+                <span class="h-2 w-2 shrink-0 rounded-full" :style="'background:' + wtStateColor(u.state)"></span>
+                <span class="font-mono text-sm font-semibold" style="color:var(--text)" x-text="u.name"></span>
+                <span class="truncate font-mono text-xs" style="color:var(--text-dim)" x-text="u.target"></span>
+                <span class="chip" x-text="u.check"></span>
+                <span class="text-xs" style="color:var(--text-faint)" x-text="u.lastCheckedAt ? ('checked ' + new Date(u.lastCheckedAt).toLocaleString()) : 'not checked yet'"></span>
+                <button class="btn-xs ml-auto shrink-0" style="color:var(--danger)" @click="removeUptime(u)">Remove</button>
+              </div>
+            </template>
+          </div>
+
+          <!-- Host dead-man switches -->
+          <div class="card overflow-hidden" x-show="wt.hostRows.length">
+            <div class="flex items-center justify-between px-5 py-4">
+              <div>
+                <div class="text-[15px] font-bold">Host monitors</div>
+                <div class="mt-0.5 text-[12px]" style="color:var(--text-faint)">Dead-man switch — your server heartbeats to the relay; silence alerts.</div>
+              </div>
+              <span class="badge-warn font-mono" x-text="wt.hostRows.length"></span>
+            </div>
+            <template x-for="row in wt.hostRows" :key="row.host.name">
+              <div class="row flex flex-wrap items-center gap-3 px-5 py-3">
+                <span class="h-2 w-2 shrink-0 rounded-full" :style="'background:' + wtStateColor(row.status?.state)"></span>
+                <span class="font-mono text-sm font-semibold" style="color:var(--text)" x-text="row.host.name"></span>
+                <span class="text-xs" style="color:var(--text-dim)" x-text="row.status ? ('last seen ' + (row.status.lastSeen ? new Date(row.status.lastSeen).toLocaleString() : 'never')) : (row.err || 'status unavailable')"></span>
+                <span class="chip" style="color:var(--danger)" x-show="row.status?.openAlerts?.length" x-text="row.status.openAlerts.length + ' open alert(s)'"></span>
+                <button class="btn-xs" @click="monManage(row.host)">Manage</button>
+                <button class="btn-xs shrink-0" style="color:var(--danger)" @click="disableHostMonitor(row)">Disable</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>

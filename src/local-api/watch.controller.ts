@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { VopsWatchService } from '../watch/vops-watch.service';
 
 /** Surface a thrown error as a 400 carrying its message (unreachable endpoint,
@@ -40,5 +40,45 @@ export class WatchController {
     body: { provider: string; serverType: string; location?: string; topic: string; server?: string },
   ) {
     return asBadRequest(this.watch.ntfy(body));
+  }
+
+  /** Telegram is a two-step link: mint a code, poll until the user taps Start in
+   * the chat, then arm the watch with that code. */
+  @Post('telegram/link')
+  telegramLink() {
+    return asBadRequest(this.watch.telegramLink());
+  }
+
+  @Get('telegram/link/:code')
+  telegramStatus(@Param('code') code: string) {
+    return asBadRequest(this.watch.telegramStatus(code));
+  }
+
+  @Post('telegram')
+  telegram(
+    @Body()
+    body: { provider: string; serverType: string; location?: string; linkCode: string },
+  ) {
+    return asBadRequest(this.watch.telegram(body));
+  }
+
+  @Get('list')
+  list() {
+    return asBadRequest(this.watch.list());
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return asBadRequest(this.watch.removeWatch(id));
+  }
+
+  @Get('uptime')
+  uptimeList() {
+    return asBadRequest(this.watch.uptimeList());
+  }
+
+  @Delete('uptime/:id')
+  removeUptime(@Param('id') id: string) {
+    return asBadRequest(this.watch.removeUptime(id));
   }
 }

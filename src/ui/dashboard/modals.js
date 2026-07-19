@@ -6,7 +6,13 @@ function dashboardModals() {
         danger: true, dryRun: false, message: 'Delete ' + label + ' "' + (item.name || item.id) + '"? This cannot be undone.',
         ctx: { kind, item } };
     },
-    closeModal() { this.modal.open = false; },
+    // Closing must also stop the Telegram link poll — otherwise dismissing the
+    // notify modal mid-link leaves a timer hitting the API forever, and it could
+    // still arm a watch after the user walked away.
+    closeModal() {
+      this.modal.open = false;
+      if (typeof this.stopTelegramPoll === 'function') this.stopTelegramPoll();
+    },
     closeAsk() { this.ask.open = false; },
 
     // Confirmable host actions — spell out what runs, then run it on confirm.
@@ -21,8 +27,8 @@ function dashboardModals() {
           message: "Authorises vops' own managed key on this host so it can run status, updates and hardening on its own — separate from your personal key. vops checks the new key works and rolls back if it fails; you can revoke it anytime." },
         'ops-revoke': { title: 'Revoke automation key from ' + name, cta: 'Revoke key', danger: true,
           message: "Removes vops' automation key. Automated actions fall back to your personal key, or stop working if none is set." },
-        'monitor-on': { title: 'Enable monitoring on ' + name, cta: 'Enable', danger: false,
-          message: 'Installs a small scheduled check (a cron job) on the server that reports to the vops relay, so you are alerted if the host goes silent — even with this dashboard closed. Needs vops watch login.' },
+        'monitor-on': { title: 'Enable monitoring on ' + name, cta: 'Continue', danger: false,
+          message: 'Installs a small scheduled check (a cron job) on the server that reports to the vops relay, so you are alerted if the host goes silent — even with this dashboard closed. Next you will pick where those alerts are delivered. Needs vops watch login.' },
         'monitor-off': { title: 'Disable monitoring on ' + name, cta: 'Disable', danger: true,
           message: 'Removes the dead-man monitor from this host — you will no longer be alerted if it goes down.' },
         'fw-clear': { title: 'Clear firewall on ' + name, cta: 'Clear firewall', danger: true,
