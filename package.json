@@ -114,6 +114,9 @@
       "host:agent": {
         "description": "Optional in-guest metrics agent (single static binary, sha256-verified)"
       },
+      "bench": {
+        "description": "Measured performance per euro: a versioned benchmark battery over SSH + share artifact"
+      },
       "backup": {
         "description": "restic backups over SSH to any S3-compatible repo (verified binary, cron)"
       }

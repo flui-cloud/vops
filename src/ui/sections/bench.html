@@ -1,0 +1,227 @@
+      <!-- ============ BENCHMARK (host page) ============ -->
+      <section x-show="view==='host'" x-cloak>
+        <template x-if="modal.mg && modal.mg.host && modal.mg.host.sshManaged !== false">
+          <div class="mt-[18px] card p-[18px]" x-effect="view==='host' && modal.mg?.name && bhInit(modal.mg.name)">
+
+            <!-- Header + run action -->
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div class="min-w-0">
+                <div class="text-[14.5px] font-bold tracking-tight">Benchmark</div>
+                <p class="mt-1 max-w-[560px] text-[12px]" style="color:var(--text-dim)">Measures real CPU, disk and memory performance and saturates the machine for a few minutes — results are saved locally and easy to share.</p>
+              </div>
+              <div class="flex flex-none flex-col items-end gap-1.5">
+                <button class="btn-primary" :disabled="!mgReady() || (bench.run && bench.run.state==='running')" @click="bhAsk()">Run benchmark…</button>
+                <span x-show="!mgReady()" class="text-[11px]" style="color:var(--text-faint)">SSH must be ready to benchmark.</span>
+              </div>
+            </div>
+            <p x-show="bench.err" class="mt-2 text-[11.5px]" style="color:var(--danger)" x-text="bench.err"></p>
+
+            <!-- Consent / preflight -->
+            <div x-show="bench.consent && !bench.run" class="mt-4 rounded-xl px-4 py-4" style="background:var(--panel-2);border:1px solid var(--border)">
+              <div x-show="bench.preLoading" class="text-[12px]" style="color:var(--text-faint)">Reading the machine over SSH…</div>
+              <template x-if="bench.pre">
+                <div>
+                  <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <div class="rounded-lg px-3 py-2" style="background:var(--panel)">
+                      <div class="text-[10.5px] uppercase" style="letter-spacing:.08em;color:var(--text-faint)">Machine</div>
+                      <div class="mt-0.5 truncate text-[12.5px] font-semibold" style="color:var(--text)" x-text="bench.pre.meta.cpuModel"></div>
+                      <div class="text-[11px]" style="color:var(--text-dim)" x-text="bench.pre.meta.cores + ' cores · ' + bench.pre.meta.memGb + ' GB RAM · ' + bench.pre.meta.virt"></div>
+                    </div>
+                    <div class="rounded-lg px-3 py-2" style="background:var(--panel)">
+                      <div class="text-[10.5px] uppercase" style="letter-spacing:.08em;color:var(--text-faint)">Free space</div>
+                      <div class="mt-0.5 text-[12.5px] font-semibold" :style="'color:' + (bhSpaceOk() ? 'var(--ok)' : 'var(--warn)')" x-text="(bhSpaceOk() ? 'OK' : 'Low') + ' — needs ' + bhNeedMib() + ' MiB'"></div>
+                      <div x-show="!bhSpaceOk()" class="text-[11px]" style="color:var(--text-dim)">Disk probes will be skipped.</div>
+                    </div>
+                    <div class="rounded-lg px-3 py-2" style="background:var(--panel)">
+                      <div class="text-[10.5px] uppercase" style="letter-spacing:.08em;color:var(--text-faint)">Baseline right now</div>
+                      <div class="mt-0.5 text-[12.5px] font-semibold" style="color:var(--text)" x-text="'load ' + bench.pre.baseline.load1 + ' · steal ' + bench.pre.baseline.steal + '%'"></div>
+                      <div x-show="bhBusy()" class="mt-0.5 text-[11px]" style="color:var(--warn)">This host is already doing work — numbers will be in-vivo (a floor, not a clean-room result).</div>
+                    </div>
+                    <div class="rounded-lg px-3 py-2" style="background:var(--panel)">
+                      <div class="text-[10.5px] uppercase" style="letter-spacing:.08em;color:var(--text-faint)">Estimated duration</div>
+                      <div class="mt-0.5 text-[12.5px] font-semibold" style="color:var(--text)" x-text="'~' + bhEstMin() + ' min'"></div>
+                      <div class="text-[11px]" style="color:var(--text-dim)" x-text="'profile ' + bench.profile"></div>
+                    </div>
+                  </div>
+
+                  <div x-show="bench.pre.missing.length" class="mt-3 rounded-lg px-3 py-2.5" style="background:var(--panel)">
+                    <div class="text-[11.5px]"><span style="color:var(--text-dim)">Missing tools: </span><span class="font-mono" style="color:var(--warn)" x-text="bench.pre.missing.join(', ')"></span> — their probes are skipped unless installed.</div>
+                    <label class="mt-1.5 flex items-center gap-2 text-[12px]" style="color:var(--text)">
+                      <input type="checkbox" x-model="bench.install" /> Install missing tools (needs root)
+                    </label>
+                  </div>
+
+                  <div class="mt-3 flex flex-wrap items-center gap-2.5">
+                    <label class="flex items-center gap-2 text-[12px]" style="color:var(--text-dim)">Profile
+                      <select class="field text-[11px]" style="max-width:150px" x-model="bench.profile" aria-label="Battery profile">
+                        <option value="quick" x-text="bhProfileLabel('quick')">quick</option>
+                        <option value="full" x-text="bhProfileLabel('full')">full</option>
+                      </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-[12px]" style="color:var(--text-dim)">Runs
+                      <select class="field text-[11px]" style="max-width:66px" x-model.number="bench.runsSel" aria-label="Battery repetitions">
+                        <option value="1">1</option>
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                      </select>
+                    </label>
+                    <span class="text-[11px]" style="color:var(--text-faint)">repeats the battery and reports median ± spread</span>
+                  </div>
+
+                  <p class="mt-3 text-[11px]" style="color:var(--warn)">This saturates CPU and disk for a few minutes — the host will be slow while it runs.</p>
+
+                  <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <button class="btn-primary" :disabled="!mgReady()" @click="bhStart()">Start</button>
+                    <button class="btn-ghost" @click="bench.consent=false">Cancel</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Live run -->
+            <div x-show="bench.run && bench.run.state==='running'" class="mt-4 rounded-xl px-4 py-4" style="background:var(--panel-2);border:1px solid var(--border)">
+              <div class="mb-2.5 flex items-center justify-between">
+                <div class="flex items-center gap-2 text-[13px] font-bold" style="color:var(--text)">
+                  <span class="inline-block h-2 w-2 rounded-full animate-pulse" style="background:var(--accent)"></span>Running…
+                </div>
+                <div class="flex items-center gap-2.5 font-mono text-[11px]" style="color:var(--text-faint)">
+                  <span x-text="bhProgressCount()"></span>
+                  <span x-text="bhElapsed()"></span>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <template x-for="p in bhRows()" :key="p.probe">
+                  <div class="flex items-center gap-2.5 text-[12px]">
+                    <span class="w-3 shrink-0 text-center font-bold" :class="p.status==='running' && 'animate-pulse'" :style="'color:' + bhRowColor(p.status)" x-text="bhRowGlyph(p.status)"></span>
+                    <span class="font-mono" :style="'color:' + (p.status==='todo' ? 'var(--text-faint)' : 'var(--text-dim)')" x-text="p.probe"></span>
+                    <span x-show="p.roundNote" class="text-[10.5px]" style="color:var(--text-faint)" x-text="p.roundNote"></span>
+                    <span x-show="p.status==='done'" style="color:var(--text-faint)" x-text="bhMetricsInline(p)"></span>
+                    <span x-show="p.status==='skipped'" style="color:var(--text-faint)" x-text="p.note || 'skipped'"></span>
+                  </div>
+                </template>
+                <div x-show="!bhRows().length" class="text-[11.5px]" style="color:var(--text-faint)">Preparing…</div>
+              </div>
+              <div class="mt-3.5">
+                <div class="mb-1 text-[10.5px] font-semibold uppercase" style="letter-spacing:.09em;color:var(--text-faint)">CPU steal % during run</div>
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="h-8 w-full">
+                  <polyline :points="monSpark(bhSteals())" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" />
+                </svg>
+              </div>
+            </div>
+
+            <!-- Error -->
+            <div x-show="bench.run && bench.run.state==='error'" class="mt-4 rounded-xl px-4 py-3 text-[12px]" style="background:var(--danger-soft);color:var(--danger)">
+              <span x-text="bench.run.error || 'Benchmark failed.'"></span>
+            </div>
+
+            <!-- History -->
+            <div x-show="bench.hist.length" class="mt-4">
+              <div class="mb-2 text-[10.5px] font-semibold uppercase" style="letter-spacing:.09em;color:var(--text-faint)" x-text="'History · ' + bench.hist.length"></div>
+              <div class="space-y-1.5">
+                <template x-for="row in bhVisibleHist()" :key="row.id">
+                  <div>
+                    <div class="flex cursor-pointer flex-wrap items-center gap-3 rounded-lg px-3 py-2" style="background:var(--panel-2)" @click="bhToggleRun(row.id)">
+                      <span class="w-2.5 shrink-0 text-[10px]" style="color:var(--text-faint)" x-text="bench.histOpen===row.id ? '▾' : '▸'"></span>
+                      <span class="font-mono text-[11px]" style="color:var(--text-faint)" x-text="row.startedAt.slice(0,10)"></span>
+                      <span class="badge-off" x-text="row.profile"></span>
+                      <span class="min-w-0 flex-1 truncate text-[11.5px]" style="color:var(--text-dim)" x-text="bhHeadline(row)"></span>
+                      <div class="relative shrink-0" @click.stop @click.outside="bench.histMenu===row.id && (bench.histMenu='')">
+                        <button class="btn-xs" @click="bench.histMenu = bench.histMenu===row.id ? '' : row.id">Share</button>
+                        <div x-show="bench.histMenu===row.id" x-cloak class="absolute right-0 top-full z-10 mt-1 w-56 rounded-lg py-1 text-[11.5px]" style="background:var(--panel);border:1px solid var(--border)">
+                          <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" @click="bhCopyShare(row.id)" x-text="bench.copied===row.id ? 'Copied ✓' : 'Copy text (markdown)'"></button>
+                          <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" @click="bhCopyImage(row.id); bench.histMenu=''">Copy image</button>
+                          <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" @click="bhDownloadImage(row.id); bench.histMenu=''">Download image (PNG)</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div x-show="bench.histOpen===row.id" class="mt-1 rounded-lg px-3.5 py-3" style="background:var(--panel-3)">
+                      <div x-show="!bhRunDetail(row.id)" class="text-[11px]" style="color:var(--text-faint)">Loading…</div>
+                      <template x-for="r in (bhRunDetail(row.id) ? [bhRunDetail(row.id)] : [])" :key="r.id">
+                        <div>
+                          <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-mono text-[11px]" style="color:var(--text-faint)" x-text="r.startedAt.slice(0,10)"></span>
+                            <span class="badge-off" x-text="r.profile + ' · v' + r.profileVersion"></span>
+                            <span class="badge-off" x-text="r.mode"></span>
+                            <span class="ml-auto font-mono text-[11px]" style="color:var(--text-faint)" x-text="Math.round(r.durationMs/1000) + 's'"></span>
+                          </div>
+                          <div class="mt-1.5 truncate text-[11px]" style="color:var(--text-dim)" x-text="[r.meta.cpuModel, r.meta.cores + ' cores', r.meta.memGb + ' GB RAM', r.meta.virt, r.meta.osPretty].join(' · ')"></div>
+                          <div class="mt-2.5">
+                            <div class="text-[10.5px] uppercase" style="letter-spacing:.08em;color:var(--text-faint)">CPU, all cores</div>
+                            <div class="mt-0.5">
+                              <span class="text-[26px] font-bold leading-none" style="color:var(--text)" x-text="bhCardHero(r) || '—'"></span>
+                              <span class="ml-1 text-[12px] font-semibold" :style="'color:' + (bhCardHero(r) ? 'var(--text-dim)' : 'var(--text-faint)')" x-text="bhCardHero(r) ? 'MIPS' : 'skipped'"></span>
+                            </div>
+                          </div>
+                          <div class="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
+                            <template x-for="t in bhCardTiles(r, bench.readings[row.id])" :key="t.label">
+                              <div class="min-w-0">
+                                <div class="truncate text-[10.5px] uppercase" style="letter-spacing:.08em;color:var(--text-faint)" x-text="t.label"></div>
+                                <div class="mt-0.5 truncate text-[15px] font-semibold" style="color:var(--text)">
+                                  <span x-text="t.value || '—'"></span>
+                                  <span class="text-[10.5px] font-normal" style="color:var(--text-faint)" x-text="t.value ? (t.suffix || '') : 'skipped'"></span>
+                                </div>
+                                <div x-show="t.band" class="truncate text-[10px]" style="color:var(--text-faint)" x-text="t.band"></div>
+                              </div>
+                            </template>
+                          </div>
+                          <div x-show="(bench.readings[row.id]?.diagnostics || []).length" class="mt-2 space-y-1">
+                            <template x-for="(d, di) in (bench.readings[row.id]?.diagnostics || [])" :key="di">
+                              <div class="text-[10.5px]" style="color:var(--text-faint)" x-text="'≈ ' + d"></div>
+                            </template>
+                          </div>
+                          <div class="mt-2.5 flex flex-wrap items-center gap-2">
+                            <button x-show="bhPrevRun(row.id)" class="btn-xs" :disabled="bench.cmpSel.loading" @click="bhCmpAgainst(bhPrevRun(row.id).id)">vs previous</button>
+                            <select class="field text-[11px]" style="max-width:260px" :value="bench.cmpSel.baseId" :disabled="bench.cmpSel.loading" @change="bhCmpAgainst($event.target.value)" aria-label="Compare with any run">
+                              <option value="">Compare with any run…</option>
+                              <template x-for="o in bench.cmpSel.allRuns.filter(x => x.id !== row.id)" :key="o.id">
+                                <option :value="o.id" x-text="o.host + ' · ' + o.startedAt.slice(0,10) + ' · ' + o.profile"></option>
+                              </template>
+                            </select>
+                            <button x-show="bench.cmpSel.result" class="text-[15px] leading-none" style="color:var(--text-faint)" title="Clear comparison" @click="bhCmpClear()">&times;</button>
+                          </div>
+                          <template x-if="bench.cmpSel.result">
+                            <div class="mt-2">
+                              <div class="text-[11px]" style="color:var(--text-dim)" x-text="'vs ' + bench.cmpSel.result.a.host + ' · ' + bench.cmpSel.result.a.startedAt.slice(0,10) + ' · ' + bench.cmpSel.result.a.profile"></div>
+                              <template x-for="(c, ci) in bench.cmpSel.result.caveats" :key="ci">
+                                <div class="mt-1 text-[11px]" style="color:var(--warn)" x-text="'! ' + c"></div>
+                              </template>
+                              <div class="mt-2 flex items-center gap-3 text-[10px] font-semibold uppercase" style="letter-spacing:.08em;color:var(--text-faint)">
+                                <span class="flex-1">Metric</span><span class="w-20 text-right">Baseline</span><span class="w-20 text-right">This run</span><span class="w-16 text-right">Δ</span>
+                              </div>
+                              <template x-for="crow in bench.cmpSel.result.rows" :key="crow.key">
+                                <div class="flex items-center gap-3 py-0.5 text-[11.5px]">
+                                  <span class="flex-1 truncate" style="color:var(--text-dim)" x-text="crow.label"></span>
+                                  <span class="w-20 text-right font-mono" style="color:var(--text)" x-text="bhCmpVal(crow.a)"></span>
+                                  <span class="w-20 text-right font-mono" style="color:var(--text)" x-text="bhCmpVal(crow.b)"></span>
+                                  <span class="w-16 text-right font-mono" :style="'color:' + bhCmpDeltaColor(crow)" x-text="bhCmpDeltaText(crow)"></span>
+                                </div>
+                              </template>
+                              <div class="mt-2 flex flex-wrap gap-2">
+                                <button class="btn-xs" @click="bhCmpCopyShare()" x-text="bench.cmpSel.copied ? 'Copied ✓' : 'Copy markdown'"></button>
+                                <button class="btn-xs" @click="bhCmpCopyImage()">Copy image</button>
+                                <button class="btn-xs" @click="bhCmpDownloadImage()">Download image (PNG)</button>
+                              </div>
+                            </div>
+                          </template>
+                          <div x-show="r.samples && r.samples.length" class="mt-2.5">
+                            <div class="text-[10.5px] font-semibold uppercase" style="letter-spacing:.09em;color:var(--text-faint)" x-text="bhStealText(r, row.id)"></div>
+                            <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="mt-1 h-6 w-full">
+                              <polyline :points="monSpark(bhResultSteals(r))" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" />
+                            </svg>
+                          </div>
+                          <div x-show="r.mode==='in-vivo'" class="mt-2 text-[11px]" style="color:var(--warn)" x-text="'Measured on a live host (baseline load1 ' + r.baseline.load1 + ') — treat as a floor.'"></div>
+                          <template x-for="(w, wi) in r.warnings" :key="wi">
+                            <div class="mt-1 text-[11px]" style="color:var(--warn)" x-text="w"></div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <button x-show="bench.hist.length > bench.histShown" class="btn-xs mt-2" @click="bhShowMore()" x-text="'Show more (' + (bench.hist.length - bench.histShown) + ' remaining)'"></button>
+            </div>
+
+          </div>
+        </template>
+      </section>

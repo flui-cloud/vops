@@ -48,6 +48,7 @@ import { VopsOpsRotationService } from './host-ops/vops-ops-rotation.service';
 import { VopsMonitorService } from './monitor/vops-monitor.service';
 import { VopsBackupService } from './backup/vops-backup.service';
 import { VopsAgentService } from './agent/vops-agent.service';
+import { VopsBenchService } from './bench/vops-bench.service';
 
 /**
  * vops runtime. Deliberately light: it wires the Hetzner + Scaleway provider and
@@ -171,6 +172,7 @@ const ENV_FILES = [
     VopsMonitorService,
     VopsBackupService,
     VopsAgentService,
+    VopsBenchService,
   ],
   exports: [
     VopsProvidersService,
@@ -193,6 +195,8 @@ const ENV_FILES = [
     VopsMonitorService,
     VopsBackupService,
     VopsAgentService,
+    VopsBenchService,
+    LocalStore,
   ],
 })
 export class VopsModule {}

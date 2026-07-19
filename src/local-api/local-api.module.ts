@@ -9,7 +9,9 @@ import { SshKeysController } from './ssh-keys.controller';
 import { HostsController } from './hosts.controller';
 import { RootController } from './root.controller';
 import { WatchController } from './watch.controller';
+import { BenchController } from './bench.controller';
 import { VopsWatchService } from '../watch/vops-watch.service';
+import { BenchRunRegistry } from '../bench/bench-run-registry';
 import { SessionGuard } from './session.guard';
 
 /** HTTP surface for the local UI. Reuses VopsModule services; no logic here. */
@@ -24,9 +26,11 @@ import { SessionGuard } from './session.guard';
     HostsController,
     RootController,
     WatchController,
+    BenchController,
   ],
   providers: [
     VopsWatchService,
+    BenchRunRegistry,
     { provide: APP_GUARD, useClass: SessionGuard },
   ],
 })
