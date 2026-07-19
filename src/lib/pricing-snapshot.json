@@ -1,0 +1,132 @@
+{
+  "updatedAt": "2026-07-07T00:00:30.634Z",
+  "note": "Indicative seed prices captured from provider public pricing/APIs; authoritative source is each provider.",
+  "regions": [
+    {
+      "provider": "hetzner",
+      "code": "fsn1",
+      "fromHourly": 0.0088,
+      "fromMonthly": 5.49,
+      "currency": "EUR"
+    },
+    {
+      "provider": "hetzner",
+      "code": "nbg1",
+      "fromHourly": 0.0088,
+      "fromMonthly": 5.49,
+      "currency": "EUR"
+    },
+    {
+      "provider": "hetzner",
+      "code": "hel1",
+      "fromHourly": 0.0088,
+      "fromMonthly": 5.49,
+      "currency": "EUR"
+    },
+    {
+      "provider": "scaleway",
+      "code": "fr-par",
+      "fromHourly": 0.008976,
+      "fromMonthly": 6.55248,
+      "currency": "EUR"
+    },
+    {
+      "provider": "scaleway",
+      "code": "nl-ams",
+      "fromHourly": 0.008976,
+      "fromMonthly": 6.55248,
+      "currency": "EUR"
+    },
+    {
+      "provider": "scaleway",
+      "code": "pl-waw",
+      "fromHourly": 0.008976,
+      "fromMonthly": 6.55248,
+      "currency": "EUR"
+    },
+    {
+      "provider": "hetzner",
+      "code": "ash",
+      "fromHourly": 0.028,
+      "fromMonthly": 17.49,
+      "currency": "EUR"
+    },
+    {
+      "provider": "hetzner",
+      "code": "hil",
+      "fromHourly": 0.028,
+      "fromMonthly": 17.49,
+      "currency": "EUR"
+    },
+    {
+      "provider": "hetzner",
+      "code": "sin",
+      "fromHourly": 0.016,
+      "fromMonthly": 9.99,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "EU",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "UK",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "US-central",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "US-east",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "US-west",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "SIN",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "IND",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "JPN",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    },
+    {
+      "provider": "contabo",
+      "code": "AUS",
+      "fromHourly": null,
+      "fromMonthly": 4.5,
+      "currency": "EUR"
+    }
+  ]
+}

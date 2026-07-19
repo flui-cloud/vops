@@ -3,7 +3,7 @@ function dashboardServers() {
     // Servers list — "all" aggregates every provider; each row carries its
     // provider and a resolved indicative monthly price (null when unknown).
     async loadServers() {
-      this.loading = true; this.error = ''; this.servers = [];
+      this.beginLoad(); this.error = ''; this.servers = [];
       const provs = this.serverTab === 'all' ? this.providerIds : [this.serverTab];
       try {
         const lists = await Promise.all(provs.map(p =>
@@ -18,7 +18,7 @@ function dashboardServers() {
         }
         this.servers = rows;
       } catch (e) { this.error = e.message; this.servers = []; }
-      finally { this.loading = false; }
+      finally { this.endLoad(); }
     },
     setServerTab(t) { this.serverTab = t; this.loadServers(); },
     openServers() { this.serverTab = 'all'; this.go('servers'); },
@@ -42,9 +42,12 @@ function dashboardServers() {
       return [...rows, ...ext];
     },
     monitored(row) { return !!row.host?.monitorHostId; },
+    // Skeleton only stands in for an empty table — a background refresh (host
+    // chips, monitor toggle) must not blank out rows the user is already reading.
+    serversLoading() { return this.loading && !this.fleet().length; },
 
     async runCompare() {
-      this.loading = true; this.error = ''; this.comparedOnce = true; this.compareRows = [];
+      this.beginLoad(); this.error = ''; this.comparedOnce = true; this.compareRows = [];
       const body = {
         cpu: this.num(this.cmp.cpu), ramGb: this.num(this.cmp.ramGb),
         region: this.cmp.region.trim() || undefined,
@@ -53,7 +56,7 @@ function dashboardServers() {
       };
       try { this.compareRows = await this.api('/compare', { method: 'POST', body: JSON.stringify(body) }); }
       catch (e) { this.error = e.message; this.compareRows = []; }
-      finally { this.loading = false; }
+      finally { this.endLoad(); }
     },
 
     async openPlan(row) {

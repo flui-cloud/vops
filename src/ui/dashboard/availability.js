@@ -73,7 +73,7 @@ function dashboardAvailability() {
     // Availability rows enriched with plan specs + indicative price, so the
     // sold-out list also says what each plan is (vCPU/RAM) and roughly costs.
     async loadAvailability() {
-      this.loading = true; this.error = ''; this.availabilityRows = [];
+      this.beginLoad(); this.error = ''; this.availabilityRows = [];
       try {
         const [rows, plans] = await Promise.all([
           this.api('/providers/' + this.provider + '/availability'),
@@ -88,7 +88,7 @@ function dashboardAvailability() {
             monthly: price ? price.monthly : null };
         });
       } catch (e) { this.error = e.message; this.availabilityRows = []; }
-      finally { this.loading = false; }
+      finally { this.endLoad(); }
     },
     openHowTo(r) {
       this.modal = { ...this.modal, open: true, type: 'guided', title: 'How to create', cta: 'Close', danger: false, dryRun: false,

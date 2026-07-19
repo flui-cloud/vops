@@ -1,5 +1,5 @@
 node_modules
-lib
+/lib
 *.tsbuildinfo
 .DS_Store
 dev-tmp
@@ -19,6 +19,7 @@ vops-plan.json
 
 # internal working notes
 CLAUDE.md
+.claude/
 
 # docs/ is internal analysis + implementation plans, not public documentation.
 # Keep only docs/assets (logo + screenshot referenced by the public README).

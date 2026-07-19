@@ -1,6 +1,7 @@
       <section x-show="view==='servers'">
         <div class="mb-4 flex items-center justify-between">
-          <div class="text-sm" style="color:var(--text-dim)"><span x-text="fleet().length"></span> server(s) <span x-text="serverTab==='all' ? 'across all providers' : 'on ' + serverTab"></span> · keys stay on this machine</div>
+          <div class="skel h-4 w-72" x-show="serversLoading()"></div>
+          <div class="text-sm" x-show="!serversLoading()" style="color:var(--text-dim)"><span x-text="fleet().length"></span> server(s) <span x-text="serverTab==='all' ? 'across all providers' : 'on ' + serverTab"></span> · keys stay on this machine</div>
           <button class="btn-xs" @click="openHostForm()">+ Add external server</button>
         </div>
         <div class="card overflow-hidden">
@@ -10,7 +11,7 @@
                 <th class="th">Server</th><th class="th">Type</th><th class="th">Location</th><th class="th">Status</th><th class="th">Price /mo</th><th class="th">Public IP</th><th class="th text-right">Monitoring</th>
               </tr></thead>
               <tbody>
-                <template x-if="loading">
+                <template x-if="serversLoading()">
                   <template x-for="i in 4" :key="i">
                     <tr class="row">
                       <td class="td"><div class="skel h-4 w-44"></div></td>
@@ -20,7 +21,7 @@
                     </tr>
                   </template>
                 </template>
-                <template x-if="!loading">
+                <template x-if="!serversLoading()">
                   <template x-for="row in fleet()" :key="row.provider + row.id">
                     <tr class="row" :style="hostBusy===row.id ? 'opacity:.5' : ''">
                       <td class="td">

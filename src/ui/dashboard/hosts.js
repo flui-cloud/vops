@@ -274,7 +274,7 @@ function dashboardHosts() {
     // manage.* methods read it); the page — not a modal — renders from it.
     async openHost(row) {
       if (this.view !== 'host') this.hvFrom = this.view;
-      this.modal.mg = { row, name: row.host?.name || row.name || null, host: row.host || null, busy: false, statusLoading: false, findings: null, latencyMs: null };
+      this.modal.mg = { row, name: row.host?.name || null, host: row.host || null, busy: false, statusLoading: false, findings: null, latencyMs: null };
       this.view = 'host';
       if (this.$refs.main) this.$refs.main.scrollTop = 0;
       await this.loadHostView();

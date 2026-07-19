@@ -1,7 +1,7 @@
 function dashboardOverview() {
   return {
     async loadOverview() {
-      this.loading = true; this.error = '';
+      this.beginLoad(); this.error = '';
       this.ov = { serverCount: null, byProvider: [], spend: null, alerts: null, cheapest: null, bestValue: [], bvLoaded: false };
       this.plansCache = {};
       try {
@@ -10,7 +10,7 @@ function dashboardOverview() {
         this.computeRegionStats();
       } catch (e) { this.error = e.message; }
       try { this.providers = await this.api('/providers'); } catch { /* panel optional */ }
-      this.loading = false;
+      this.endLoad();
       this.loadBestValue();
       this.loadFleetStats();
       this.loadKeyCount();

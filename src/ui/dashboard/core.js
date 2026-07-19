@@ -19,6 +19,7 @@ function dashboardCore() {
     provider: 'hetzner',
     providerIds: ['hetzner', 'scaleway', 'contabo', 'ovh'],
     loading: false,
+    loads: 0,
     error: '',
     comparedOnce: false,
     syncedLabel: 'just now',
@@ -179,11 +180,17 @@ function dashboardCore() {
     },
     extract(text) { try { return JSON.parse(text).message; } catch { return text; } },
 
+    // Views fire several loads at once (a view's own data + /hosts). Count them
+    // so the fastest one finishing doesn't clear the skeleton while a slower one
+    // is still fetching.
+    beginLoad() { this.loads++; this.loading = true; },
+    endLoad() { this.loads = Math.max(0, this.loads - 1); this.loading = this.loads > 0; },
+
     async load(key, path) {
-      this.loading = true; this.error = ''; this[key] = [];
+      this.beginLoad(); this.error = ''; this[key] = [];
       try { this[key] = await this.api(path); }
       catch (e) { this.error = e.message; this[key] = []; }
-      finally { this.loading = false; }
+      finally { this.endLoad(); }
     },
 
     csv(s) { const a = (s || '').split(',').map(x => x.trim()).filter(Boolean); return a.length ? a : undefined; },
