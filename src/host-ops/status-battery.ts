@@ -1,5 +1,6 @@
 import { Finding, Severity } from '../lib/report';
 import { OsFamily } from '../hosts/host.model';
+import { QUIET_PAUSE, SNAPSHOT_PROBE, rateFindings } from './rate-metrics';
 
 /**
  * The `host status` battery: one generated shell script (single round-trip, all
@@ -30,13 +31,15 @@ const MARK = '@@';
 export function buildBatteryScript(family: OsFamily): string {
   const { updates, reboot } = familyProbes(family);
   const s = (id: string, cmd: string): string[] => [`echo "${MARK}${id}"`, cmd];
-  // Two @@io snapshots bracket the whole battery: the elapsed time between them is
-  // the disk-throughput window, so nothing sleeps just to measure it.
-  const ioProbe = "cut -d' ' -f1 /proc/uptime 2>/dev/null; cat /proc/diskstats 2>/dev/null";
+  // The rate metrics (CPU, disk I/O) come first, from two snapshots around a quiet
+  // pause: measuring them across the battery instead would be free but would report
+  // the battery's own heavy probes as if they were the host's load.
   return [
     'set +e',
     'export LC_ALL=C',
-    ...s('io', ioProbe),
+    ...s('rate1', SNAPSHOT_PROBE),
+    QUIET_PAUSE,
+    ...s('rate2', SNAPSHOT_PROBE),
     ...s('disk', 'df -P -x tmpfs -x devtmpfs 2>/dev/null'),
     ...s('mem', 'free -b 2>/dev/null'),
     ...s('nproc', 'nproc 2>/dev/null'),
@@ -59,7 +62,6 @@ export function buildBatteryScript(family: OsFamily): string {
     ...s('fp_etc', 'ls -1 /etc/vops 2>/dev/null'),
     ...s('fp_cron', "(crontab -l 2>/dev/null; cat /etc/cron.d/vops-* 2>/dev/null) | grep -oE 'vops:(monitor|backup)' 2>/dev/null | sort -u"),
     ...s('fp_ak', "grep -oE 'vops-ops:[a-f0-9]+' ~/.ssh/authorized_keys 2>/dev/null | head -n 1"),
-    ...s('io2', ioProbe),
     `echo "${MARK}end"`,
   ].join('\n');
 }
@@ -108,7 +110,6 @@ export function parseBattery(
   const s = splitSections(stdout);
   const t = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const now = opts.now ?? Date.now();
-  const io = diskIo(s.io ?? '', s.io2 ?? '');
   return [
     disk(s.disk ?? '', t),
     memory(s.mem ?? '', t),
@@ -123,66 +124,8 @@ export function parseBattery(
     logins(s.logins ?? '', t),
     loginsOk(s.logins_ok ?? ''),
     footprint(s.fp_etc ?? '', s.fp_cron ?? '', s.fp_ak ?? ''),
-    ...(io ? [io] : []),
+    ...rateFindings(s.rate1 ?? '', s.rate2 ?? ''),
   ];
-}
-
-const WHOLE_DISK = /^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/;
-const IO_MB = 1024 * 1024;
-const IO_MIN_WINDOW = 0.7;
-
-interface IoSnapshot {
-  uptime: number;
-  disks: Map<string, { read: number; write: number }>;
-}
-
-// One @@io section: the leading /proc/uptime field (the measurement clock) then raw
-// /proc/diskstats. Per whole-disk device (partitions/dm excluded) sectors_read is
-// field index 5 and sectors_written index 9, 0-based after trimming.
-function parseIoSnapshot(text: string): IoSnapshot | null {
-  const lines = text.split('\n');
-  const head = (lines[0] ?? '').trim();
-  if (!head) return null;
-  const uptime = Number(head);
-  if (!Number.isFinite(uptime)) return null;
-  const disks = new Map<string, { read: number; write: number }>();
-  for (const line of lines.slice(1)) {
-    const cols = line.trim().split(/\s+/);
-    if (cols.length < 10 || !WHOLE_DISK.test(cols[2])) continue;
-    const read = Number(cols[5]);
-    const write = Number(cols[9]);
-    if (Number.isFinite(read) && Number.isFinite(write)) disks.set(cols[2], { read, write });
-  }
-  return { uptime, disks };
-}
-
-// Disk throughput across the battery's own elapsed time (no added sleep). Any gap in
-// the data — missing/malformed section, backwards counters, or too short a window —
-// yields no finding rather than a misleading zero.
-function diskIo(before: string, after: string): Finding | null {
-  const a = parseIoSnapshot(before);
-  const b = parseIoSnapshot(after);
-  if (!a || !b || b.uptime - a.uptime < IO_MIN_WINDOW) return null;
-  const window = b.uptime - a.uptime;
-  let matched = 0;
-  let readBytes = 0;
-  let writeBytes = 0;
-  for (const [name, end] of b.disks) {
-    const start = a.disks.get(name);
-    if (!start) continue;
-    const dRead = end.read - start.read;
-    const dWrite = end.write - start.write;
-    if (dRead < 0 || dWrite < 0) return null;
-    matched += 1;
-    readBytes += dRead * 512;
-    writeBytes += dWrite * 512;
-  }
-  if (!matched) return null;
-  const readMb = readBytes / window / IO_MB;
-  const writeMb = writeBytes / window / IO_MB;
-  return f('sys.io', 'ok', `Disk I/O: read ${readMb.toFixed(1)} MB/s · write ${writeMb.toFixed(1)} MB/s`, {
-    value: Math.round((readMb + writeMb) * 10) / 10,
-  });
 }
 
 function diskSeverity(pct: number, t: BatteryThresholds): Severity {

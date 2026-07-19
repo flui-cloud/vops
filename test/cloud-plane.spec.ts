@@ -15,15 +15,18 @@ describe('cloud plane mappers', () => {
     expect(hungGuestFinding('off')).toBeNull();
   });
 
-  it('renders metric findings with human bandwidth and CPU severity', () => {
+  it('renders metric findings with human bandwidth, and CPU on the per-core scale', () => {
     const findings = metricFindings({
       serverId: '1', at: null,
-      cpuPercent: 96, diskIopsRead: null, diskIopsWrite: null,
+      cpuPercent: 137, diskIopsRead: null, diskIopsWrite: null,
       diskBandwidthReadBytes: 2048, diskBandwidthWriteBytes: 0,
       netBandwidthInBytes: 1536, netBandwidthOutBytes: 5 * 1024 * 1024,
     });
     const by = Object.fromEntries(findings.map((f) => [f.id, f]));
-    expect(by['cloud.cpu'].severity).toBe('warn'); // 96% > 90
+    // The hypervisor scale is a share of one core (0-400% on a 4-vCPU server), so a
+    // value over 100 is normal and must not raise a severity meant for 0-100.
+    expect(by['cloud.cpu'].severity).toBe('info');
+    expect(by['cloud.cpu'].summary).toContain('share of one core');
     expect(by['cloud.net'].summary).toContain('5M/s');
     expect(by['cloud.disk'].summary).toContain('2K/s');
   });

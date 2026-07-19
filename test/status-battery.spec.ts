@@ -71,7 +71,7 @@ const IO_STATS_B = [
   ' 253       0 dm-0 100 0 900000 0 90 0 900000 0 0 0 0',
 ].join('\n');
 const ioBattery = (upA: string, statsA: string, upB: string, statsB: string): string =>
-  `@@io\n${upA}\n${statsA}\n@@io2\n${upB}\n${statsB}\n@@end\n`;
+  `@@rate1\n${upA}\n${statsA}\n@@rate2\n${upB}\n${statsB}\n@@end\n`;
 
 describe('status battery', () => {
   it('renders a per-family probe script with all section markers', () => {
@@ -223,17 +223,20 @@ no
   });
 
   describe('disk I/O (sys.io)', () => {
-    it('brackets the battery with @@io first and @@io2 last', () => {
+    // The whole point of the quiet window: both snapshots and the pause must sit
+    // ahead of the battery's own heavy probes, or the metrics measure vops.
+    it('samples both snapshots around the pause before any expensive probe', () => {
       const script = buildBatteryScript('debian');
-      const io = script.indexOf('"@@io"');
-      const disk = script.indexOf('"@@disk"');
-      const io2 = script.indexOf('"@@io2"');
-      const end = script.indexOf('"@@end"');
-      expect(io).toBeGreaterThanOrEqual(0);
-      expect(io).toBeLessThan(disk);
-      expect(disk).toBeLessThan(io2);
-      expect(io2).toBeLessThan(end);
+      const rate1 = script.indexOf('"@@rate1"');
+      const pause = script.indexOf('sleep 1');
+      const rate2 = script.indexOf('"@@rate2"');
+      const journal = script.indexOf('journalctl');
+      expect(rate1).toBeGreaterThanOrEqual(0);
+      expect(rate1).toBeLessThan(pause);
+      expect(pause).toBeLessThan(rate2);
+      expect(rate2).toBeLessThan(journal);
       expect(script).toContain('/proc/diskstats');
+      expect(script).toContain('/proc/stat');
     });
 
     it('computes read/write MB/s across the battery window, excluding partitions and dm', () => {
@@ -254,11 +257,11 @@ no
     });
 
     it('produces no sys.io when the second snapshot is missing', () => {
-      const noSecond = `@@io\n1000.00\n${IO_STATS_A}\n@@end\n`;
+      const noSecond = `@@rate1\n1000.00\n${IO_STATS_A}\n@@end\n`;
       expect(parseBattery(noSecond).some((x) => x.id === 'sys.io')).toBe(false);
     });
 
-    it('produces no sys.io for fixtures without @@io sections', () => {
+    it('produces no sys.io for fixtures without rate sections', () => {
       expect(parseBattery(SAMPLE).some((x) => x.id === 'sys.io')).toBe(false);
     });
   });

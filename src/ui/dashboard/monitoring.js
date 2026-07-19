@@ -2,7 +2,9 @@
 // page is open and keeps a short in-memory rolling window per host. Nothing is
 // persisted: the sparklines/uptime strip are real-time only and reset on reload.
 const MON_SIGNALS = [
-  { key: 'cpu', label: 'CPU', ids: ['cloud.cpu', 'agent.cpu'], pct: true },
+  // Guest-measured CPU first: it is normalised 0-100 across cores. cloud.cpu is a
+  // last resort — the hypervisor scale is not per-machine and is not comparable.
+  { key: 'cpu', label: 'CPU', ids: ['sys.cpu', 'agent.cpu', 'cloud.cpu'], pct: true },
   { key: 'mem', label: 'Mem used', ids: ['sys.memory', 'agent.mem'], pct: true, invert: true },
   { key: 'disk', label: 'Disk used', ids: ['sys.disk', 'agent.disk'], pct: true },
   { key: 'load', label: 'Load', ids: ['sys.load'], pct: false },
@@ -19,7 +21,8 @@ const MON_THRESH = {
 // Plain-language name + one-line explanation per check id (target audience is a
 // flui user with little devops background) — surfaced as a title + hover tooltip.
 const MON_HELP = {
-  'sys.disk': { title: 'Disk space', help: 'How full the fullest disk is. Above ~85% things start to fail — logs, updates, databases.' },
+  'sys.cpu': { title: 'CPU', help: 'Share of total CPU capacity in use, measured inside the server across all cores — the same 0-100% scale as standard monitoring tools. Brief peaks are normal; what matters is a sustained high value.' },
+  'sys.disk': { title: 'Disk space', help:'How full the fullest disk is. Above ~85% things start to fail — logs, updates, databases.' },
   'sys.memory': { title: 'Memory', help: 'Share of RAM in use. Constantly near 100% means the server is starved and may slow down or kill processes.' },
   'sys.load': { title: 'System load', help: 'How long the CPU run-queue is, relative to the number of cores. Above 1.0 per core, work is piling up.' },
   'sys.io': { title: 'Disk I/O', help: 'How much data the disks are reading and writing right now, measured across the status check. High sustained I/O explains a slow server even when CPU looks idle.' },
@@ -34,7 +37,7 @@ const MON_HELP = {
   'sec.logins.ok': { title: 'Successful logins', help: 'Successful SSH logins in the last 24h and the source IPs, busiest first (×count). vops\'s own checks add to this from your IP — an unfamiliar address is the thing to watch.' },
   'vops.footprint': { title: 'vops footprint', help: 'What vops has installed here — its automation key and any monitor/backup schedule.' },
   'cloud.power': { title: 'Power state', help: 'What the provider reports from outside the machine: running, off, and so on — seen without SSH.' },
-  'cloud.cpu': { title: 'CPU (provider)', help: 'CPU usage measured by the provider hypervisor, without touching the guest.' },
+  'cloud.cpu': { title: 'CPU (provider)', help: 'CPU usage seen by the provider hypervisor, without touching the server. Shown as a share of ONE core, so on a multi-core server it can exceed 100% — it is not the same scale as the CPU reading taken inside the server. Used only when there is no SSH access.' },
   'cloud.net': { title: 'Network throughput', help: 'Live inbound/outbound bandwidth from the provider hypervisor.' },
   'cloud.disk': { title: 'Disk throughput', help: 'Live read/write disk bandwidth from the provider hypervisor.' },
   'cloud.hung': { title: 'Possibly hung', help: 'SSH is down but the provider says the VM is running — the guest may be stuck.' },

@@ -41,8 +41,16 @@ export function hungGuestFinding(powerStatus: string): Finding | null {
 export function metricFindings(m: ServerMetricsDto): Finding[] {
   const out: Finding[] = [];
   if (m.cpuPercent !== null) {
-    const sev: Severity = m.cpuPercent > 90 ? 'warn' : 'ok';
-    out.push({ id: 'cloud.cpu', severity: sev, summary: `Hypervisor CPU ${m.cpuPercent}%`, value: m.cpuPercent });
+    // The hypervisor percentage is not normalised per machine — Hetzner reports it
+    // relative to a single core, so a 4-vCPU server ranges 0-400%. It is kept as the
+    // no-SSH fallback only; `sys.cpu` is the comparable 0-100 guest measurement, so
+    // no severity is derived from a scale whose ceiling we do not know.
+    out.push({
+      id: 'cloud.cpu',
+      severity: 'info',
+      summary: `Hypervisor CPU ${m.cpuPercent}% (share of one core)`,
+      value: m.cpuPercent,
+    });
   }
   if (m.netBandwidthInBytes !== null || m.netBandwidthOutBytes !== null) {
     out.push({
