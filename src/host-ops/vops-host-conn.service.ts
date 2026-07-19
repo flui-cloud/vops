@@ -3,7 +3,7 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { SshExec } from '../lib/ssh-exec';
 import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
-import { HostConn, SshKeyKind, VopsHost } from '../hosts/host.model';
+import { HostConn, SshKeyKind, SshKeySource, VopsHost } from '../hosts/host.model';
 import { deriveConnState, sshOutcome } from './ssh-conn';
 
 interface ResolvedKey {
@@ -11,6 +11,7 @@ interface ResolvedKey {
   keyKind: SshKeyKind;
   keyName?: string;
   publicKey?: string;
+  keySource?: SshKeySource;
 }
 
 /**
@@ -27,14 +28,28 @@ export class VopsHostConnService {
     @Inject('SshExec') private readonly ssh: SshExec,
   ) {}
 
-  /** The key vops would manage this host with: ops if installed+present, else the user key. */
+  /**
+   * The key vops would manage this host with: ops if installed+present, else the user
+   * key. `keySource` records whether that key was chosen for this host or is just the
+   * sole-key fallback — the ladder must not show a guess as a configuration.
+   */
   resolveKey(host: VopsHost): ResolvedKey {
     if (host.opsKeyInstalled) {
       const ops = this.keys.list().find((k) => k.name === OPS_KEY_NAME && k.hasPrivateKey);
-      if (ops) return { keyPath: ops.privateKeyPath, keyKind: 'ops', keyName: ops.name, publicKey: ops.publicKey };
+      if (ops) {
+        return { keyPath: ops.privateKeyPath, keyKind: 'ops', keyName: ops.name, publicKey: ops.publicKey, keySource: 'assigned' };
+      }
     }
     const uk = this.keys.resolveUserKey(host.userKeyName);
-    if (uk?.hasPrivateKey) return { keyPath: uk.privateKeyPath, keyKind: 'user', keyName: uk.name, publicKey: uk.publicKey };
+    if (uk?.hasPrivateKey) {
+      return {
+        keyPath: uk.privateKeyPath,
+        keyKind: 'user',
+        keyName: uk.name,
+        publicKey: uk.publicKey,
+        keySource: host.userKeyName ? 'assigned' : 'default',
+      };
+    }
     return { keyKind: 'none' };
   }
 
@@ -51,9 +66,12 @@ export class VopsHostConnService {
       // No key to try — probe the port so the "reachable" layer is still truthful.
       reachable = await this.tcpProbe(host.address, host.port || 22, 5000);
     }
-    const { state, message } = deriveConnState({ reachable, hasKey: !!rk.keyPath, authorized, keyKind: rk.keyKind, host, reason });
+    const { state, message } = deriveConnState({
+      reachable, hasKey: !!rk.keyPath, authorized, keyKind: rk.keyKind, host, reason,
+      keyName: rk.keyName, keySource: rk.keySource,
+    });
     const conn: HostConn = {
-      state, keyKind: rk.keyKind, keyName: rk.keyName, publicKey: rk.publicKey,
+      state, keyKind: rk.keyKind, keyName: rk.keyName, publicKey: rk.publicKey, keySource: rk.keySource,
       reachable, hasKey: !!rk.keyPath, authorized, message, checkedAt: new Date().toISOString(),
     };
     host.conn = conn;

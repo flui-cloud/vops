@@ -1,4 +1,4 @@
-import { SshConnState, SshKeyKind, VopsHost } from '../hosts/host.model';
+import { SshConnState, SshKeyKind, SshKeySource, VopsHost } from '../hosts/host.model';
 
 type HostAddr = Pick<VopsHost, 'user' | 'address' | 'port'>;
 
@@ -40,6 +40,8 @@ export interface DeriveInput {
   keyKind: SshKeyKind;
   host: HostAddr;
   reason?: string;
+  keyName?: string;
+  keySource?: SshKeySource;
 }
 
 /**
@@ -67,10 +69,21 @@ export function deriveConnState(i: DeriveInput): { state: SshConnState; message:
   if (i.authorized) {
     return { state: 'ready', message: `Reachable and authorized (${i.keyKind} key).` };
   }
+  const key = i.keyName ? `'${i.keyName}'` : `the ${i.keyKind} key`;
+  // A fallback key was never chosen for this host, so "authorize it on the server"
+  // is the wrong first move — mutating the server to match a guess.
+  if (i.keySource === 'default') {
+    return {
+      state: 'auth-failed',
+      message:
+        `Reached ${i.host.address} but ${key} was refused — and it isn't assigned to this host, it's only ` +
+        'the sole key vops has. Assign the right key for this host, or authorize this one on the server.',
+    };
+  }
   return {
     state: 'auth-failed',
     message:
-      `Reached ${i.host.address} but the ${i.keyKind} key isn't authorized. Add its public half to the server ` +
+      `Reached ${i.host.address} but ${key} isn't authorized. Add its public half to the server ` +
       '(provider console, or ~/.ssh/authorized_keys), then re-check.',
   };
 }

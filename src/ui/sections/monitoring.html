@@ -33,7 +33,7 @@
                   </div>
                   <div class="mt-0.5 truncate font-mono text-[11px]" style="color:var(--text-faint)">
                     <span class="capitalize" x-text="h.provider || 'external'"></span> · <span x-text="h.user + '@' + h.address + ':' + h.port"></span>
-                    <span x-show="h.os?.pretty" x-text="' · ' + h.os.pretty"></span>
+                    <span x-show="h.os?.pretty" x-text="' · ' + (h.os?.pretty || '')"></span>
                   </div>
                 </div>
                 <div class="shrink-0 text-right">

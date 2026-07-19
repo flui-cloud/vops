@@ -219,8 +219,27 @@
             <!-- Connected: choose a delivery channel -->
             <div x-show="nfy.connected" class="space-y-3">
               <div class="flex gap-1 rounded-lg p-1" style="background:var(--panel-3)">
-                <button class="btn-xs flex-1" :style="nfy.tab==='push' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="nfy.tab='push'">Phone push</button>
-                <button class="btn-xs flex-1" :style="nfy.tab==='ntfy' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="nfy.tab='ntfy'">ntfy topic</button>
+                <button class="btn-xs flex-1" :style="nfy.tab==='telegram' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="pickChannel('telegram')">Telegram</button>
+                <button class="btn-xs flex-1" :style="nfy.tab==='ntfy' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="pickChannel('ntfy')">ntfy</button>
+                <!-- Web Push needs an activated device id, which only the plan
+                     activation flow produces — offering it for a host monitor
+                     would be a choice that always fails. -->
+                <button x-show="nfy.mode==='watch'" class="btn-xs flex-1" :style="nfy.tab==='push' ? 'background:var(--panel);color:var(--text)' : 'color:var(--text-faint)'" @click="pickChannel('push')">vops notification</button>
+              </div>
+              <p x-show="nfy.mode==='monitor'" class="text-[11px]" style="color:var(--text-faint)">Where this host's silence and threshold alerts are delivered.</p>
+
+              <!-- Telegram: mint a one-time code, then poll until Start is tapped -->
+              <div x-show="nfy.tab==='telegram'" class="space-y-2">
+                <div x-show="!nfy.tg.code">
+                  <button class="btn-primary w-full" @click="telegramConnect()" :disabled="nfy.busy" x-text="nfy.busy ? 'Connecting…' : 'Connect Telegram'"></button>
+                  <p class="mt-1.5 text-[11px]" style="color:var(--text-faint)">One tap — nothing to install. The chat id is resolved remotely and never reaches this machine.</p>
+                </div>
+                <div x-show="nfy.tg.code && !nfy.tg.linked" class="space-y-2 text-center">
+                  <img x-show="nfy.tg.qr" :src="nfy.tg.qr" alt="Scan to open Telegram" class="mx-auto rounded-lg bg-white p-2" width="180" height="180" />
+                  <a x-show="nfy.tg.url" :href="nfy.tg.url" target="_blank" rel="noreferrer" class="btn-primary block w-full">Open Telegram</a>
+                  <p class="text-[11px]" style="color:var(--text-faint)">Waiting for you to tap Start in Telegram…</p>
+                </div>
+                <p x-show="nfy.tg.linked" class="text-[12px]" style="color:var(--ok)">Linked — arming the alert…</p>
               </div>
 
               <!-- Web Push: the vops notification app -->
@@ -243,11 +262,16 @@
               <!-- ntfy channel -->
               <div x-show="nfy.tab==='ntfy'" class="space-y-2">
                 <label class="label" for="nfy-topic">ntfy topic</label>
-                <input id="nfy-topic" class="field font-mono text-xs" placeholder="my-vops-alerts" x-model="nfy.topic" />
-                <label class="label" for="nfy-server">ntfy server <span style="color:var(--text-faint)">(optional)</span></label>
+                <!-- Copy sits here because the topic has to be typed into the
+                     ntfy app on another device. -->
+                <div class="flex gap-2">
+                  <input id="nfy-topic" class="field font-mono text-xs" placeholder="my-vops-alerts" x-model="nfy.topic" />
+                  <button class="btn-ghost shrink-0" @click="copy(nfy.topic)">Copy</button>
+                </div>
+                <label class="label" for="nfy-server">ntfy server</label>
                 <input id="nfy-server" class="field font-mono text-xs" placeholder="https://ntfy.sh" x-model="nfy.server" />
                 <button class="btn-primary w-full" @click="notifyNtfy()" :disabled="nfy.busy" x-text="nfy.busy ? 'Creating…' : 'Create ntfy alert'"></button>
-                <p class="text-[11px]" style="color:var(--text-faint)">Subscribe to this topic in the ntfy app to receive alerts.</p>
+                <p class="text-[11px]" style="color:var(--text-faint)">Subscribe to this topic in the ntfy app to receive alerts. The name is the only thing gating it — keep it private.</p>
               </div>
             </div>
 
@@ -264,6 +288,36 @@
             <div x-show="ulog.busy" class="text-[12px]" style="color:var(--text-faint)">Fetching logs over SSH…</div>
             <p x-show="ulog.err" class="text-[12px]" style="color:var(--danger)" x-text="ulog.err"></p>
             <pre x-show="!ulog.busy && !ulog.err" class="max-h-[60vh] overflow-auto rounded-lg p-3 font-mono text-[11px] leading-relaxed" style="background:var(--panel-3);color:var(--text-dim);white-space:pre-wrap;overflow-wrap:anywhere" x-text="ulog.output"></pre>
+          </div>
+        </template>
+
+        <template x-if="modal.type==='updates'">
+          <div class="space-y-2 text-sm">
+            <div class="flex items-center justify-between text-[12px]">
+              <span style="color:var(--text-faint)">Read-only over SSH</span>
+              <button class="btn-xs" :disabled="pud.busy" @click="refreshPendingUpdates()" x-text="pud.busy ? '…' : 'Refresh'"></button>
+            </div>
+            <div x-show="pud.busy" class="text-[12px]" style="color:var(--text-faint)">Fetching package list over SSH…</div>
+            <p x-show="pud.err" class="text-[12px]" style="color:var(--danger)" x-text="pud.err"></p>
+            <template x-if="!pud.busy && !pud.err">
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2 text-[12px]">
+                  <span style="color:var(--text-dim)"><span x-text="pud.total"></span> pending</span>
+                  <span x-show="pudSecurityCount() > 0" style="color:var(--danger)">· <span x-text="pudSecurityCount()"></span> security</span>
+                </div>
+                <p x-show="pud.truncated" class="text-[11px]" style="color:var(--text-faint)" x-text="'+' + (pud.total - pud.packages.length) + ' more not shown'"></p>
+                <div class="max-h-[60vh] space-y-1 overflow-auto rounded-lg p-2.5" style="background:var(--panel-3)">
+                  <template x-for="p in pud.packages" :key="p.name">
+                    <div class="flex flex-wrap items-center gap-2 text-[11.5px]">
+                      <span x-show="p.security" class="inline-flex items-center rounded px-1.5 text-[9.5px] font-bold uppercase tracking-wide" style="color:var(--danger);background:var(--danger-soft)">security</span>
+                      <span class="font-mono font-semibold" style="color:var(--text)" x-text="p.name"></span>
+                      <span class="font-mono" style="color:var(--text-faint)" x-text="p.current ? (p.current + ' → ' + p.candidate) : p.candidate"></span>
+                    </div>
+                  </template>
+                  <div x-show="!pud.packages.length" class="text-[12px]" style="color:var(--text-faint)">Up to date.</div>
+                </div>
+              </div>
+            </template>
           </div>
         </template>
 

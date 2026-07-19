@@ -141,6 +141,9 @@
                                 </div>
                               </template>
                             </div>
+                            <div x-show="f.id==='pkg.updates' && (f.severity==='warn' || f.severity==='info') && Number(f.value) > 0" class="mt-1.5">
+                              <button class="btn-xs" :disabled="modal.mg.busy" @click="openPendingUpdates()">Show packages</button>
+                            </div>
                           </div>
                         </div>
                       </template>
@@ -172,12 +175,13 @@
                     <span class="mt-0.5 w-4 shrink-0 text-center font-bold" :style="'color:' + (modal.mg.host?.conn?.hasKey ? 'var(--ok)' : 'var(--warn)')" x-text="modal.mg.host?.conn?.hasKey ? '✓' : '✗'"></span>
                     <div class="min-w-0 flex-1">
                       <div style="color:var(--text)">SSH key configured <span x-show="modal.mg.host?.conn?.hasKey" class="text-[11px]" style="color:var(--text-faint)" x-text="'· ' + (modal.mg.host?.conn?.keyName || '')"></span></div>
-                      <div x-show="modal.mg.host?.conn && !modal.mg.host?.conn?.hasKey" class="mt-1 flex flex-wrap items-center gap-2">
-                        <select class="field text-[11px]" style="max-width:150px" @change="assignUserKey($event.target.value)" aria-label="Assign a key">
-                          <option value="">Assign a key…</option>
-                          <template x-for="k in userKeysAvail()" :key="k.name"><option :value="k.name" x-text="k.name"></option></template>
+                      <p x-show="keyIsDefault()" class="mt-0.5 text-[11px]" style="color:var(--warn)">Not assigned to this host — it's the only key vops has, so it fell back to it. Pick the right one:</p>
+                      <div x-show="modal.mg.host?.conn" class="mt-1 flex flex-wrap items-center gap-2">
+                        <select class="field text-[11px]" style="max-width:170px" @change="assignUserKey($event.target.value)" aria-label="Key for this host">
+                          <option value="" x-text="hostKeyPlaceholder()"></option>
+                          <template x-for="k in userKeysAvail()" :key="k.name"><option :value="k.name" x-text="k.name" :selected="k.name === modal.mg.host?.userKeyName"></option></template>
                         </select>
-                        <button class="btn-xs" :disabled="modal.mg.busy" @click="generateKeyFor()">Generate</button>
+                        <button x-show="!modal.mg.host?.conn?.hasKey" class="btn-xs" :disabled="modal.mg.busy" @click="generateKeyFor()">Generate</button>
                       </div>
                     </div>
                   </div>
@@ -188,12 +192,21 @@
                       x-text="modal.mg.host?.conn?.authorized ? '✓' : (modal.mg.host?.conn?.reachable && modal.mg.host?.conn?.hasKey ? '✗' : '·')"></span>
                     <div class="min-w-0 flex-1">
                       <div style="color:var(--text)">Key authorized on the server</div>
-                      <div x-show="modal.mg.host?.conn?.reachable && modal.mg.host?.conn?.hasKey && !modal.mg.host?.conn?.authorized && modal.mg.host?.conn?.publicKey" class="mt-1 space-y-1.5">
-                        <p class="text-[11px]" style="color:var(--text-dim)">Add this key to the server, then Re-check:</p>
-                        <div class="flex gap-2">
-                          <input class="field font-mono text-[10.5px]" readonly :value="modal.mg.host?.conn?.publicKey" aria-label="Public key" />
-                          <button class="btn-xs shrink-0" @click="copy(modal.mg.host?.conn?.publicKey)">Copy</button>
+                      <div x-show="showAuthorizeHelp()" class="mt-1.5 space-y-2">
+                        <p class="text-[11px]" style="color:var(--text-dim)">The server refused this key. To authorize it you need access you already have — your provider's web console, or a session that still works.</p>
+                        <div>
+                          <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">Public key — a value to paste, not a command</div>
+                          <div class="flex gap-2">
+                            <input class="field font-mono text-[10.5px]" readonly :value="modal.mg.host?.conn?.publicKey" aria-label="Public key" />
+                            <button class="btn-xs shrink-0" @click="copy(modal.mg.host?.conn?.publicKey)">Copy</button>
+                          </div>
+                          <p class="mt-1 text-[10.5px]" style="color:var(--text-faint)">It belongs in <span class="font-mono">~/.ssh/authorized_keys</span> for <span class="font-mono" x-text="modal.mg.host?.user || 'root'"></span> on the server, or in your provider's SSH-keys panel.</p>
                         </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <button class="btn-xs shrink-0" @click="copy(akInstallCmd())">Copy shell command</button>
+                          <span class="text-[10.5px]" style="color:var(--text-faint)">Appends it for you — run it <strong style="color:var(--text-dim)">on the server</strong>, not here.</span>
+                        </div>
+                        <p class="text-[11px]" style="color:var(--text-faint)">Then press Re-check.</p>
                       </div>
                     </div>
                   </div>
@@ -239,8 +252,8 @@
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2.5">
                   <div class="text-[14.5px] font-bold tracking-tight">Firewall</div>
-                  <span x-show="fw.view && !fw.view.cededToFlui" class="badge-ok" x-text="fwEngineLabel(fw.view?.engine)"></span>
-                  <span x-show="fw.view?.cededToFlui" class="badge-ok" style="color:var(--warn)">managed by flui</span>
+                  <span x-show="fw.view && !fwCeded()" class="badge-ok" x-text="fwEngineLabel(fw.view?.engine)"></span>
+                  <span x-show="fwCeded()" class="badge-ok" style="color:var(--warn)" x-text="fwCededLabel()"></span>
                   <span x-show="fw.view?.active" class="badge-ok"><span class="h-1.5 w-1.5 rounded-full" style="background:currentColor"></span>active</span>
                 </div>
                 <button class="btn-xs" :disabled="fw.busy || fw.loading" @click="fwLoad(modal.mg.name)">Refresh</button>
@@ -254,13 +267,13 @@
 
               <template x-if="!fw.loading && fw.view && fw.view.engine!=='none'">
                 <div>
-                  <!-- flui owns this host firewall → vops cedes management (one manager, no stacking drop layers) -->
-                  <template x-if="fw.view.cededToFlui">
-                    <p class="mt-1 text-[11px]" style="color:var(--warn)">flui manages this host's firewall — vops won't add a second, stacking ruleset here. Edit these rules in flui, or remove flui's firewall first. They're shown read-only below.</p>
+                  <!-- someone else owns this firewall → vops cedes management (one manager, no stacking) -->
+                  <template x-if="fwCeded()">
+                    <p class="mt-1 text-[11px]" style="color:var(--warn)" x-text="fwCededNote()"></p>
                   </template>
 
-                  <!-- vops editor (hidden while ceded to flui) -->
-                  <template x-if="!fw.view.cededToFlui">
+                  <!-- vops editor (hidden while ceded) -->
+                  <template x-if="!fwCeded()">
                     <div>
                       <p x-show="fw.view.sshAlwaysOpen" class="mt-1 text-[11px]" style="color:var(--text-faint)">SSH stays open to everyone — you can't lock yourself out. Everything not listed below is blocked.</p>
                       <p x-show="!fw.view.sshAlwaysOpen" class="mt-1 text-[11px]" style="color:var(--warn)">Everything not listed below is blocked — keep SSH allowed or you may lose access.</p>
@@ -324,7 +337,7 @@
                   <template x-if="fw.view.detected">
                     <div class="mt-3 rounded-xl px-3 py-2.5" style="background:var(--panel-2);border:1px solid var(--line)">
                       <div class="flex flex-wrap items-center gap-2">
-                        <div class="text-[12px] font-semibold" style="color:var(--text)" x-text="fw.view.detected.source==='flui' ? 'Detected — flui firewall' : 'Detected — other host firewall'"></div>
+                        <div class="text-[12px] font-semibold" style="color:var(--text)" x-text="fwDetectedLabel()"></div>
                         <span x-show="fw.view.detected.active" class="badge-ok"><span class="h-1.5 w-1.5 rounded-full" style="background:currentColor"></span>active</span>
                         <span class="text-[10.5px]" style="color:var(--text-faint)">not managed by vops · read-only</span>
                       </div>

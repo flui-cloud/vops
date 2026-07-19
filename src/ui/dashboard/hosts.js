@@ -10,6 +10,7 @@ function dashboardHosts() {
     hostsLoaded: false,
     hostBusy: '',
     ulog: { unit: '', output: '', busy: false, err: '' },
+    pud: { packages: [], total: 0, truncated: false, busy: false, err: '' },
 
     async loadHosts() {
       await this.load('hosts', '/hosts');
@@ -142,6 +143,29 @@ function dashboardHosts() {
       finally { this.ulog.busy = false; }
     },
 
+    // Read-only, on demand: which packages have a pending update (a separate SSH
+    // call — not part of the fast status poll).
+    async openPendingUpdates() {
+      const name = this.modal.mg?.name;
+      if (!name) return;
+      this.pud = { packages: [], total: 0, truncated: false, busy: false, err: '' };
+      this.modal = { ...this.modal, open: true, type: 'updates', title: 'Pending updates', readonly: true };
+      await this.refreshPendingUpdates();
+    },
+    async refreshPendingUpdates() {
+      const name = this.modal.mg?.name;
+      if (!name) return;
+      this.pud.busy = true; this.pud.err = '';
+      try {
+        const r = await this.api('/hosts/' + encodeURIComponent(name) + '/updates');
+        this.pud.packages = r.packages || [];
+        this.pud.total = r.total || 0;
+        this.pud.truncated = !!r.truncated;
+      } catch (e) { this.pud.err = e.message; }
+      finally { this.pud.busy = false; }
+    },
+    pudSecurityCount() { return this.pud.packages.filter((p) => p.security).length; },
+
     async installOps(h) {
       this.hostBusy = h.name;
       try {
@@ -177,14 +201,10 @@ function dashboardHosts() {
       return h.name;
     },
 
-    // One-click, no form: enable the dead-man monitor with sane defaults.
     async enableMonitor(row) {
       this.hostBusy = row.id;
       try {
-        const name = await this.ensureHostName(row);
-        await this.api('/hosts/' + encodeURIComponent(name) + '/monitor', { method: 'POST', body: JSON.stringify({}) });
-        this.notify('Monitoring on · ' + name);
-        await this.loadHosts();
+        await this.openMonitorChannel(await this.ensureHostName(row));
       } catch (e) { this.notify(e.message, 'error'); }
       finally { this.hostBusy = ''; }
     },
@@ -245,6 +265,23 @@ function dashboardHosts() {
 
     // Local keys the user can assign (private half present, not the reserved ops key).
     userKeysAvail() { return (this.sshKeys || []).filter(k => k.hasPrivateKey && k.role !== 'ops'); },
+
+    // vops fell back to its only key — nothing was chosen for this host.
+    keyIsDefault() { return this.modal.mg?.host?.conn?.keySource === 'default'; },
+
+    hostKeyPlaceholder() { return this.modal.mg?.host?.userKeyName ? 'Change key…' : 'Assign a key…'; },
+
+    // Reached the server, tried a key, got refused — the only state where authorizing helps.
+    showAuthorizeHelp() {
+      const c = this.modal.mg?.host?.conn;
+      return !!(c?.reachable && c.hasKey && !c.authorized && c.publicKey);
+    },
+
+    // Appends the public half on the SERVER — never run on the operator's machine.
+    akInstallCmd() {
+      const pk = this.modal.mg?.host?.conn?.publicKey || '';
+      return String.raw`install -d -m 700 ~/.ssh && printf '%s\n' '${pk}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
+    },
 
     async assignUserKey(keyName) {
       const mg = this.modal.mg; if (!keyName) return;
@@ -341,12 +378,16 @@ function dashboardHosts() {
       const mg = this.modal.mg; if (mg) mg.host = (this.hosts || []).find(x => x.name === mg.name) || mg.host;
     },
 
+    // Enabling asks WHERE the alert goes: a monitor with no channel registers
+    // fine and then alerts nobody, which is the one failure a dead-man switch
+    // must not have. Disabling stays a single call.
     async manageMonitor(on) {
-      const mg = this.modal.mg; mg.busy = true;
+      const mg = this.modal.mg;
+      if (on) return this.openMonitorChannel(mg.name);
+      mg.busy = true;
       try {
-        const path = '/hosts/' + encodeURIComponent(mg.name) + '/monitor';
-        if (on) { await this.api(path, { method: 'POST', body: JSON.stringify({}) }); this.notify('Monitoring on · ' + mg.name); }
-        else { await this.api(path, { method: 'DELETE' }); this.notify('Monitoring off · ' + mg.name); }
+        await this.api('/hosts/' + encodeURIComponent(mg.name) + '/monitor', { method: 'DELETE' });
+        this.notify('Monitoring off · ' + mg.name);
         await this.refreshManageHost();
       } catch (e) { this.notify(e.message, 'error'); }
       finally { mg.busy = false; }

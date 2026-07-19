@@ -51,6 +51,28 @@ vops-ops:ab12cd34
 
 const at = (s: string): number => Date.parse(s.replace(' ', 'T'));
 
+// /proc/diskstats snapshots: sda + nvme0n1 are whole disks (counted); sda1,
+// nvme0n1p1 (partitions) and dm-0 carry huge deltas to prove they are excluded.
+// sectors_read is field index 5, sectors_written index 9 (0-based after trim).
+const IO_STATS_A = [
+  '   8       0 sda 500 12 1000 40 300 8 2000 30 0 60 70',
+  '   8       1 sda1 400 10 500 30 250 6 1000 20 0 40 50',
+  ' 259       0 nvme0n1 900 20 3000 50 700 10 4000 40 0 80 90',
+  ' 259       1 nvme0n1p1 800 18 1500 45 650 9 2000 35 0 70 80',
+  ' 253       0 dm-0 100 0 9000 0 90 0 9000 0 0 0 0',
+].join('\n');
+// vs A: sda read +10240 / write +5120, nvme0n1 read +10240 / write +5120 over a 5s
+// window → read 2.0 MB/s, write 1.0 MB/s (MB = 1024². Partitions/dm move far more.)
+const IO_STATS_B = [
+  '   8       0 sda 600 12 11240 40 350 8 7120 30 0 60 70',
+  '   8       1 sda1 400 10 99500 30 250 6 90000 20 0 40 50',
+  ' 259       0 nvme0n1 900 20 13240 50 700 10 9120 40 0 80 90',
+  ' 259       1 nvme0n1p1 800 18 88500 45 650 9 80000 35 0 70 80',
+  ' 253       0 dm-0 100 0 900000 0 90 0 900000 0 0 0 0',
+].join('\n');
+const ioBattery = (upA: string, statsA: string, upB: string, statsB: string): string =>
+  `@@io\n${upA}\n${statsA}\n@@io2\n${upB}\n${statsB}\n@@end\n`;
+
 describe('status battery', () => {
   it('renders a per-family probe script with all section markers', () => {
     const script = buildBatteryScript('debian');
@@ -198,5 +220,46 @@ no
 `;
     const findings = parseBattery(healthy, { now: at('2026-07-12 10:20:00') });
     expect(findings.every((f) => f.severity === 'ok')).toBe(true);
+  });
+
+  describe('disk I/O (sys.io)', () => {
+    it('brackets the battery with @@io first and @@io2 last', () => {
+      const script = buildBatteryScript('debian');
+      const io = script.indexOf('"@@io"');
+      const disk = script.indexOf('"@@disk"');
+      const io2 = script.indexOf('"@@io2"');
+      const end = script.indexOf('"@@end"');
+      expect(io).toBeGreaterThanOrEqual(0);
+      expect(io).toBeLessThan(disk);
+      expect(disk).toBeLessThan(io2);
+      expect(io2).toBeLessThan(end);
+      expect(script).toContain('/proc/diskstats');
+    });
+
+    it('computes read/write MB/s across the battery window, excluding partitions and dm', () => {
+      const io = parseBattery(ioBattery('1000.00', IO_STATS_A, '1005.00', IO_STATS_B)).find((x) => x.id === 'sys.io');
+      expect(io?.severity).toBe('ok');
+      expect(io?.summary).toBe('Disk I/O: read 2.0 MB/s · write 1.0 MB/s');
+      expect(io?.value).toBe(3);
+    });
+
+    it('produces no sys.io when a counter went backwards', () => {
+      const back = ioBattery('1000.00', IO_STATS_B, '1005.00', IO_STATS_A);
+      expect(parseBattery(back).some((x) => x.id === 'sys.io')).toBe(false);
+    });
+
+    it('produces no sys.io when the window is under 0.7s', () => {
+      const brief = ioBattery('1000.00', IO_STATS_A, '1000.50', IO_STATS_B);
+      expect(parseBattery(brief).some((x) => x.id === 'sys.io')).toBe(false);
+    });
+
+    it('produces no sys.io when the second snapshot is missing', () => {
+      const noSecond = `@@io\n1000.00\n${IO_STATS_A}\n@@end\n`;
+      expect(parseBattery(noSecond).some((x) => x.id === 'sys.io')).toBe(false);
+    });
+
+    it('produces no sys.io for fixtures without @@io sections', () => {
+      expect(parseBattery(SAMPLE).some((x) => x.id === 'sys.io')).toBe(false);
+    });
   });
 });

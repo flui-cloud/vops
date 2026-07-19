@@ -23,6 +23,12 @@ export interface VopsHostOs {
 export type SshKeyKind = 'ops' | 'user' | 'none';
 
 /**
+ * Where the key vops would use came from. `default` is the sole-key fallback —
+ * a guess, not the user's choice for this host, and it must never be shown as one.
+ */
+export type SshKeySource = 'assigned' | 'default';
+
+/**
  * Cached SSH connection state — what the UI shows and every SSH-requiring action
  * gates on. `ready` = reachable + key accepted; the rest each map to one clear fix.
  */
@@ -34,6 +40,7 @@ export interface HostConn {
   /** Name + public half of the key vops would use (to authorize on the server). */
   keyName?: string;
   publicKey?: string;
+  keySource?: SshKeySource;
   /** Structural ladder — each layer the UI shows and gates on. */
   reachable: boolean;
   hasKey: boolean;

@@ -7,6 +7,7 @@ import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.serv
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHost } from '../hosts/host.model';
 import { buildBatteryScript, parseBattery } from './status-battery';
+import { buildPendingUpdatesScript, parsePendingUpdates, PendingUpdates } from './pkg-updates';
 import { cloudPowerFinding, hungGuestFinding, metricFindings } from './cloud-plane';
 import { AGENT_REMOTE_PATH, agentFindings } from '../agent/vops-agent.service';
 
@@ -62,6 +63,14 @@ export class VopsHostStatusService {
       `journalctl -u '${clean}' -n ${n} --no-pager 2>&1`;
     const res = await this.ssh.run(this.target(host), cmd, { timeoutMs: 30_000 });
     return { host: name, unit: clean, output: (res.stdout || res.stderr || '(no output)').trim() };
+  }
+
+  /** Read-only: which packages have a pending update, fetched on demand over SSH. */
+  async pendingUpdates(name: string): Promise<{ host: string } & PendingUpdates> {
+    const host = this.hosts.show(name);
+    const family = host.os?.family ?? 'unknown';
+    const res = await this.ssh.runScript(this.target(host), buildPendingUpdatesScript(family), { timeoutMs: 20_000 });
+    return { host: name, ...parsePendingUpdates(family, res.stdout) };
   }
 
   private async run(host: VopsHost): Promise<HostStatusResult> {

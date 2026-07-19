@@ -38,6 +38,24 @@ describe('deriveConnState (structural: reachable → key → authorized)', () =>
     expect(r.state).toBe('auth-failed');
     expect(r.message).toMatch(/authorized/i);
   });
+  it('an assigned key that is refused → names it and says to authorize it', () => {
+    const r = deriveConnState({
+      reachable: true, hasKey: true, authorized: false, keyKind: 'user', host: HOST,
+      keyName: 'bootstrap', keySource: 'assigned',
+    });
+    expect(r.state).toBe('auth-failed');
+    expect(r.message).toMatch(/'bootstrap'/);
+    expect(r.message).toMatch(/add its public half/i);
+  });
+  it('a fallback key that is refused → says it was never assigned, offers reassigning first', () => {
+    const r = deriveConnState({
+      reachable: true, hasKey: true, authorized: false, keyKind: 'user', host: HOST,
+      keyName: 'laptop', keySource: 'default',
+    });
+    expect(r.state).toBe('auth-failed');
+    expect(r.message).toMatch(/isn't assigned to this host/i);
+    expect(r.message).toMatch(/assign the right key/i);
+  });
   it('reachable + key + authorized → ready, naming the key kind', () => {
     const r = deriveConnState({ reachable: true, hasKey: true, authorized: true, keyKind: 'ops', host: HOST });
     expect(r.state).toBe('ready');

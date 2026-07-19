@@ -6,6 +6,7 @@ const MON_SIGNALS = [
   { key: 'mem', label: 'Mem used', ids: ['sys.memory', 'agent.mem'], pct: true, invert: true },
   { key: 'disk', label: 'Disk used', ids: ['sys.disk', 'agent.disk'], pct: true },
   { key: 'load', label: 'Load', ids: ['sys.load'], pct: false },
+  { key: 'io', label: 'Disk I/O', ids: ['sys.io'], pct: false, unit: 'MB/s' },
 ];
 // Gauge colour thresholds — utilisation signals go amber then red; load is
 // judged per core (load1 / cores). Independent of the backend check severity.
@@ -21,6 +22,7 @@ const MON_HELP = {
   'sys.disk': { title: 'Disk space', help: 'How full the fullest disk is. Above ~85% things start to fail — logs, updates, databases.' },
   'sys.memory': { title: 'Memory', help: 'Share of RAM in use. Constantly near 100% means the server is starved and may slow down or kill processes.' },
   'sys.load': { title: 'System load', help: 'How long the CPU run-queue is, relative to the number of cores. Above 1.0 per core, work is piling up.' },
+  'sys.io': { title: 'Disk I/O', help: 'How much data the disks are reading and writing right now, measured across the status check. High sustained I/O explains a slow server even when CPU looks idle.' },
   'sys.uptime': { title: 'Uptime', help: 'Time since the last reboot. A very recent reboot is flagged in case it was not planned.' },
   'svc.failed': { title: 'Failed services', help: 'Background services (systemd units) that crashed or refuse to start.' },
   'svc.oom': { title: 'Out-of-memory kills', help: 'Whether Linux had to kill a process because it ran out of RAM.' },
@@ -135,7 +137,7 @@ function dashboardMonitoring() {
       let n = Number(f.value);
       if (!Number.isFinite(n)) return null;
       if (def.invert) n = Math.max(0, 100 - n);   // sys.memory reports free → show used
-      const sig = { key: def.key, label: def.label, value: Math.round(n * 100) / 100, unit: def.pct ? '%' : '', pct: def.pct, severity: f.severity || 'info', summary: f.summary };
+      const sig = { key: def.key, label: def.label, value: Math.round(n * 100) / 100, unit: def.unit || (def.pct ? '%' : ''), pct: def.pct, severity: f.severity || 'info', summary: f.summary };
       if (def.key === 'load') {
         const m = /on (\d+) core/.exec(f.summary || '');
         sig.cores = m ? Number(m[1]) : 1;
