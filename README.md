@@ -12,10 +12,14 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
   <a href="https://www.npmjs.com/package/@flui-cloud/vops"><img alt="npm" src="https://img.shields.io/npm/v/@flui-cloud/vops.svg"></a>
-  <img alt="Node >= 20" src="https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white">
+  <a href="https://nodejs.org"><img alt="Node &gt;= 20" src="https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&amp;logoColor=white"></a>
 </p>
 <p align="center">
-  <em>Part of the <a href="https://github.com/flui-cloud">Flui</a> ecosystem. Built on <a href="../flui-infra"><code>@flui-cloud/infra</code></a>.</em>
+  <strong><a href="https://vops.flui.cloud">Compare providers online →</a></strong><br>
+  <em>No install, no account — the same live prices vops uses, in your browser.</em>
+</p>
+<p align="center">
+  <em>Part of the <a href="https://github.com/flui-cloud">Flui</a> ecosystem. Built on <a href="https://www.npmjs.com/package/@flui-cloud/infra"><code>@flui-cloud/infra</code></a>.</em>
 </p>
 
 <p align="center">
@@ -43,23 +47,25 @@ vops gives you a single vocabulary over all of them, with a bias toward **safety
 
 ## Quickstart
 
-Requires Node.js 20+. No account, no Docker, no config beyond your provider tokens.
+Requires Node.js 20+. No account, no Docker, **no credentials**.
 
 ```bash
 # 1. Install
 npm install -g @flui-cloud/vops
 
-# 2. Add a provider token (stored locally, never transmitted)
-vops config set hetzner YOUR_HETZNER_TOKEN
+# 2. See who's supported and how each one bills
+vops providers list
 
-# 3. Compare providers on live prices
-vops compare
+# 3. Real OVH prices, straight from the public catalog
+vops compare --provider ovh
 
 # 4. Open the local dashboard (interactive map, 127.0.0.1 only)
 vops ui
 ```
 
-No token is needed to explore OVH's real-time public pricing or to render a host firewall — those work offline out of the box.
+Every step above runs with no token at all — nothing to configure, nothing sent anywhere. Rendering a host firewall (`vops host-firewall render`) works cold too.
+
+Comparing *across* providers is the exception: `vops compare` without `--provider` queries each provider's own API, so it needs their credentials. OVH is the one whose catalog is public, which is why it answers cold. Add a credential when you want that, or when you want vops to see your fleet or provision something — see [Configuration](#configuration).
 
 ## What you can do
 
@@ -91,9 +97,24 @@ vops vnet create / list / show / subnet / route / attach / delete
 vops ssh-key create / list / import / register / delete
 vops ssh <provider> <server>           # open an interactive session
 
-# Watch — get pushed when a plan restocks or its price changes (opt-in, hosted relay)
+# Day-2 operations over SSH — on any host, whoever provisioned it
+vops host add / import / list / show   # local inventory (never touches the server)
+vops host status                       # live health: CPU, memory, disk, I/O, services
+vops host update --list                # which packages are pending (read-only)
+vops host update                       # apply them
+vops host firewall                     # one firewall model: provider-native or vops nftables
+vops host ssh-harden                   # key-only SSH, lock-out-proof (see below)
+
+# Benchmark — measured performance per euro
+vops bench host <name>                 # preflight only; add --yes to actually run
+vops bench list / show <id>            # stored runs; --share emits a markdown artifact
+vops bench compare <a> <b>             # self-relative deltas, caveats always shown
+
+# Watch — get alerted while you're away (opt-in, hosted relay)
 vops watch login                                              # connect once (local token, no signup)
-vops watch add hetzner cx53 --location fsn1 --ntfy-topic my-vops-alerts
+vops watch plan add hetzner cx53 --location fsn1 --ntfy-topic my-vops-alerts
+vops watch uptime add <url>            # external black-box uptime probe
+vops watch host add <name>             # dead-man monitor: alerts when the host goes silent
 vops watch list
 vops watch feed --follow               # live feed of stock/price transitions
 vops watch remove <id>
@@ -110,7 +131,9 @@ vops ui
 - **Two firewalls, one model.** Use the provider's native firewall where it's good (Hetzner, Scaleway), or a **host-level nftables firewall** delivered through cloud-init for providers that lack one (Contabo, OVH). The host firewall is lock-out-safe — it keeps SSH reachable unless you've explicitly opened port 22 yourself.
 - **Private networks.** Create networks and subnets and attach servers to them (OVH/Neutron today).
 - **SSH by reference.** Manage local `ed25519` keys, or *import* a key you already use — vops records its path and never copies the secret — then register the public half with a provider.
-- **Get pinged when a plan restocks.** `vops watch` alerts you the moment a sold-out plan comes back or its price moves, over ntfy, a webhook, or Telegram. It's the one feature that isn't purely local — see above for exactly what that means.
+- **Day-2 operations on any host.** `vops host` works over plain SSH against servers vops never provisioned — live health, pending updates, hardening. `vops host ssh-harden` disables password login lock-out-proof: it refuses unless your own key is proven to work and no other password user remains, then auto-reverts if the new config locks you out.
+- **Measured performance per euro.** `vops bench` runs a versioned benchmark battery over SSH and stores the result locally. It reports self-relative deltas with caveats attached, never a league table — and it won't run without `--yes`, since saturating a box for minutes is disruptive.
+- **Get pinged when a plan restocks.** `vops watch` alerts you the moment a sold-out plan comes back or its price moves, over ntfy, a webhook, or Telegram — plus external uptime probes and a dead-man monitor that speaks up when a host goes silent. It's the one feature that isn't purely local — see above for exactly what that means.
 
 ## The local dashboard
 
@@ -118,13 +141,19 @@ vops ui
 
 ## Configuration
 
-Credentials and local state live under `~/.config/vops/`:
+Credentials and local state live under `~/.config/vops/`. There are two ways to supply a provider credential — pick one:
 
-- `~/.config/vops/.env` — provider credentials (also read from a `.env` in the current directory). `vops config set <provider> <token>` writes here.
+```bash
+vops config set hetzner YOUR_HETZNER_TOKEN   # encrypted local store (recommended)
+vops config list                             # which providers are configured
+```
+
+- `~/.config/vops/profiles/<profile>/secrets.json.enc` — where `vops config set` stores credentials, encrypted with **AES-256-GCM**. The key sits beside it in `.key`, created `0600`.
+- `~/.config/vops/.env` — the environment-variable route, read directly (a `.env` in the current directory works too). Plain text, so it's on you to protect it.
 - `~/.config/vops/profiles/<profile>/keys/` — your SSH keys (private halves stay here, never uploaded, never copied on import).
 - A local libSQL cache and a plan/audit store.
 
-Provider credential variables:
+Provider credential variables, if you use the `.env` route:
 
 | Provider | Variables |
 | --- | --- |
@@ -137,10 +166,10 @@ Secrets are read locally and are **never** printed to logs or `--json` output.
 
 ## Development
 
-vops depends on **[`@flui-cloud/infra`](../flui-infra)** for all provider/cloud logic. In this repo it's linked from the sibling directory (`file:../flui-infra`); the provider layer is the single source of truth and evolves there, not here.
+vops depends on **[`@flui-cloud/infra`](https://www.npmjs.com/package/@flui-cloud/infra)** for all provider/cloud logic, installed from npm. That package is the single source of truth for the provider layer and evolves there, not here.
 
 ```bash
-pnpm install                     # links ../flui-infra (which must be built)
+pnpm install                     # installs @flui-cloud/infra from npm
 npx tsc && npx tsc-alias         # compile src → lib/
 node scripts/build-map.js        # bake the offline world map (d3-geo)
 node scripts/build-ui.js         # Tailwind purge + inline Alpine → lib/ui, lib/lib
@@ -149,7 +178,7 @@ node bin/run <command>           # run the built CLI without touching the global
 ```
 
 - **Full local loop:** `npx tsc && npx tsc-alias && pnpm test`. For UI/asset changes also run the two `build-*.js` scripts.
-- If you change `@flui-cloud/infra`, rebuild it there (`npx tsc && npx tsc-alias`) and re-run `pnpm install` here **if files were added or removed** (pnpm hard-links `file:` deps at install time).
+- To work against a local checkout of `@flui-cloud/infra`, point the dependency at it (`file:../flui-infra`) and rebuild it there after each change. Re-run `pnpm install` here **if files were added or removed** — pnpm hard-links `file:` deps at install time, so the copy goes stale otherwise.
 - The stack is TypeScript — [oclif](https://oclif.io) for the CLI, NestJS for dependency injection and the local API.
 
 ## License
