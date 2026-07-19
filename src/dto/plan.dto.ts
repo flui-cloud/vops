@@ -22,6 +22,21 @@ export interface VopsPlanAvailability {
   id: string;
   name: string;
   locations: Array<{ location: string; available: boolean }>;
+  /**
+   * Up in every region. The catalog omits the region list for these plans, so
+   * `locations` is empty — which is NOT the same as "available nowhere" and must
+   * never be rendered as such.
+   */
+  everywhere?: boolean;
+}
+
+/** A catalog answer plus where it came from, so callers can label it. */
+export interface VopsAvailabilityResult {
+  plans: VopsPlanAvailability[];
+  /** false when the provider publishes no real per-location availability. */
+  live: boolean;
+  ageSeconds: number | null;
+  stale: boolean;
 }
 
 export interface VopsCompareRow {

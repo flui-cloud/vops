@@ -44,11 +44,15 @@ export class ProvidersController {
     return plans.sort((a, b) => (a.hourly ?? Infinity) - (b.hourly ?? Infinity));
   }
 
+  /** Returns the plan rows only: the dashboard consumes this as an array, so the
+   * provenance fields stay on the service result rather than reshaping the wire
+   * contract. Rows carry `everywhere` — see `availStatus` in the dashboard. */
   @Get(':provider/availability')
-  availability(
+  async availability(
     @Param('provider') provider: string,
     @Query('family') family?: string,
   ) {
-    return this.catalog.availability(provider, family);
+    const result = await this.catalog.availability(provider, family);
+    return result.plans;
   }
 }

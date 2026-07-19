@@ -12,7 +12,9 @@ import {
   resolveProvider,
 } from '../lib/providers';
 import { LocalStore } from '../lib/store/local-store';
+import { CloudClient, RemoteAvailabilityReport } from '../lib/cloud-client';
 import {
+  VopsAvailabilityResult,
   VopsCompareRow,
   VopsPlan,
   VopsPlanAvailability,
@@ -30,6 +32,24 @@ export interface CompareQuery {
 }
 
 const NODE_SIZES_TTL_SECONDS = 3600;
+// Availability moves; plan shapes and prices do not. Short enough that a reading
+// is never badly out of date, long enough that one dashboard render is one call.
+const AVAILABILITY_TTL_SECONDS = 60;
+
+interface CachedAvailability {
+  report: RemoteAvailabilityReport;
+  fetchedAt: number;
+}
+
+/** Add the time an entry sat in the local cache to the server-reported age. */
+function agedBy(report: RemoteAvailabilityReport, heldMs: number): RemoteAvailabilityReport {
+  if (!report.meta || report.meta.ageSeconds == null) return report;
+  const ageSeconds = report.meta.ageSeconds + Math.max(0, Math.round(heldMs / 1000));
+  return {
+    ...report,
+    meta: { ...report.meta, ageSeconds, stale: ageSeconds > report.meta.staleAfterSeconds },
+  };
+}
 
 /** Live compute research over the shared provider services (getNodeSizes). */
 @Injectable()
@@ -57,23 +77,51 @@ export class VopsCatalogService {
     );
   }
 
+  /**
+   * Per-location availability, served from the hosted vops catalog rather than
+   * the user's own provider credentials.
+   *
+   * Deliberately ONE path, not "own keys with a fallback". The provider SDKs
+   * swallow an unconfigured-credentials error into a generic failure (Hetzner
+   * rethrows a bare "Failed to fetch node sizes"), so a fallback keyed on catching
+   * errors could not tell "no keys" from "provider is down" — and would quietly
+   * serve a cached snapshot during a real outage. Going through the catalog for
+   * everyone keeps the answer honest and makes the command work on a fresh
+   * install with nothing configured, which is the point.
+   *
+   * The cost is that the reading is a snapshot, never live; `stale`/`ageSeconds`
+   * are returned so the caller can say so out loud.
+   */
   async availability(
     name: string,
     family?: string,
     refresh = false,
-  ): Promise<VopsPlanAvailability[]> {
+  ): Promise<VopsAvailabilityResult> {
     const provider = resolveProvider(name);
-    const sizes = await this.nodeSizes(provider, refresh);
-    return sizes
-      .filter((s) => !family || s.name.toLowerCase().startsWith(family.toLowerCase()))
-      .map((s) => ({
-        id: s.id,
-        name: s.name,
-        locations: (s.availability ?? []).map((a) => ({
-          location: a.location,
-          available: a.available,
-        })),
+    const report = await this.availabilityReport(provider, refresh);
+    const matches = (plan: string) =>
+      !family || plan.toLowerCase().startsWith(family.toLowerCase());
+
+    const limited: VopsPlanAvailability[] = report.limited
+      .filter((p) => matches(p.plan))
+      .map((p) => ({
+        id: p.plan,
+        name: p.plan,
+        locations: p.regions.map((r) => ({ location: r.code, available: r.up })),
       }));
+
+    // `everywhere` plans arrive as bare names — the catalog drops their region
+    // list precisely because every region is up. Flagged, not faked.
+    const everywhere: VopsPlanAvailability[] = report.everywhere
+      .filter(matches)
+      .map((plan) => ({ id: plan, name: plan, locations: [], everywhere: true }));
+
+    return {
+      plans: [...limited, ...everywhere],
+      live: report.live,
+      ageSeconds: report.meta?.ageSeconds ?? null,
+      stale: report.meta?.stale ?? false,
+    };
   }
 
   /** Cheapest hourly/monthly price per location — the "from X" per region. */
@@ -257,6 +305,35 @@ export class VopsCatalogService {
       .map((p) => Number.parseFloat(p[field]?.net ?? ''))
       .filter((n) => Number.isFinite(n) && n > 0);
     return values.length ? Math.min(...values) : null;
+  }
+
+  /**
+   * Cached catalog read. The dashboard fans out one availability request per
+   * provider on every page load, so without this a single home render was one
+   * round trip to the hosted API per provider, every time.
+   *
+   * The TTL is short on purpose: availability is the thing that moves (the server
+   * itself calls a snapshot stale after 600s), so the hour-long TTL used for plan
+   * shapes and prices would be wrong here.
+   *
+   * `fetchedAt` is stored alongside because `meta.ageSeconds` is the age *at the
+   * server, when we fetched*. Replaying it verbatim from cache would under-report
+   * the age by however long the entry has been sitting here — and printing a
+   * reading as fresher than it is defeats the point of printing the age at all.
+   */
+  private async availabilityReport(
+    provider: CloudProvider,
+    refresh: boolean,
+  ): Promise<RemoteAvailabilityReport> {
+    const key = `availability:${provider}`;
+    if (!refresh) {
+      const cached = await this.store.getCache<CachedAvailability>(key);
+      if (cached?.report) return agedBy(cached.report, Date.now() - cached.fetchedAt);
+    }
+    const report = await new CloudClient().availabilityReport(provider);
+    const entry: CachedAvailability = { report, fetchedAt: Date.now() };
+    await this.store.setCache(key, entry, AVAILABILITY_TTL_SECONDS);
+    return report;
   }
 
   private async nodeSizes(

@@ -2,8 +2,14 @@ import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { getVopsApp, closeVopsApp } from '../../lib/nest';
 import { renderTable } from '../../lib/output';
-import { VopsServerFirewallService, ServerFirewallView } from '../../firewall/vops-server-firewall.service';
+import { VopsServerFirewallService, ServerFirewallView, DetectedFirewallView } from '../../firewall/vops-server-firewall.service';
 import { FirewallService, parseServiceSpec, servicesToRules } from '../../firewall/firewall-services';
+
+function detectedLabel(d: DetectedFirewallView): string {
+  if (d.source === 'flui') return 'flui firewall';
+  if (d.source === 'provider') return d.name ? `provider firewall · ${d.name}` : 'provider firewall';
+  return 'other host firewall';
+}
 
 export default class HostFirewall extends Command {
   static readonly description =
@@ -82,8 +88,11 @@ export default class HostFirewall extends Command {
   private renderManaged(view: ServerFirewallView): void {
     const engine = view.engine === 'none' ? chalk.dim('none') : chalk.cyan(view.engine);
     this.log(`${chalk.bold(view.host)}  engine: ${engine}  ${view.active ? chalk.green('active') : chalk.dim('inactive')}`);
-    if (view.cededToFlui) {
-      this.log(chalk.yellow('⚠ flui manages this host firewall — vops management is disabled here (see below).'));
+    if (view.cededTo) {
+      const owner = view.cededTo === 'provider'
+        ? `'${view.detected?.name ?? 'a provider firewall'}' guards this server at the provider`
+        : 'flui manages this host firewall';
+      this.log(chalk.yellow(`⚠ ${owner} — vops management is disabled here (see below).`));
       return;
     }
     if (view.active && !view.persistent) this.log(chalk.yellow("⚠ won't survive a reboot — no boot-time unit installed (non-systemd host?)."));
@@ -103,17 +112,19 @@ export default class HostFirewall extends Command {
     const d = view.detected;
     if (!d) return;
     const state = d.active ? chalk.green('active') : chalk.dim('configured, not active');
-    const src = d.source === 'flui' ? 'flui firewall' : 'other host firewall';
-    const title = chalk.bold(`Detected — ${src}`);
+    const title = chalk.bold(`Detected — ${detectedLabel(d)}`);
     this.log('');
     this.log(`${title} ${chalk.dim('(not managed by vops)')}  ${state}${d.persistent ? chalk.dim(' · persistent') : ''}`);
     if (d.source === 'other') {
-      this.log(chalk.dim("Inbound is filtered by rules vops doesn't manage. Rule detail is only shown for flui firewalls."));
+      this.log(chalk.dim("Inbound is filtered by rules vops doesn't manage, and this firewall exposes no readable rules."));
       return;
     }
     if (d.rulesetPath) this.log(chalk.dim(`Source: ${d.rulesetPath} (read-only)`));
     if (!d.services.length) {
-      this.log(chalk.dim("No public ingress rules — only flui's base rules (SSH, ICMP, cluster) apply."));
+      const empty = d.source === 'flui'
+        ? "No public ingress rules — only flui's base rules (SSH, ICMP, cluster) apply."
+        : 'No inbound service rules — nothing is explicitly allowed.';
+      this.log(chalk.dim(empty));
       return;
     }
     this.log(renderTable(['SERVICE', 'PROTO/PORT', 'FROM'], this.serviceRows(d.services)));

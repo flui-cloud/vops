@@ -45,8 +45,26 @@ function dashboardFirewall() {
       const v = this.fw.view;
       if (v?.active) return { active: true, hasDetail: true, services: v.services || [], sshPort: v.sshPort || 22, sshAlwaysOpen: !!v.sshAlwaysOpen };
       const d = v?.detected;
-      if (d?.active) return { active: true, hasDetail: d.source === 'flui', services: d.services || [], sshPort: v?.sshPort || 22, sshAlwaysOpen: d.source === 'flui', source: d.source };
+      // 'other' is a bare default-deny with no decodable rules; flui/provider give per-port detail.
+      if (d?.active) return { active: true, hasDetail: d.source !== 'other', services: d.services || [], sshPort: v?.sshPort || 22, sshAlwaysOpen: d.source === 'flui', source: d.source };
       return { active: false, hasDetail: false, services: [], sshPort: v?.sshPort || 22, sshAlwaysOpen: false };
+    },
+
+    // Someone else owns this firewall — vops shows it, never edits it.
+    fwCeded() { return !!this.fw.view?.cededTo; },
+    fwCededLabel() { return this.fw.view?.cededTo === 'provider' ? 'managed at the provider' : 'managed by flui'; },
+    fwCededNote() {
+      const d = this.fw.view?.detected;
+      if (this.fw.view?.cededTo === 'provider') {
+        return '“' + (d?.name || 'A provider firewall') + '” already guards this server and vops didn\'t create it. vops won\'t attach a second firewall to the same server — edit it where it\'s managed, or detach it first. Its rules are read-only below.';
+      }
+      return "flui manages this host's firewall — vops won't add a second, stacking ruleset here. Edit these rules in flui, or remove flui's firewall first. They're shown read-only below.";
+    },
+    fwDetectedLabel() {
+      const s = this.fw.view?.detected?.source;
+      if (s === 'flui') return 'Detected — flui firewall';
+      if (s === 'provider') return 'Detected — provider firewall · ' + (this.fw.view?.detected?.name || '');
+      return 'Detected — other host firewall';
     },
     // Reads what's enforced (vops or a detected firewall), not the unsaved draft (fw.model).
     fwPortAllowed(port) {
@@ -91,7 +109,7 @@ function dashboardFirewall() {
     },
 
     fwEngineLabel(e) { return ({ provider: 'Provider firewall', nftables: 'vops firewall', none: 'Not available' })[e] || e; },
-    fwCanApply() { return !this.fw.busy && !this.fw.view?.cededToFlui && (this.fw.view?.engine !== 'nftables' || this.mgReady()); },
+    fwCanApply() { return !this.fw.busy && !this.fwCeded() && (this.fw.view?.engine !== 'nftables' || this.mgReady()); },
 
     fwAddCustom() {
       const c = this.fw.custom; const port = (c.port || '').trim();

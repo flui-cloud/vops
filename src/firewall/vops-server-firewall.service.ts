@@ -16,14 +16,20 @@ import {
 } from './firewall-services';
 import { ForeignFirewall } from './foreign-firewall';
 
+/** Who owns a host's firewall when vops doesn't — vops reads it, never writes it. */
+export type FirewallCededTo = 'flui' | 'provider';
+
 /** A firewall vops didn't apply, surfaced read-only so a protected host isn't shown as open. */
 export interface DetectedFirewallView {
-  source: 'flui' | 'other';
+  source: 'flui' | 'other' | 'provider';
   active: boolean;
   persistent: boolean;
-  /** Decoded rules as simple services — populated for 'flui', empty for 'other'. */
+  /** Decoded rules as simple services — populated for 'flui'/'provider', empty for 'other'. */
   services: FirewallService[];
   rulesetPath?: string;
+  /** Provider plane only: which firewall at the provider is guarding this server. */
+  providerFirewallId?: string;
+  name?: string;
 }
 
 export interface ServerFirewallView {
@@ -44,8 +50,8 @@ export interface ServerFirewallView {
   appliedTo?: VopsFirewallTarget[];
   /** A firewall vops doesn't manage, detected live on the host (read-only). */
   detected?: DetectedFirewallView;
-  /** nftables engine + flui owns the host firewall → vops management is ceded (read-only). */
-  cededToFlui?: boolean;
+  /** Someone else owns this host's firewall → vops management is ceded (read-only). */
+  cededTo?: FirewallCededTo;
 }
 
 /**
@@ -80,16 +86,18 @@ export class VopsServerFirewallService {
     return { host: name, engine: 'none', services: [], sshAlwaysOpen: false, active: false, persistent: false, sshPort: host.port ?? 22 };
   }
 
-  // Attach any non-vops firewall (read-only). On the nftables engine, an active
-  // flui firewall means vops cedes management (one manager per host — no stacking
-  // drop layers), so `cededToFlui` disables vops apply.
+  // Attach any non-vops HOST-level firewall (read-only). On the nftables engine, an
+  // active flui firewall means vops cedes management (one manager per host — no
+  // stacking drop layers), so `cededTo` disables vops apply.
   private withDetected(
     view: ServerFirewallView,
     detected: ForeignFirewall | null,
     engine: FirewallEngine,
   ): ServerFirewallView {
-    if (!detected) return view;
-    const cededToFlui = engine === 'nftables' && detected.source === 'flui' && detected.active;
+    // An inactive host-level ruleset must never mask a live provider firewall the
+    // engine already found — that would report a guarded host as open again.
+    if (!detected || (!detected.active && view.detected)) return view;
+    const ceded = engine === 'nftables' && detected.source === 'flui' && detected.active;
     return {
       ...view,
       detected: {
@@ -99,7 +107,7 @@ export class VopsServerFirewallService {
         services: rulesToServices(detected.rules),
         rulesetPath: detected.rulesetPath,
       },
-      ...(cededToFlui ? { cededToFlui: true } : {}),
+      ...(ceded ? { cededTo: 'flui' as const } : {}),
     };
   }
 
@@ -121,6 +129,13 @@ export class VopsServerFirewallService {
       return this.getNftables(name);
     }
     if (engine === 'provider') {
+      const foreign = await this.findForeignProviderFirewall(host);
+      if (foreign) {
+        throw new BadRequestException(
+          `'${foreign.name}' already guards '${name}' at ${host.provider}, and vops didn't create it. ` +
+            `vops won't attach a second firewall to the same server — edit it where it's managed, or detach it first.`,
+        );
+      }
       // No SSH-always-open safety net at the edge — refuse a lock-out before applying.
       if (!rulesAllowPort(rules, host.port ?? 22)) {
         throw new BadRequestException(
@@ -163,9 +178,11 @@ export class VopsServerFirewallService {
   }
 
   private async getProvider(host: VopsHost): Promise<ServerFirewallView> {
-    const fw = await this.findManagedFirewall(host);
-    const applied = !!fw && !!host.providerServerId && fw.appliedTo.some((t) => sameServer(t.serverId, host.providerServerId));
-    return {
+    const list = host.provider ? await this.providerFw.list(host.provider) : [];
+    const mine = this.firewallName(host);
+    const fw = list.find((f) => f.name === mine) ?? null;
+    const applied = !!fw && this.guardsHost(fw, host);
+    const base: ServerFirewallView = {
       host: host.name,
       engine: 'provider',
       services: rulesToServices(fw?.rules ?? []),
@@ -176,6 +193,39 @@ export class VopsServerFirewallService {
       providerFirewallId: fw?.id,
       appliedTo: fw?.appliedTo,
     };
+    if (applied) return base;
+
+    // vops owns no firewall here — but the server may still be guarded by one it
+    // didn't create. The ownership rule governs writes; reading it is what keeps a
+    // protected host from being reported as wide open.
+    const foreign = list.find((f) => f.name !== mine && this.guardsHost(f, host));
+    if (!foreign) return base;
+    return {
+      ...base,
+      detected: {
+        source: 'provider',
+        active: true,
+        persistent: true,
+        services: rulesToServices(foreign.rules),
+        providerFirewallId: foreign.id,
+        name: foreign.name,
+      },
+      cededTo: 'provider',
+    };
+  }
+
+  /** Is this firewall applied to the host's provider server? */
+  private guardsHost(fw: VopsFirewall, host: VopsHost): boolean {
+    return !!host.providerServerId && fw.appliedTo.some((t) => sameServer(t.serverId, host.providerServerId));
+  }
+
+  /** A provider firewall guarding this server that vops did NOT create (read-only). */
+  private async findForeignProviderFirewall(host: VopsHost): Promise<VopsFirewall | null> {
+    if (!host.provider || !host.providerServerId) return null;
+    const list = await this.providerFw.list(host.provider).catch(() => [] as VopsFirewall[]);
+    const mine = this.firewallName(host);
+    if (list.some((f) => f.name === mine && this.guardsHost(f, host))) return null;
+    return list.find((f) => f.name !== mine && this.guardsHost(f, host)) ?? null;
   }
 
   // Mutation only ever targets the vops-owned `vops-<host>` firewall — never a
