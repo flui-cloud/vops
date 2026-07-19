@@ -1,10 +1,13 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>vops · control plane</title>
 <link rel="icon" type="image/png" href="assets/icon.png" />
+<!-- Apply the saved theme before first paint — Alpine boots at the end of the
+     document, so waiting for init() would flash light at dark-theme users. -->
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('vops-theme')||'light'}catch{}</script>
 <!--TAILWIND-->
 </head>
 <body class="font-sans antialiased">
@@ -19,9 +22,11 @@
       <!--include: sections/header.html-->
       <!--include: sections/overview.html-->
       <!--include: sections/monitoring.html-->
+      <!--include: sections/watchers.html-->
       <!--include: sections/compare.html-->
       <!--include: sections/servers.html-->
       <!--include: sections/host.html-->
+      <!--include: sections/bench.html-->
       <!--include: sections/availability.html-->
       <!--include: sections/firewalls.html-->
       <!--include: sections/vnets.html-->

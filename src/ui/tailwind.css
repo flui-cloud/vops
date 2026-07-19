@@ -164,6 +164,17 @@
     @apply px-2.5 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase;
     letter-spacing: .09em; color: var(--text-faint);
   }
+  .icon-link {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg transition;
+    color: var(--text-faint);
+  }
+  .icon-link:hover { background: var(--panel-3); color: var(--text); }
+  .nav-item-soon { color: var(--text-faint); cursor: default; }
+  .nav-item-soon:hover { background: transparent; color: var(--text-faint); }
+  .pill-soon {
+    @apply ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase;
+    letter-spacing: .06em; color: var(--text-faint); background: var(--panel-3);
+  }
 
   /* Clickable stat cards (link into the servers list) */
   .stat-link { @apply cursor-pointer transition; }

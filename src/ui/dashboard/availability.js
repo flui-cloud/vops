@@ -65,6 +65,9 @@ function dashboardAvailability() {
     availStatus(row) {
       const locs = row.locations || [];
       const up = locs.filter(l => l.available).length;
+      // Up in every region: the catalog omits the region list for these, so an
+      // empty `locations` here means "all good", not "nothing known".
+      if (row.everywhere) return { status: 'full', up: 0, total: 0 };
       if (!locs.length) return { status: 'unknown', up, total: 0 };
       if (up === 0) return { status: 'soldout', up, total: locs.length };
       if (up < locs.length) return { status: 'limited', up, total: locs.length };

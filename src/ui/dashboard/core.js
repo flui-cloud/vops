@@ -8,12 +8,16 @@ const ICONS = {
   sshkeys: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="12" r="4.5"/><path d="M12 12h9m-3 0v3m-3-3v2"/></svg>',
   hosts: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>',
   monitoring: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 12h3l2.5 7 5-14L18 12h3"/></svg>',
+  watchers: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  backups: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6.5" rx="8" ry="3"/><path d="M4 6.5v11c0 1.7 3.6 3 8 3s8-1.3 8-3v-11"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
+  catalog: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V9.5Z"/><path d="M5 3.5h14l1.5 4a2.2 2.2 0 0 1-4.3.6 2.2 2.2 0 0 1-4.2 0 2.2 2.2 0 0 1-4.2 0 2.2 2.2 0 0 1-4.3-.6L5 3.5Z"/></svg>',
+  deploy: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3c3.4 2.2 5.2 5.7 5.2 9.6L12 16.8l-5.2-4.2C6.8 8.7 8.6 5.2 12 3Z"/><circle cx="12" cy="10" r="1.7"/><path d="m9.2 17.2-1.7 3.3 3-1.1M14.8 17.2l1.7 3.3-3-1.1"/></svg>',
 };
 
 function dashboardCore() {
   return {
     token: new URLSearchParams(location.search).get('session') || '',
-    theme: 'dark',
+    theme: 'light',
     view: 'overview',
     hvFrom: 'servers',
     provider: 'hetzner',
@@ -27,7 +31,13 @@ function dashboardCore() {
       { section: 'FLEET', items: [
         { id: 'overview', label: 'Overview', icon: ICONS.overview },
         { id: 'monitoring', label: 'Monitoring', icon: ICONS.monitoring, pill: true },
+        { id: 'watchers', label: 'Watchers', icon: ICONS.watchers },
         { id: 'servers', label: 'Servers', icon: ICONS.servers, pill: true },
+        { id: 'backups', label: 'Backups', icon: ICONS.backups, soon: true },
+      ] },
+      { section: 'DEPLOY', items: [
+        { id: 'catalog', label: 'App Catalog', icon: ICONS.catalog, soon: true },
+        { id: 'deploy', label: 'Deploy App', icon: ICONS.deploy, soon: true },
       ] },
       { section: 'MARKET', items: [
         { id: 'compare', label: 'Compare', icon: ICONS.compare },
@@ -60,13 +70,14 @@ function dashboardCore() {
     get showsProvider() { return ['availability', 'vnets'].includes(this.view); },
     get serverTabs() { return ['all', ...this.providerIds]; },
     get pageTitle() {
-      const m = { overview: 'Overview', monitoring: 'Monitoring', compare: 'Compare', servers: 'Servers', availability: 'Availability',
+      const m = { overview: 'Overview', monitoring: 'Monitoring', watchers: 'Watchers', compare: 'Compare', servers: 'Servers', availability: 'Availability',
         firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys' };
       return m[this.view] || '';
     },
     get subtitle() {
       const m = { overview: 'Your fleet at a glance — servers, spend and live regions across every provider.',
         monitoring: 'Live health of your fleet — connection, resource metrics and status checks, refreshed over SSH.',
+        watchers: 'Every remote alert on your vops-landing account — availability watches, uptime probes and host monitors.',
         compare: 'Real-time plan comparison across every provider.',
         servers: 'Your fleet — provision, monitor and manage every server in one place.',
         availability: 'Plans with limited or sold-out capacity, per location.',
@@ -144,7 +155,7 @@ function dashboardCore() {
     },
 
     readTheme() {
-      try { return localStorage.getItem('vops-theme') || 'dark'; } catch { return 'dark'; }
+      try { return localStorage.getItem('vops-theme') || 'light'; } catch { return 'light'; }
     },
     applyTheme(t) {
       this.theme = t;
@@ -162,6 +173,7 @@ function dashboardCore() {
       if (this.view !== 'monitoring' && this.view !== 'host') this.monStop();
       if (this.view === 'overview') return this.loadOverview();
       if (this.view === 'monitoring') return this.loadMonitoring();
+      if (this.view === 'watchers') return this.loadWatchers();
       if (this.view === 'host') return this.loadHostView();
       if (this.view === 'compare') return this.runCompare();
       if (this.view === 'servers') { this.plansCache = {}; this.loadHosts(); return this.loadServers(); }
