@@ -1,9 +1,25 @@
 {
   "name": "@flui-cloud/vops",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Local-first, real-time VPS provider comparison and safe provisioning using provider APIs.",
   "author": "Flui <hello@flui.cloud>",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/flui-cloud/vops#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flui-cloud/vops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/flui-cloud/vops/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "docs/assets/"
+  ],
   "keywords": [
     "vops",
     "vps",
@@ -19,6 +35,7 @@
   "scripts": {
     "build": "tsc && tsc-alias",
     "postbuild": "node scripts/build-map.js && node scripts/build-ui.js && pnpm link --global",
+    "prepack": "tsc && tsc-alias && node scripts/build-map.js && node scripts/build-ui.js",
     "dev": "ts-node -r tsconfig-paths/register src/index.ts",
     "test": "jest",
     "sonar:scan": "dotenv -e .env.local -- bash -c 'docker run --rm -e SONAR_HOST_URL=http://host.docker.internal:9000 -e SONAR_TOKEN=$SONAR_TOKEN -v \"$PWD:/usr/src\" sonarsource/sonar-scanner-cli'",
