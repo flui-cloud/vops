@@ -1,6 +1,6 @@
 {
   "name": "@flui-cloud/vops",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first, real-time VPS provider comparison and safe provisioning using provider APIs.",
   "author": "Flui <hello@flui.cloud>",
   "license": "Apache-2.0",
