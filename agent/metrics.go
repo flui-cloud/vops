@@ -26,18 +26,9 @@ func parseMeminfo(content string) (total, available uint64) {
 	return total, available
 }
 
-// parseLoadavg returns the 1-minute load average from /proc/loadavg.
-func parseLoadavg(content string) float64 {
-	f := strings.Fields(content)
-	if len(f) == 0 {
-		return 0
-	}
-	v, _ := strconv.ParseFloat(f[0], 64)
-	return v
-}
-
-// parseUptime returns uptime seconds from /proc/uptime.
-func parseUptime(content string) float64 {
+// firstFloatField reads the leading whitespace-separated number of a /proc file:
+// the 1-minute load average of /proc/loadavg, the uptime seconds of /proc/uptime.
+func firstFloatField(content string) float64 {
 	f := strings.Fields(content)
 	if len(f) == 0 {
 		return 0
@@ -53,7 +44,13 @@ func parseStat(content string) (idle, total uint64) {
 		if !strings.HasPrefix(line, "cpu ") {
 			continue
 		}
+		// Stop at steal (index 7): the `guest`/`guest_nice` fields that follow are
+		// already counted inside user/nice, so summing them inflates the
+		// denominator and under-reports usage on virtualised hosts.
 		for i, tok := range strings.Fields(line)[1:] {
+			if i >= 8 {
+				break
+			}
 			v, _ := strconv.ParseUint(tok, 10, 64)
 			total += v
 			if i == 3 || i == 4 { // idle + iowait

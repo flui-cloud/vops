@@ -11,10 +11,10 @@ func TestParseMeminfo(t *testing.T) {
 }
 
 func TestParseLoadavgAndUptime(t *testing.T) {
-	if got := parseLoadavg("1.25 0.80 0.55 1/234 5678"); got != 1.25 {
+	if got := firstFloatField("1.25 0.80 0.55 1/234 5678"); got != 1.25 {
 		t.Fatalf("load1 = %v", got)
 	}
-	if got := parseUptime("123456.78 987654.32"); got != 123456.78 {
+	if got := firstFloatField("123456.78 987654.32"); got != 123456.78 {
 		t.Fatalf("uptime = %v", got)
 	}
 }

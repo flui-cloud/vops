@@ -66,11 +66,11 @@ func collect() Snapshot {
 		V:         1,
 		TS:        time.Now().UTC().Format(time.RFC3339),
 		Host:      host,
-		UptimeSec: round2(parseUptime(readFile("/proc/uptime"))),
+		UptimeSec: round2(firstFloatField(readFile("/proc/uptime"))),
 		CPU: CPU{
 			Cores:        countCores(readFile("/proc/stat")),
 			UsagePercent: cpuUsagePercent(idle1, total1, idle2, total2),
-			Load1:        parseLoadavg(readFile("/proc/loadavg")),
+			Load1:        firstFloatField(readFile("/proc/loadavg")),
 		},
 		Mem: Mem{
 			TotalBytes:     memTotal,
