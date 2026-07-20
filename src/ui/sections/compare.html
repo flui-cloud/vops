@@ -1,41 +1,75 @@
       <section x-show="view==='compare'">
+        <!-- Tier tabs + billing toggle -->
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="seg">
+            <template x-for="t in cmpTabs" :key="t.id">
+              <button class="seg-btn" :class="cmpTab===t.id && 'seg-btn-active'" @click="setCmpTab(t.id)" x-text="t.label"></button>
+            </template>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs" style="color:var(--text-faint)">billing</span>
+            <div class="seg">
+              <button class="seg-btn" :class="cmpBilling==='monthly' && 'seg-btn-active'" @click="setCmpBilling('monthly')">Monthly</button>
+              <button class="seg-btn" :class="cmpBilling==='hourly' && 'seg-btn-active'" @click="setCmpBilling('hourly')">Hourly</button>
+            </div>
+          </div>
+        </div>
+
         <div class="card mb-4 grid grid-cols-2 items-end gap-4 p-5 md:grid-cols-4 xl:grid-cols-6">
           <div><label class="label" for="cmp-cpu">vCPU min</label><input id="cmp-cpu" class="field" type="number" min="1" placeholder="any" x-model="cmp.cpu" @keydown.enter="runCompare()" /></div>
           <div><label class="label" for="cmp-ram">RAM GB min</label><input id="cmp-ram" class="field" type="number" min="1" placeholder="any" x-model="cmp.ramGb" @keydown.enter="runCompare()" /></div>
-          <div><label class="label" for="cmp-region">Region</label><input id="cmp-region" class="field" placeholder="any" x-model="cmp.region" @keydown.enter="runCompare()" /></div>
+          <div><label class="label" for="cmp-region">Region</label>
+            <select id="cmp-region" class="field" x-model="cmp.region">
+              <option value="">anywhere</option>
+              <template x-for="g in cmpRegionGroups" :key="g.continent">
+                <optgroup :label="g.label">
+                  <option :value="'cont:'+g.continent" x-text="'All of '+g.label"></option>
+                  <template x-for="c in g.countries" :key="c"><option :value="'ctry:'+c" x-text="c"></option></template>
+                </optgroup>
+              </template>
+            </select>
+          </div>
           <div><label class="label" for="cmp-provider">Provider</label>
             <select id="cmp-provider" class="field" x-model="cmp.provider">
               <option value="">any</option>
-              <template x-for="p in providerIds" :key="p"><option :value="p" x-text="p"></option></template>
+              <template x-for="p in compareProviderIds" :key="p"><option :value="p" x-text="p"></option></template>
             </select>
           </div>
-          <label class="flex items-center gap-2 pb-2.5 text-[13px]" style="color:var(--text-dim)"><input type="checkbox" x-model="cmp.hourlyOnly" style="accent-color:var(--accent)" class="h-4 w-4" /> hourly</label>
           <label class="flex items-center gap-2 pb-2.5 text-[13px]" style="color:var(--text-dim)" title="Show retired plans/regions (not purchasable — existing servers keep running)"><input type="checkbox" x-model="showDeprecated" @change="runCompare()" style="accent-color:var(--accent)" class="h-4 w-4" /> deprecated</label>
           <button class="btn-primary" @click="runCompare()">Compare</button>
         </div>
+
+        <p class="mb-3 px-1 text-xs" style="color:var(--text-dim)" x-show="cmpTierCaption()" x-text="cmpTierCaption()"></p>
+
         <div class="card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full">
               <thead><tr>
-                <th class="th">Provider</th><th class="th">Plan</th><th class="th">vCPU</th><th class="th">RAM</th>
+                <th class="th">Provider</th><th class="th">Plan</th><th class="th">vCPU</th><th class="th">RAM</th><th class="th">Disk</th>
                 <th class="th">Region</th><th class="th">Availability</th><th class="th">EUR/h</th><th class="th">EUR/mo</th><th class="th">Create</th>
               </tr></thead>
               <tbody>
                 <template x-if="loading">
                   <template x-for="i in 5" :key="i">
-                    <tr class="row"><td class="td" colspan="9"><div class="skel h-4 w-full max-w-[620px]"></div></td></tr>
+                    <tr class="row"><td class="td" colspan="10"><div class="skel h-4 w-full max-w-[620px]"></div></td></tr>
                   </template>
                 </template>
-                <template x-for="r in compareRows" :key="r.provider + r.plan + r.region">
+                <template x-for="r in filteredCompareRows" :key="r.provider + r.plan + r.region">
                   <tr class="row">
                     <td class="td"><span class="inline-flex items-center gap-2 capitalize"><span class="h-2 w-2 rounded-full" :style="'background:' + pinColor(r.provider)"></span><span x-text="r.provider"></span></span></td>
                     <td class="td font-semibold" style="color:var(--text)" x-text="r.plan"></td>
                     <td class="td font-mono" x-text="r.cores"></td>
                     <td class="td font-mono" x-text="r.memoryGb + 'G'"></td>
+                    <td class="td font-mono" style="color:var(--text-dim)" x-text="cmpDisk(r)"></td>
                     <td class="td font-mono text-xs" x-text="r.region"></td>
                     <td class="td"><span :class="availBadgeClass(r)" :title="availTitle(r)" class="cursor-help" x-text="availBadgeText(r)"></span></td>
-                    <td class="td font-mono" style="color:var(--text-faint)" x-text="money(r.hourly)"></td>
-                    <td class="td font-mono font-semibold" style="color:var(--text)" x-text="money(r.monthly, 2)"></td>
+                    <td class="td font-mono" :style="'color:var(--' + (cmpBilling==='hourly' ? 'text' : 'text-faint') + ')'" :class="cmpBilling==='hourly' && 'font-semibold'" x-text="money(r.hourly)"></td>
+                    <td class="td font-mono">
+                      <span class="inline-flex items-center gap-1.5">
+                        <span :class="cmpBilling==='monthly' && 'font-semibold'" style="color:var(--text)" x-text="cmpMonthlyText(r)"></span>
+                        <span x-show="cmpBilling==='monthly' && isCommitted(r)" class="badge-ok" style="font-size:10px" title="Committed monthly — well below the pay-as-you-go run rate">committed</span>
+                      </span>
+                    </td>
                     <td class="td">
                       <div class="flex items-center gap-2.5">
                         <span :class="createBadgeClass(r)" x-text="createBadgeText(r)"></span>
@@ -46,10 +80,10 @@
                     </td>
                   </tr>
                 </template>
-                <tr x-show="!compareRows.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="9" x-text="comparedOnce ? 'No matching plans.' : 'Set filters and compare.'"></td></tr>
+                <tr x-show="!filteredCompareRows.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="10" x-text="comparedOnce ? 'No matching plans for this tier / filters.' : 'Set filters and compare.'"></td></tr>
               </tbody>
             </table>
           </div>
         </div>
-        <p class="mt-3 text-xs" style="color:var(--text-faint)">All prices are <span style="color:var(--text-dim)">net of VAT</span> — VAT is added per your country.</p>
+        <p class="mt-3 text-xs" style="color:var(--text-faint)">All prices are <span style="color:var(--text-dim)">net of VAT</span> — VAT is added per your country. In <span style="color:var(--text-dim)">Hourly</span>, EUR/mo is the pay-as-you-go 24/7 estimate (hourly × 730).</p>
       </section>

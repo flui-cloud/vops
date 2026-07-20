@@ -48,10 +48,11 @@ function dashboardServers() {
 
     async runCompare() {
       this.beginLoad(); this.error = ''; this.comparedOnce = true; this.compareRows = [];
+      // Region + billing + tier now filter client-side (geographic area, monthly/
+      // hourly, tier tabs), so fetch the full set and let the compare view slice it.
       const body = {
         cpu: this.num(this.cmp.cpu), ramGb: this.num(this.cmp.ramGb),
-        region: this.cmp.region.trim() || undefined,
-        provider: this.cmp.provider || undefined, hourlyOnly: this.cmp.hourlyOnly,
+        provider: this.cmp.provider || undefined,
         includeDeprecated: this.showDeprecated,
       };
       try { this.compareRows = await this.api('/compare', { method: 'POST', body: JSON.stringify(body) }); }

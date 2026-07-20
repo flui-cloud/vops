@@ -22,6 +22,9 @@ function dashboardCore() {
     hvFrom: 'servers',
     provider: 'hetzner',
     providerIds: ['hetzner', 'scaleway', 'contabo', 'ovh'],
+    // Comparison-only providers: shown in the compare filter + region map but never
+    // provisioned (Cherry is read-only in infra), so kept out of the server/provision tabs.
+    compareProviderIds: ['hetzner', 'scaleway', 'contabo', 'ovh', 'cherry'],
     loading: false,
     loads: 0,
     error: '',
@@ -59,7 +62,7 @@ function dashboardCore() {
     ],
     regions: [], regionsSource: '', regionsUpdated: '', hoverCode: '',
     allPlans: [], serverTab: 'all', plansCache: {}, watched: [],
-    providerColors: { hetzner: 'var(--hetzner)', scaleway: 'var(--scaleway)', contabo: 'var(--contabo)', ovh: 'var(--ovh)' },
+    providerColors: { hetzner: 'var(--hetzner)', scaleway: 'var(--scaleway)', contabo: 'var(--contabo)', ovh: 'var(--ovh)', cherry: 'var(--cherry)' },
     cmp: { cpu: '', ramGb: '', region: '', provider: '', hourlyOnly: false },
     showDeprecated: false,
     drawer: { open: false, kind: '', item: null, rulesJson: '', serverIds: '', subnetRange: '', subnetZone: '' },
