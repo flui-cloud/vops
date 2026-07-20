@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { VopsModule } from '../vops.module';
 import { ProvidersController } from './providers.controller';
+import { CredentialsController } from './credentials.controller';
 import { OpsController } from './ops.controller';
 import { FirewallController } from './firewall.controller';
 import { VnetController } from './vnet.controller';
@@ -19,6 +20,7 @@ import { SessionGuard } from './session.guard';
   imports: [VopsModule],
   controllers: [
     ProvidersController,
+    CredentialsController,
     OpsController,
     FirewallController,
     VnetController,

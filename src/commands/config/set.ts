@@ -27,6 +27,14 @@ export default class ConfigSet extends Command {
     const provider = resolveProvider(args.provider);
     const store = new LocalConfigStore();
 
+    if (provider === CloudProvider.CHERRY) {
+      this.error(
+        'Cherry reads its credentials from the environment. Set CHERRY_API_KEY and ' +
+          "CHERRY_PROJECT_ID in ~/.config/vops/.env (like OVH's OS_* and Contabo's CONTABO_*).",
+        { exit: 1 },
+      );
+    }
+
     if (provider === CloudProvider.SCALEWAY) {
       if (!flags['access-key'] || !flags['secret-key']) {
         this.error('Scaleway requires --access-key and --secret-key', { exit: 1 });

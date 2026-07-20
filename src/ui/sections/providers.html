@@ -1,0 +1,70 @@
+      <section x-show="view==='providers'">
+        <div class="grid gap-3 sm:grid-cols-2 max-w-3xl">
+          <template x-if="loading && !credLoaded">
+            <template x-for="i in 4" :key="i">
+              <div class="card p-4"><div class="skel h-10 w-full"></div></div>
+            </template>
+          </template>
+          <template x-for="p in credentials" :key="p.provider">
+            <div class="card flex items-center justify-between p-4">
+              <div class="flex items-center gap-3">
+                <span class="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-bold"
+                      :style="'background:var(--panel-3);color:'+(providerColors[p.provider]||'var(--text)')"
+                      x-text="p.displayName.slice(0,1)"></span>
+                <div>
+                  <div class="text-sm font-semibold" x-text="p.displayName"></div>
+                  <div class="text-[11px]" style="color:var(--text-faint)" x-text="p.configured ? 'Connected' : 'Not connected'"></div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span x-show="p.configured" class="badge-ok">● connected</span>
+                <button class="btn-ghost" @click="openCredModal(p)" x-text="p.configured ? 'Manage' : 'Connect'"></button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <p class="mt-4 max-w-3xl text-[11px]" style="color:var(--text-faint)">
+          Keys are encrypted at <span class="font-mono">~/.config/vops/profiles/&lt;profile&gt;/secrets.json.enc</span> and never leave this machine.
+          OVH uses OpenStack — configure it via <span class="font-mono">~/.config/vops/.env</span> (OS_*).
+        </p>
+
+        <!-- Dynamic credential form: fields come from each provider's credentialFields. -->
+        <div x-show="credModal.open" class="fixed inset-0 z-50 flex items-center justify-center px-4" x-cloak>
+          <div class="absolute inset-0" style="background:rgba(8,10,16,.55)" @click="closeCredModal()"></div>
+          <div class="card relative w-full max-w-md p-6">
+            <h3 class="mb-1 text-base font-bold">Connect <span x-text="credModal.displayName"></span></h3>
+            <p class="mb-4 text-[11px]" style="color:var(--text-faint)"
+               x-text="credModal.configured ? 'Already connected — enter new values to replace them, or Disconnect.' : 'Stored encrypted on this machine, never sent anywhere.'"></p>
+
+            <div class="space-y-3">
+              <template x-for="f in credModal.fields" :key="f.key">
+                <div>
+                  <label class="label" :for="'cred-'+f.key">
+                    <span x-text="f.label"></span><span x-show="f.required" style="color:var(--danger)"> *</span>
+                  </label>
+                  <input :id="'cred-'+f.key" class="field" :class="f.secret ? 'font-mono text-xs' : ''"
+                         :type="f.secret ? 'password' : 'text'" autocomplete="off" spellcheck="false"
+                         :placeholder="f.providerLabel" x-model="credModal.values[f.key]" />
+                  <p x-show="f.hint" class="mt-1 text-[11px]" style="color:var(--text-faint)" x-text="f.hint"></p>
+                </div>
+              </template>
+              <div x-show="credModal.error" class="text-xs" style="color:var(--danger)" x-text="credModal.error"></div>
+              <div x-show="credModal.result">
+                <span :class="(credModal.result && credModal.result.ok) ? 'badge-ok' : 'badge-warn'"
+                      x-text="(credModal.result && credModal.result.ok) ? 'verified ✓' : ('saved — not verified: ' + ((credModal.result && credModal.result.message) || ''))"></span>
+              </div>
+            </div>
+
+            <div class="mt-6 flex items-center gap-2">
+              <button x-show="credModal.configured" class="btn-ghost" style="color:var(--danger)"
+                      @click="removeCredentials()" :disabled="credModal.busy">Disconnect</button>
+              <div class="ml-auto flex gap-2">
+                <button class="btn-ghost" @click="closeCredModal()">Cancel</button>
+                <button class="btn-primary" @click="saveCredentials()" :disabled="credModal.busy"
+                        x-text="credModal.busy ? 'Saving…' : 'Save &amp; verify'"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>

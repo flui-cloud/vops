@@ -34,7 +34,10 @@ interface SonarIssue {
 
 // Populate only when a scan surfaces a genuine false positive — never guess
 // a rationale ahead of time.
-const ISSUE_RATIONALE: Record<string, string> = {};
+const ISSUE_RATIONALE: Record<string, string> = {
+  'typescript:S2068':
+    "Reviewed as False Positive: the flagged literal is an environment-variable NAME (e.g. CONTABO_API_PASSWORD), not a credential value. src/lib/credentials/provider-credentials.ts maps each provider credential field to the env var the provider reads; no secret material is hard-coded — actual secrets live only in the encrypted local store or the user's own environment.",
+};
 
 const RATIONALE: Record<
   string,

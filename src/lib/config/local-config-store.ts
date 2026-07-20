@@ -54,6 +54,13 @@ export class LocalConfigStore {
     this.writeSecrets(secrets);
   }
 
+  remove(provider: string): void {
+    const secrets = this.readSecrets();
+    delete secrets.tokens?.[provider];
+    delete secrets.credentials?.[provider];
+    this.writeSecrets(secrets);
+  }
+
   private readSecrets(): {
     tokens?: Record<string, string>;
     credentials?: Record<string, Record<string, string>>;

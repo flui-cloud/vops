@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ICredentialProvider } from '@flui-cloud/infra';
-import { CloudProvider } from '@flui-cloud/infra';
-import { BearerTokenDto } from '@flui-cloud/infra';
+import {
+  ICredentialProvider,
+  CloudProvider,
+  BearerTokenDto,
+} from '@flui-cloud/infra';
 import { LocalConfigStore } from '../config/local-config-store';
 
 const CONTABO_TOKEN_URL =
@@ -24,7 +26,8 @@ export class LocalCredentialProvider implements ICredentialProvider {
       if (!creds?.secretKey) throw this.missing(name);
       return creds.secretKey;
     }
-    const token = this.store.getToken(name);
+    // `config set` writes a bare token; the UI form writes a credentials record.
+    const token = this.store.getToken(name) ?? this.store.getCredentials(name)?.apiKey;
     if (!token) throw this.missing(name);
     return token;
   }

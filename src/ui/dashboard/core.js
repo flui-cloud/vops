@@ -12,6 +12,7 @@ const ICONS = {
   backups: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6.5" rx="8" ry="3"/><path d="M4 6.5v11c0 1.7 3.6 3 8 3s8-1.3 8-3v-11"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
   catalog: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V9.5Z"/><path d="M5 3.5h14l1.5 4a2.2 2.2 0 0 1-4.3.6 2.2 2.2 0 0 1-4.2 0 2.2 2.2 0 0 1-4.2 0 2.2 2.2 0 0 1-4.3-.6L5 3.5Z"/></svg>',
   deploy: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3c3.4 2.2 5.2 5.7 5.2 9.6L12 16.8l-5.2-4.2C6.8 8.7 8.6 5.2 12 3Z"/><circle cx="12" cy="10" r="1.7"/><path d="m9.2 17.2-1.7 3.3 3-1.1M14.8 17.2l1.7 3.3-3-1.1"/></svg>',
+  providers: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12h6"/><path d="M9.5 8H7a4 4 0 0 0 0 8h2.5M14.5 8H17a4 4 0 0 1 0 8h-2.5"/></svg>',
 };
 
 function dashboardCore() {
@@ -21,9 +22,9 @@ function dashboardCore() {
     view: 'overview',
     hvFrom: 'servers',
     provider: 'hetzner',
-    providerIds: ['hetzner', 'scaleway', 'contabo', 'ovh'],
-    // Comparison-only providers: shown in the compare filter + region map but never
-    // provisioned (Cherry is read-only in infra), so kept out of the server/provision tabs.
+    providerIds: ['hetzner', 'scaleway', 'contabo', 'ovh', 'cherry'],
+    // Compare filter + region map. A comparison-only provider (catalog but no
+    // provisioning) would live here without joining providerIds; today they coincide.
     compareProviderIds: ['hetzner', 'scaleway', 'contabo', 'ovh', 'cherry'],
     loading: false,
     loads: 0,
@@ -51,6 +52,9 @@ function dashboardCore() {
         { id: 'vnets', label: 'Networks', icon: ICONS.vnets },
         { id: 'sshkeys', label: 'SSH Keys', icon: ICONS.sshkeys, pill: true },
       ] },
+      { section: 'SETTINGS', items: [
+        { id: 'providers', label: 'Providers', icon: ICONS.providers },
+      ] },
     ],
     providers: [], servers: [], firewalls: [], vnets: [], sshKeys: [], compareRows: [], availabilityRows: [],
     ov: { serverCount: null, byProvider: [], spend: null, alerts: null, cheapest: null, bestValue: [], bvLoaded: false },
@@ -74,7 +78,7 @@ function dashboardCore() {
     get serverTabs() { return ['all', ...this.providerIds]; },
     get pageTitle() {
       const m = { overview: 'Overview', monitoring: 'Monitoring', watchers: 'Watchers', compare: 'Compare', servers: 'Servers', availability: 'Availability',
-        firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys' };
+        firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys', providers: 'Providers' };
       return m[this.view] || '';
     },
     get subtitle() {
@@ -86,7 +90,8 @@ function dashboardCore() {
         availability: 'Plans with limited or sold-out capacity, per location.',
         firewalls: 'Firewall per server — provider-native or vops nftables, one simple view.',
         vnets: 'Private networks, subnets and routes.',
-        sshkeys: 'Local SSH keys — private keys never leave this machine.' };
+        sshkeys: 'Local SSH keys — private keys never leave this machine.',
+        providers: 'Connect your provider accounts — keys are stored encrypted on this machine and never leave it.' };
       return m[this.view] || '';
     },
     get primaryAction() {
@@ -184,6 +189,7 @@ function dashboardCore() {
       if (this.view === 'firewalls') return this.loadHosts();
       if (this.view === 'vnets') return this.load('vnets', '/vnets?provider=' + this.provider);
       if (this.view === 'sshkeys') return this.load('sshKeys', '/ssh-keys');
+      if (this.view === 'providers') return this.loadCredentials();
     },
 
     async api(path, opts = {}) {

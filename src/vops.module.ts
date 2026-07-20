@@ -24,10 +24,12 @@ import {
   ScalewayVpcAdapter,
   ScalewayIamAdapter,
   CherryProviderService,
+  CherryCapabilitiesService,
 } from '@flui-cloud/infra';
 import { LocalCredentialProvider } from './lib/credentials/local-credential-provider';
 import { LocalStore } from './lib/store/local-store';
 import { VopsProvidersService } from './providers/vops-providers.service';
+import { VopsCredentialsService } from './credentials/vops-credentials.service';
 import { VopsCatalogService } from './catalog/vops-catalog.service';
 import { VopsWriteGateService } from './safety/vops-write-gate.service';
 import { VopsServersService } from './servers/vops-servers.service';
@@ -80,6 +82,7 @@ const ENV_FILES = [
     ScalewayCapabilitiesService,
     ContaboCapabilitiesService,
     OvhCapabilitiesService,
+    CherryCapabilitiesService,
     {
       provide: CapabilitiesProviderFactory,
       useFactory: (
@@ -87,18 +90,21 @@ const ENV_FILES = [
         scaleway: ScalewayCapabilitiesService,
         contabo: ContaboCapabilitiesService,
         ovh: OvhCapabilitiesService,
+        cherry: CherryCapabilitiesService,
       ) =>
         new CapabilitiesProviderFactory([
           { provider: CloudProvider.HETZNER, service: hetzner },
           { provider: CloudProvider.SCALEWAY, service: scaleway },
           { provider: CloudProvider.CONTABO, service: contabo },
           { provider: CloudProvider.OVH, service: ovh },
+          { provider: CloudProvider.CHERRY, service: cherry },
         ]),
       inject: [
         HetznerCapabilitiesService,
         ScalewayCapabilitiesService,
         ContaboCapabilitiesService,
         OvhCapabilitiesService,
+        CherryCapabilitiesService,
       ],
     },
 
@@ -110,9 +116,9 @@ const ENV_FILES = [
     ScalewayProviderService,
     ContaboProviderService,
     OvhProviderService,
-    // Cherry Servers is read-only in @flui-cloud/infra (public catalog, no creds,
-    // no provisioning) — wired into pricing/compare only, not capabilities/firewall.
-    { provide: CherryProviderService, useFactory: () => new CherryProviderService() },
+    // Cherry Servers: full provisioning. Reads CHERRY_API_KEY / CHERRY_PROJECT_ID
+    // from config (same env channel as OVH's OS_*). No native firewall → host-nftables.
+    CherryProviderService,
     {
       provide: ProviderFactory,
       useFactory: (
@@ -158,6 +164,7 @@ const ENV_FILES = [
 
     LocalStore,
     VopsProvidersService,
+    VopsCredentialsService,
     VopsCatalogService,
     VopsWriteGateService,
     VopsServersService,
@@ -183,6 +190,7 @@ const ENV_FILES = [
   ],
   exports: [
     VopsProvidersService,
+    VopsCredentialsService,
     VopsCatalogService,
     VopsServersService,
     VopsFirewallService,
