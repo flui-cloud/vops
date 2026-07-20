@@ -9,7 +9,6 @@ import {
   DISPLAY_NAMES,
   COMPARE_PROVIDERS,
   isGuided,
-  isReadOnly,
   resolveProvider,
 } from '../lib/providers';
 import { LocalStore } from '../lib/store/local-store';
@@ -342,10 +341,7 @@ export class VopsCatalogService {
   ): VopsPlan {
     const hourly = this.cheapest(size, 'priceHourly');
     const monthly = this.cheapest(size, 'priceMonthly');
-    // Read-only providers (Cherry) have no infra provisioning path, so a hourly
-    // non-metal plan is still never creatable by vops — compare-only.
-    const createAllowed =
-      !size.bareMetal && size.supportsHourlyBilling && !isReadOnly(provider);
+    const createAllowed = !size.bareMetal && size.supportsHourlyBilling;
     const guided = !size.bareMetal && !createAllowed && isGuided(provider);
     return {
       id: size.id,
@@ -427,7 +423,7 @@ export class VopsCatalogService {
   }
 
   private currency(provider: CloudProvider): string {
-    // Read-only providers (Cherry) have no capabilities service; they quote EUR.
+    // Defensive: fall back to EUR if a provider has no registered capabilities service.
     try {
       return this.capabilities
         .getCapabilitiesService(provider)

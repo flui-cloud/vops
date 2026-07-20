@@ -15,7 +15,7 @@ export default class ServersDelete extends Command {
   };
 
   static readonly flags = {
-    provider: Flags.string({ description: 'hetzner | scaleway | ovh', required: true }),
+    provider: Flags.string({ description: 'hetzner | scaleway | ovh | cherry', required: true }),
     yes: Flags.boolean({ description: 'Confirm deletion', default: false }),
     force: Flags.boolean({ description: 'Delete even if running', default: false }),
     json: Flags.boolean({ description: 'Output as JSON', default: false }),

@@ -102,7 +102,7 @@ export class VopsRegionsService {
   }
 
   private currency(provider: CloudProvider): string {
-    // Read-only providers (Cherry) have no capabilities service; they quote EUR.
+    // Defensive: fall back to EUR if a provider has no registered capabilities service.
     try {
       return this.capabilities
         .getCapabilitiesService(provider)

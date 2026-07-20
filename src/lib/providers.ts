@@ -6,17 +6,16 @@ export const SUPPORTED: CloudProvider[] = [
   CloudProvider.SCALEWAY,
   CloudProvider.CONTABO,
   CloudProvider.OVH,
+  CloudProvider.CHERRY,
 ];
 
 /**
- * Providers that appear in the price COMPARISON and region map but are not fully
- * integrated for capabilities / firewall / provisioning. Cherry Servers is
- * read-only in @flui-cloud/infra (public credential-free catalog, EUR prices,
- * per-region stock — no provisioning API, no capabilities service), so it rides
- * the catalog + regions fan-out only and must never reach CapabilitiesProviderFactory.
- * SUPPORTED stays the capability-backed set; anything comparison-wide uses this.
+ * Providers shown in the price COMPARISON and region map. Kept distinct from
+ * SUPPORTED so a comparison-only provider (catalog but no capabilities/provisioning)
+ * could be added here without becoming creatable. Today every supported provider
+ * is also comparison-wide, so the two sets coincide.
  */
-export const COMPARE_PROVIDERS: CloudProvider[] = [...SUPPORTED, CloudProvider.CHERRY];
+export const COMPARE_PROVIDERS: CloudProvider[] = [...SUPPORTED];
 
 export const DISPLAY_NAMES: Record<string, string> = {
   [CloudProvider.HETZNER]: 'Hetzner Cloud',
@@ -40,19 +39,6 @@ export const isGuided = (provider: CloudProvider): boolean =>
   GUIDED_PROVIDERS.has(provider);
 
 /**
- * Providers vops can price and compare but never provisions: @flui-cloud/infra
- * exposes no write path for them (Cherry Servers is catalog-only). Distinct from
- * "guided" (a provider that COULD be created but places a monthly commitment) —
- * these have no provisioning route at all, so their compare rows carry no Create.
- */
-export const READ_ONLY_PROVIDERS: ReadonlySet<CloudProvider> = new Set([
-  CloudProvider.CHERRY,
-]);
-
-export const isReadOnly = (provider: CloudProvider): boolean =>
-  READ_ONLY_PROVIDERS.has(provider);
-
-/**
  * Providers whose native, network-edge firewall is a usable option. On these the
  * provider firewall (`vops firewall`) is the right tool — it filters before traffic
  * ever reaches the host — so vops does NOT layer its host-level nftables firewall on
@@ -63,6 +49,7 @@ export const isReadOnly = (provider: CloudProvider): boolean =>
  *   • Contabo  — no per-instance firewall API at all
  *   • OVH      — security groups exist in the API but ship with quota 0 per project
  *                (blocked at the platform level), so in practice unusable
+ *   • Cherry   — no per-server firewall API; filtering is host-side only
  * For those, the nftables firewall applied on the host via cloud-init is the path.
  */
 export const NATIVE_FIREWALL_PROVIDERS: ReadonlySet<CloudProvider> = new Set([

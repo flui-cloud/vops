@@ -161,6 +161,7 @@ Provider credential variables, if you use the `.env` route:
 | Scaleway | `SCALEWAY_*` |
 | OVH (OpenStack) | `OS_*` (Keystone auth — one credential, all regions) |
 | Contabo | `CONTABO_CLIENT_ID`, `CONTABO_CLIENT_SECRET`, `CONTABO_API_USER`, `CONTABO_API_PASSWORD` |
+| Cherry Servers | `CHERRY_API_KEY`, `CHERRY_PROJECT_ID` (+ `CHERRY_IMAGE` for provisioning — image slugs are per-plan) |
 
 Secrets are read locally and are **never** printed to logs or `--json` output.
 

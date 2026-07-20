@@ -6,6 +6,9 @@ const DEFAULT_IMAGE: Record<string, string> = {
   [CloudProvider.HETZNER]: 'ubuntu-24.04',
   [CloudProvider.SCALEWAY]: 'ubuntu_noble',
   [CloudProvider.OVH]: 'Ubuntu 24.04',
+  // Cherry image slugs are per-plan and must be listed from the API — no safe
+  // cross-plan default. Supply one via `--image` or the CHERRY_IMAGE env var.
+  [CloudProvider.CHERRY]: '',
 };
 
 export function defaultImage(provider: CloudProvider): string {

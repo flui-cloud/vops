@@ -21,7 +21,7 @@ export default class ServersPlan extends Command {
   ];
 
   static readonly flags = {
-    provider: Flags.string({ description: 'hetzner | scaleway | contabo | ovh', required: true }),
+    provider: Flags.string({ description: 'hetzner | scaleway | ovh | cherry', required: true }),
     plan: Flags.string({ description: 'Server type (e.g. cx23)', required: true }),
     location: Flags.string({ description: 'Location/region id', required: true }),
     image: Flags.string({ description: 'OS image (defaults to Ubuntu 24.04)' }),
