@@ -8,12 +8,21 @@ export interface LocalApiHandle {
   url: string;
   port: number;
   token: string;
+  /** False when the default port was taken and the OS picked another one. */
+  onDefaultPort: boolean;
 }
 
 /**
  * A stable default port keeps the browser origin stable across restarts. The
  * dashboard's per-origin state (theme, watch toggles) lives in localStorage,
  * which a fresh random port silently discards on every launch.
+ *
+ * The installed (PWA) app raises the stakes: a PWA's identity *is* its origin,
+ * port included, so a run on a fallback port is a different app to the browser —
+ * it won't reuse the installed window and can't be installed a second time under
+ * the same identity. Falling back stays the behaviour (hard-failing would block
+ * a second instance for no good reason), but `onDefaultPort` lets the caller say
+ * so out loud instead of leaving the user to wonder why their app icon is dead.
  */
 export const DEFAULT_UI_PORT = 7788;
 
@@ -48,5 +57,10 @@ export async function startLocalApi(): Promise<LocalApiHandle> {
 
   const address = app.getHttpServer().address() as AddressInfo;
   const port = address?.port ?? desiredPort;
-  return { url: `http://127.0.0.1:${port}/?session=${token}`, port, token };
+  return {
+    url: `http://127.0.0.1:${port}/?session=${token}`,
+    port,
+    token,
+    onDefaultPort: port === DEFAULT_UI_PORT,
+  };
 }

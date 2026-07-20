@@ -5,9 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>vops · control plane</title>
 <link rel="icon" type="image/png" href="assets/icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#08080a" />
+<meta name="apple-mobile-web-app-title" content="vops dash" />
 <!-- Apply the saved theme before first paint — Alpine boots at the end of the
      document, so waiting for init() would flash light at dark-theme users. -->
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('vops-theme')||'light'}catch{}</script>
+<!-- Registers the worker that backs the installed app. Failure is non-fatal:
+     the dashboard works fine in a normal tab without it. -->
+<script>if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));</script>
 <!--TAILWIND-->
 </head>
 <body class="font-sans antialiased">

@@ -24,6 +24,19 @@ for (const f of fs.readdirSync(src)) {
   if (f === 'world.geo.json') fs.copyFileSync(path.join(src, f), path.join(out, f));
 }
 
+// PWA files for the installed dashboard. The worker's cache key is stamped with
+// the package version so upgrading the CLI retires the previous shell instead of
+// serving it forever.
+fs.copyFileSync(
+  path.join(src, 'manifest.webmanifest'),
+  path.join(out, 'manifest.webmanifest'),
+);
+const { version } = require('../package.json');
+fs.writeFileSync(
+  path.join(out, 'sw.js'),
+  fs.readFileSync(path.join(src, 'sw.js'), 'utf8').replaceAll('__VOPS_VERSION__', version),
+);
+
 // app.js is assembled from src/ui/dashboard/*.js (one factory per concern,
 // merged by the dashboard() composer in src/ui/app.js — see that file) plus
 // the composer itself, concatenated in one script. Function declarations are

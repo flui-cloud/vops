@@ -1,7 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import { spawn } from 'node:child_process';
 import chalk from 'chalk';
-import { startLocalApi } from '../local-api/bootstrap';
+import { DEFAULT_UI_PORT, startLocalApi } from '../local-api/bootstrap';
 
 export default class Ui extends Command {
   static readonly description =
@@ -22,7 +22,7 @@ export default class Ui extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Ui);
-    const { url, port } = await startLocalApi();
+    const { url, port, onDefaultPort } = await startLocalApi();
     this.log(chalk.green(`\n✓ vops running at ${chalk.underline(url)}`));
     this.log(
       chalk.dim(
@@ -38,6 +38,26 @@ export default class Ui extends Command {
             ? '  Opening your browser… (use --no-open to skip)\n'
             : "  Couldn't open a browser automatically — open the link above.\n",
         ),
+      );
+    }
+
+    // The dashboard is installable as a desktop app, but a browser tab does
+    // little to advertise that — and this terminal is where the user is looking.
+    this.log(
+      chalk.dim(
+        `  Want it as a desktop app? Open the link in Chrome or Edge and use the\n` +
+          `  install button in the address bar. vops then gets its own window and\n` +
+          `  icon, and launches from your dock or Start menu.\n`,
+      ),
+    );
+
+    if (!onDefaultPort) {
+      this.log(
+        chalk.yellow(`  ! Port ${DEFAULT_UI_PORT} was busy, so this run uses ${port}.`) +
+          chalk.dim(
+            `\n    An installed app is tied to the default port and won't reach this\n` +
+              `    one. Stop the other instance before launching the desktop app.\n`,
+          ),
       );
     }
 
