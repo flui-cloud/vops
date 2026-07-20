@@ -8,11 +8,22 @@ export const SUPPORTED: CloudProvider[] = [
   CloudProvider.OVH,
 ];
 
+/**
+ * Providers that appear in the price COMPARISON and region map but are not fully
+ * integrated for capabilities / firewall / provisioning. Cherry Servers is
+ * read-only in @flui-cloud/infra (public credential-free catalog, EUR prices,
+ * per-region stock — no provisioning API, no capabilities service), so it rides
+ * the catalog + regions fan-out only and must never reach CapabilitiesProviderFactory.
+ * SUPPORTED stays the capability-backed set; anything comparison-wide uses this.
+ */
+export const COMPARE_PROVIDERS: CloudProvider[] = [...SUPPORTED, CloudProvider.CHERRY];
+
 export const DISPLAY_NAMES: Record<string, string> = {
   [CloudProvider.HETZNER]: 'Hetzner Cloud',
   [CloudProvider.SCALEWAY]: 'Scaleway',
   [CloudProvider.CONTABO]: 'Contabo',
   [CloudProvider.OVH]: 'OVHcloud',
+  [CloudProvider.CHERRY]: 'Cherry Servers',
 };
 
 /**
@@ -27,6 +38,19 @@ export const GUIDED_PROVIDERS: ReadonlySet<CloudProvider> = new Set([
 
 export const isGuided = (provider: CloudProvider): boolean =>
   GUIDED_PROVIDERS.has(provider);
+
+/**
+ * Providers vops can price and compare but never provisions: @flui-cloud/infra
+ * exposes no write path for them (Cherry Servers is catalog-only). Distinct from
+ * "guided" (a provider that COULD be created but places a monthly commitment) —
+ * these have no provisioning route at all, so their compare rows carry no Create.
+ */
+export const READ_ONLY_PROVIDERS: ReadonlySet<CloudProvider> = new Set([
+  CloudProvider.CHERRY,
+]);
+
+export const isReadOnly = (provider: CloudProvider): boolean =>
+  READ_ONLY_PROVIDERS.has(provider);
 
 /**
  * Providers whose native, network-edge firewall is a usable option. On these the
@@ -66,7 +90,7 @@ export function resolveProvider(name: string): CloudProvider {
   // close alias ('ovhcloud') — the UI/API round-trips display names, so the
   // machine id and the label must both resolve here.
   const n = name.toLowerCase().replace(/\s+/g, '');
-  const provider = SUPPORTED.find(
+  const provider = COMPARE_PROVIDERS.find(
     (p) =>
       n === p ||
       n.startsWith(p) ||
@@ -74,7 +98,7 @@ export function resolveProvider(name: string): CloudProvider {
   );
   if (!provider) {
     throw new BadRequestException(
-      `Unknown provider '${name}'. Supported: ${SUPPORTED.join(', ')}`,
+      `Unknown provider '${name}'. Supported: ${COMPARE_PROVIDERS.join(', ')}`,
     );
   }
   return provider;

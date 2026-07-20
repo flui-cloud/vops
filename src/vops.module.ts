@@ -23,6 +23,7 @@ import {
   ScalewayBareMetalAdapter,
   ScalewayVpcAdapter,
   ScalewayIamAdapter,
+  CherryProviderService,
 } from '@flui-cloud/infra';
 import { LocalCredentialProvider } from './lib/credentials/local-credential-provider';
 import { LocalStore } from './lib/store/local-store';
@@ -109,6 +110,9 @@ const ENV_FILES = [
     ScalewayProviderService,
     ContaboProviderService,
     OvhProviderService,
+    // Cherry Servers is read-only in @flui-cloud/infra (public catalog, no creds,
+    // no provisioning) — wired into pricing/compare only, not capabilities/firewall.
+    { provide: CherryProviderService, useFactory: () => new CherryProviderService() },
     {
       provide: ProviderFactory,
       useFactory: (
@@ -116,18 +120,21 @@ const ENV_FILES = [
         scaleway: ScalewayProviderService,
         contabo: ContaboProviderService,
         ovh: OvhProviderService,
+        cherry: CherryProviderService,
       ) =>
         new ProviderFactory([
           { provider: CloudProvider.HETZNER, service: hetzner },
           { provider: CloudProvider.SCALEWAY, service: scaleway },
           { provider: CloudProvider.CONTABO, service: contabo },
           { provider: CloudProvider.OVH, service: ovh },
+          { provider: CloudProvider.CHERRY, service: cherry },
         ]),
       inject: [
         HetznerProviderService,
         ScalewayProviderService,
         ContaboProviderService,
         OvhProviderService,
+        CherryProviderService,
       ],
     },
 

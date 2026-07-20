@@ -44,6 +44,11 @@ export interface VopsCompareRow {
   plan: string;
   cores: number;
   memoryGb: number;
+  diskGb: number;
+  /** 'shared' (contended vCPU) vs 'dedicated' (reserved cores). Bare metal reads dedicated. */
+  cpuType: string;
+  /** Whole physical machine (no hypervisor) — the Bare metal tier. */
+  bareMetal: boolean;
   region: string;
   hourly: number | null;
   monthly: number | null;

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CapabilitiesProviderFactory, CloudProvider } from '@flui-cloud/infra';
 import { VopsCatalogService } from '../catalog/vops-catalog.service';
-import { SUPPORTED, resolveProvider } from '../lib/providers';
+import { COMPARE_PROVIDERS, resolveProvider } from '../lib/providers';
 import { VopsRegion, VopsRegionsResult } from '../dto/region.dto';
 
 interface GeoEntry {
@@ -43,7 +43,7 @@ export class VopsRegionsService {
     const prices = new Map<string, Priced>();
     let live = 0;
     let snap = 0;
-    for (const provider of SUPPORTED) {
+    for (const provider of COMPARE_PROVIDERS) {
       const currency = this.currency(provider);
       try {
         for (const r of await this.catalog.regionPrices(provider, refresh)) {
@@ -102,9 +102,14 @@ export class VopsRegionsService {
   }
 
   private currency(provider: CloudProvider): string {
-    return this.capabilities
-      .getCapabilitiesService(provider)
-      .getStaticCapabilities().pricing.currency;
+    // Read-only providers (Cherry) have no capabilities service; they quote EUR.
+    try {
+      return this.capabilities
+        .getCapabilitiesService(provider)
+        .getStaticCapabilities().pricing.currency;
+    } catch {
+      return 'EUR';
+    }
   }
 
   private loadJson<T>(name: string, fallback: T): T {

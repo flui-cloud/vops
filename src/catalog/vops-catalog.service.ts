@@ -7,8 +7,9 @@ import {
 } from '@flui-cloud/infra';
 import {
   DISPLAY_NAMES,
-  SUPPORTED,
+  COMPARE_PROVIDERS,
   isGuided,
+  isReadOnly,
   resolveProvider,
 } from '../lib/providers';
 import { LocalStore } from '../lib/store/local-store';
@@ -49,6 +50,67 @@ function agedBy(report: RemoteAvailabilityReport, heldMs: number): RemoteAvailab
     ...report,
     meta: { ...report.meta, ageSeconds, stale: ageSeconds > report.meta.staleAfterSeconds },
   };
+}
+
+/** A size's flat hourly rate (min across regions) — the twin-dedup discriminator. */
+function sizeHourly(size: NodeSizeDto): number | null {
+  const hs = size.prices
+    .map((p) => Number.parseFloat(p.priceHourly?.net ?? ''))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return hs.length ? Math.min(...hs) : null;
+}
+/** A size's cheapest monthly — the price kept when collapsing twins. */
+function sizeMonthly(size: NodeSizeDto): number {
+  const ms = size.prices
+    .map((p) => Number.parseFloat(p.priceMonthly?.net ?? ''))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return ms.length ? Math.min(...ms) : Number.POSITIVE_INFINITY;
+}
+const sizeRegions = (size: NodeSizeDto): Set<string> =>
+  new Set(size.prices.map((p) => p.location.toLowerCase()));
+/** Does `a` serve every region `b` does — so dropping `b` for `a` loses no coverage. */
+function sizeCovers(a: NodeSizeDto, b: NodeSizeDto): boolean {
+  const set = sizeRegions(a);
+  return [...sizeRegions(b)].every((code) => set.has(code));
+}
+
+/**
+ * Collapse "virtual twins": one machine a provider lists under two SKUs that
+ * match on cores/RAM/disk/cpuType/arch AND an identical hourly rate, differing
+ * only in the monthly commitment — Cherry's B1 (Gen-1 list) and B2 (Gen-2 promo)
+ * "Cloud VPS 1" lines are identical in specs and €/h, so shown side by side the
+ * dearer B1 reads as a rip-off. An identical hourly is the signature of "same
+ * machine, different billing tier"; a genuinely different product carries a
+ * different hourly (Cherry's G1/G2/P1/C1 VDS all do). Within a group keep the
+ * cheapest monthly and drop a twin ONLY when the survivor also covers every one
+ * of its regions — else both stay, so a promo scoped to fewer regions can never
+ * silently drop the list SKU's extra regions. Bare metal is never collapsed: two
+ * physical machines at one price are two machines, not billing twins.
+ */
+function dedupeVirtualTwins(sizes: NodeSizeDto[]): NodeSizeDto[] {
+  const groups = new Map<string, NodeSizeDto[]>();
+  const metal: NodeSizeDto[] = [];
+  for (const s of sizes) {
+    if (s.bareMetal) {
+      metal.push(s);
+      continue;
+    }
+    const h = sizeHourly(s);
+    const key = `${s.cores}|${s.memory}|${s.disk ?? 0}|${s.cpuType ?? '?'}|${s.architecture ?? '?'}|${h == null ? 'm' : h.toFixed(4)}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
+  }
+  const kept: NodeSizeDto[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      kept.push(group[0]);
+      continue;
+    }
+    const [best, ...rest] = [...group].sort((a, b) => sizeMonthly(a) - sizeMonthly(b));
+    kept.push(best);
+    // Keep any twin whose regions the survivor does not fully cover.
+    for (const twin of rest) if (!sizeCovers(best, twin)) kept.push(twin);
+  }
+  return [...metal, ...kept];
 }
 
 /** Live compute research over the shared provider services (getNodeSizes). */
@@ -152,7 +214,7 @@ export class VopsCatalogService {
   async compare(query: CompareQuery): Promise<VopsCompareRow[]> {
     const targets = query.provider
       ? [resolveProvider(query.provider)]
-      : SUPPORTED;
+      : COMPARE_PROVIDERS;
     const rows: VopsCompareRow[] = [];
     for (const provider of targets) {
       const currency = this.currency(provider);
@@ -190,6 +252,9 @@ export class VopsCatalogService {
       plan: size.name,
       cores: size.cores,
       memoryGb: size.memory,
+      diskGb: size.disk,
+      cpuType: size.cpuType,
+      bareMetal: size.bareMetal,
       region: priced?.location ?? size.prices[0]?.location ?? '-',
       hourly: plan.hourly,
       monthly: plan.monthly,
@@ -277,7 +342,10 @@ export class VopsCatalogService {
   ): VopsPlan {
     const hourly = this.cheapest(size, 'priceHourly');
     const monthly = this.cheapest(size, 'priceMonthly');
-    const createAllowed = !size.bareMetal && size.supportsHourlyBilling;
+    // Read-only providers (Cherry) have no infra provisioning path, so a hourly
+    // non-metal plan is still never creatable by vops — compare-only.
+    const createAllowed =
+      !size.bareMetal && size.supportsHourlyBilling && !isReadOnly(provider);
     const guided = !size.bareMetal && !createAllowed && isGuided(provider);
     return {
       id: size.id,
@@ -351,14 +419,21 @@ export class VopsCatalogService {
         `Provider ${provider} does not expose plan/pricing data.`,
       );
     }
-    const sizes = await service.getNodeSizes(true);
+    // Collapse same-machine billing twins (Cherry B1/B2) before caching, so every
+    // consumer — compare, plans, region prices — sees one row per real machine.
+    const sizes = dedupeVirtualTwins(await service.getNodeSizes(true));
     await this.store.setCache(key, sizes, NODE_SIZES_TTL_SECONDS);
     return sizes;
   }
 
   private currency(provider: CloudProvider): string {
-    return this.capabilities
-      .getCapabilitiesService(provider)
-      .getStaticCapabilities().pricing.currency;
+    // Read-only providers (Cherry) have no capabilities service; they quote EUR.
+    try {
+      return this.capabilities
+        .getCapabilitiesService(provider)
+        .getStaticCapabilities().pricing.currency;
+    } catch {
+      return 'EUR';
+    }
   }
 }

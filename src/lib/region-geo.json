@@ -24,5 +24,12 @@
   { "code": "WAW", "city": "Warsaw", "country": "Poland", "cc": "PL", "lat": 52.2297, "lng": 21.0122, "provider": "ovh", "continent": "Europe" },
   { "code": "BHS", "city": "Beauharnois", "country": "Canada", "cc": "CA", "lat": 45.3151, "lng": -73.8779, "provider": "ovh", "continent": "North America" },
   { "code": "SGP", "city": "Singapore", "country": "Singapore", "cc": "SG", "lat": 1.3521, "lng": 103.8198, "provider": "ovh", "continent": "Asia" },
-  { "code": "SYD", "city": "Sydney", "country": "Australia", "cc": "AU", "lat": -33.8688, "lng": 151.2093, "provider": "ovh", "continent": "Oceania" }
+  { "code": "SYD", "city": "Sydney", "country": "Australia", "cc": "AU", "lat": -33.8688, "lng": 151.2093, "provider": "ovh", "continent": "Oceania" },
+  { "code": "LT-Siauliai", "city": "Šiauliai", "country": "Lithuania", "cc": "LT", "lat": 55.9349, "lng": 23.3137, "provider": "cherry", "continent": "Europe" },
+  { "code": "NL-Amsterdam", "city": "Amsterdam", "country": "Netherlands", "cc": "NL", "lat": 52.3676, "lng": 4.9041, "provider": "cherry", "continent": "Europe" },
+  { "code": "DE-Frankfurt", "city": "Frankfurt", "country": "Germany", "cc": "DE", "lat": 50.1109, "lng": 8.6821, "provider": "cherry", "continent": "Europe" },
+  { "code": "SE-Stockholm", "city": "Stockholm", "country": "Sweden", "cc": "SE", "lat": 59.3293, "lng": 18.0686, "provider": "cherry", "continent": "Europe" },
+  { "code": "US-Chicago", "city": "Chicago", "country": "United States", "cc": "US", "lat": 41.8781, "lng": -87.6298, "provider": "cherry", "continent": "North America" },
+  { "code": "SG-Singapore", "city": "Singapore", "country": "Singapore", "cc": "SG", "lat": 1.3521, "lng": 103.8198, "provider": "cherry", "continent": "Asia" },
+  { "code": "JP-Tokyo", "city": "Tokyo", "country": "Japan", "cc": "JP", "lat": 35.6762, "lng": 139.6503, "provider": "cherry", "continent": "Asia" }
 ]

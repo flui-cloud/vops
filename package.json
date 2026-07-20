@@ -44,7 +44,7 @@
     "sonar:loop": "pnpm run sonar:scan && pnpm run sonar:report"
   },
   "dependencies": {
-    "@flui-cloud/infra": "^0.1.2",
+    "@flui-cloud/infra": "^0.2.2",
     "@libsql/client": "^0.14.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",

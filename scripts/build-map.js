@@ -60,15 +60,17 @@ const ASPECT = W / H;
 // Centre the preset on the pin CENTROID (where the cluster actually sits), then
 // grow the box just enough to contain every pin plus padding. Centroid-centring
 // keeps dense clusters off the edge instead of drifting toward empty ocean.
-function frameFor(subset) {
+// `tight` scales the padding around the cluster: 1 = default, <1 zooms in
+// (Europe's pins sit in a narrow band, so it defaults too wide — tighten it).
+function frameFor(subset, tight = 1) {
   const xs = subset.map((p) => (p.xPct / 100) * W);
   const ys = subset.map((p) => (p.yPct / 100) * H);
   const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
   const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
   const spanX = Math.max(...xs.map((x) => Math.abs(x - cx)));
   const spanY = Math.max(...ys.map((y) => Math.abs(y - cy)));
-  const hx = spanX + Math.max(spanX * 0.6, 55);
-  const hy = spanY + Math.max(spanY * 0.6, 55);
+  const hx = spanX + Math.max(spanX * 0.6, 55) * tight;
+  const hy = spanY + Math.max(spanY * 0.6, 55) * tight;
   let w = hx * 2, h = hy * 2;
   if (w / h > ASPECT) h = w / ASPECT; else w = h * ASPECT;
   return {
@@ -80,13 +82,13 @@ function frameFor(subset) {
 const inContinents = (names) => pins.filter((p) => names.includes(p.continent));
 const views = { world: { x: 0, y: 0, w: W, h: H } };
 const groups = [
-  ['europe', ['Europe']],
-  ['namerica', ['North America']],
-  ['asia', ['Asia', 'Oceania']],
+  ['europe', ['Europe'], 0.4], // Europe sits in a narrow band → zoom in tighter
+  ['namerica', ['North America'], 1],
+  ['asia', ['Asia', 'Oceania'], 1],
 ];
-for (const [id, continents] of groups) {
+for (const [id, continents, tight] of groups) {
   const subset = inContinents(continents);
-  if (subset.length) views[id] = frameFor(subset);
+  if (subset.length) views[id] = frameFor(subset, tight);
 }
 
 const out = path.join(__dirname, '..', 'src', 'ui', 'world.geo.json');
