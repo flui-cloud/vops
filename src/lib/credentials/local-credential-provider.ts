@@ -5,6 +5,8 @@ import {
   BearerTokenDto,
 } from '@flui-cloud/infra';
 import { LocalConfigStore } from '../config/local-config-store';
+import { ensureVaultUnlocked } from '../keyring/unlock';
+import { hydrateEnvFromStore } from './provider-credentials';
 
 const CONTABO_TOKEN_URL =
   'https://auth.contabo.com/auth/realms/contabo/protocol/openid-connect/token';
@@ -18,8 +20,20 @@ const CONTABO_TOKEN_URL =
 export class LocalCredentialProvider implements ICredentialProvider {
   private readonly store = new LocalConfigStore();
   private contaboToken: { value: BearerTokenDto; expiresAt: number } | null = null;
+  private hydrated = false;
+
+  /** The one place in the credential path that may ask for the passphrase — code
+   * that never reads a credential never reaches this class, so it never prompts.
+   * Hydration runs after unlock since there's nothing to copy before the vault opens. */
+  private async ready(): Promise<void> {
+    await ensureVaultUnlocked();
+    if (this.hydrated) return;
+    hydrateEnvFromStore(this.store);
+    this.hydrated = true;
+  }
 
   async getActiveApiToken(provider: CloudProvider): Promise<string> {
+    await this.ready();
     const name = this.name(provider);
     if (provider === CloudProvider.SCALEWAY) {
       const creds = this.store.getCredentials(name);
@@ -35,6 +49,7 @@ export class LocalCredentialProvider implements ICredentialProvider {
   async getActiveAccessKeyPair(
     provider: CloudProvider,
   ): Promise<{ accessKey: string; secretKey: string }> {
+    await this.ready();
     const name = this.name(provider);
     const creds = this.store.getCredentials(name);
     if (!creds?.accessKey || !creds?.secretKey) throw this.missing(name);
@@ -54,6 +69,7 @@ export class LocalCredentialProvider implements ICredentialProvider {
     if (this.contaboToken && this.contaboToken.expiresAt > Date.now()) {
       return this.contaboToken.value;
     }
+    await this.ready();
 
     const clientId = process.env.CONTABO_CLIENT_ID;
     const clientSecret = process.env.CONTABO_CLIENT_SECRET;

@@ -77,7 +77,7 @@ describe('VopsCredentialsService', () => {
   it('removes credentials from store and env', async () => {
     const svc = load();
     await svc.save('cherry', { apiKey: 'tok', projectId: 'p1' });
-    const res = svc.remove('cherry');
+    const res = await svc.remove('cherry');
     expect(res).toEqual({ provider: 'cherry', configured: false });
     expect(process.env.CHERRY_API_KEY).toBeUndefined();
     const list = await svc.list();

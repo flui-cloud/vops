@@ -2,17 +2,33 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { requireVaultKey } from '../keyring/vault-session';
+import {
+  VaultSecrets,
+  readHeader,
+  readWith,
+  vaultExists,
+  writeVault,
+} from '../keyring/vault-store';
 
 /**
  * Local-first encrypted store for vops. Secrets (provider tokens / key pairs)
- * live under ~/.config/vops/profiles/<profile>/secrets.json.enc, encrypted with
- * AES-256-GCM using a per-profile random key file. Nothing is sent anywhere.
+ * live under ~/.config/vops/profiles/<profile>/ and never leave the machine.
  *
- * Crypto layout (documented for the future Go port): the on-disk value is
- * `iv(hex):authTag(hex):ciphertext(hex)`; the key is 32 raw bytes in `.key`.
+ * Two on-disk formats, chosen by what is actually present:
+ *
+ * - **vault** (`secrets.vault.json`) — the key is derived from the user's
+ *   passphrase and exists only in memory. Preferred whenever the file exists.
+ * - **legacy** (`secrets.json.enc` + `.key`) — the key sat in a file next to the
+ *   ciphertext, so anything able to read one could read the other. Still read and
+ *   written so an existing install keeps working untouched; `vops keyring init`
+ *   moves it across.
+ *
+ * Crypto layout (documented for the future Go port): both formats store
+ * `iv(hex):authTag(hex):ciphertext(hex)` under AES-256-GCM.
  */
 export class LocalConfigStore {
-  private readonly profileDir: string;
+  readonly profileDir: string;
   private readonly secretsPath: string;
   private readonly keyPath: string;
 
@@ -22,6 +38,11 @@ export class LocalConfigStore {
     this.profileDir = path.join(base, 'profiles', profile);
     this.secretsPath = path.join(this.profileDir, 'secrets.json.enc');
     this.keyPath = path.join(this.profileDir, '.key');
+  }
+
+  /** True once the profile has been moved to the passphrase-derived vault. */
+  get sealed(): boolean {
+    return vaultExists(this.profileDir);
   }
 
   getToken(provider: string): string | null {
@@ -61,16 +82,34 @@ export class LocalConfigStore {
     this.writeSecrets(secrets);
   }
 
-  private readSecrets(): {
-    tokens?: Record<string, string>;
-    credentials?: Record<string, Record<string, string>>;
-  } {
-    if (!fs.existsSync(this.secretsPath)) return {};
-    const decrypted = this.decrypt(fs.readFileSync(this.secretsPath, 'utf8'));
-    return JSON.parse(decrypted);
+  /** Environment-style credentials adopted out of a plaintext `.env`. */
+  getEnv(): Record<string, string> {
+    return this.readSecrets().env ?? {};
   }
 
-  private writeSecrets(secrets: unknown): void {
+  setEnv(entries: Record<string, string>): void {
+    const secrets = this.readSecrets();
+    secrets.env = { ...secrets.env, ...entries };
+    this.writeSecrets(secrets);
+  }
+
+  removeEnv(names: string[]): void {
+    const secrets = this.readSecrets();
+    for (const name of names) delete secrets.env?.[name];
+    this.writeSecrets(secrets);
+  }
+
+  private readSecrets(): VaultSecrets {
+    if (this.sealed) return readWith(this.profileDir, requireVaultKey());
+    if (!fs.existsSync(this.secretsPath)) return {};
+    return JSON.parse(this.decrypt(fs.readFileSync(this.secretsPath, 'utf8'))) as VaultSecrets;
+  }
+
+  private writeSecrets(secrets: VaultSecrets): void {
+    if (this.sealed) {
+      writeVault(this.profileDir, secrets, requireVaultKey(), readHeader(this.profileDir));
+      return;
+    }
     fs.mkdirSync(this.profileDir, { recursive: true, mode: 0o700 });
     fs.writeFileSync(this.secretsPath, this.encrypt(JSON.stringify(secrets)), {
       mode: 0o600,

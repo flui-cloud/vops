@@ -1,5 +1,7 @@
 import * as crypto from 'node:crypto';
 import { LocalConfigStore } from './config/local-config-store';
+import { ensureVaultUnlocked } from './keyring/unlock';
+import { VaultLockedError } from './keyring/vault-session';
 
 /**
  * Thin client for the hosted comparison API used by the `vops watch` commands
@@ -152,10 +154,18 @@ export interface MonitorHostStatus {
 export class CloudClient {
   private readonly store = new LocalConfigStore();
 
+  /** A sealed vault answers "nothing configured" rather than throwing, since
+   * `publicBase()` must work with zero config. Authenticated calls go through
+   * `json()`, which unlocks first. */
   config(): { apiUrl: string; token: string } | null {
-    const creds = this.store.getCredentials(CLOUD_KEY);
-    if (!creds?.token) return null;
-    return { apiUrl: creds.apiUrl || DEFAULT_API, token: creds.token };
+    try {
+      const creds = this.store.getCredentials(CLOUD_KEY);
+      if (!creds?.token) return null;
+      return { apiUrl: creds.apiUrl || DEFAULT_API, token: creds.token };
+    } catch (e) {
+      if (e instanceof VaultLockedError) return null;
+      throw e;
+    }
   }
 
   /** Persist endpoint + token, minting a fresh token when none is supplied. */
@@ -339,6 +349,7 @@ export class CloudClient {
   }
 
   private async json<T>(method: string, path: string, body?: unknown): Promise<T> {
+    await ensureVaultUnlocked();
     const { apiUrl, token } = this.require();
     const res = await fetch(`${apiUrl}${path}`, {
       method,

@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import { CloudProvider } from '@flui-cloud/infra';
 import { LocalConfigStore } from '../../lib/config/local-config-store';
+import { ensureVaultUnlocked } from '../../lib/keyring/unlock';
 import { resolveProvider } from '../../lib/providers';
 
 export default class ConfigSet extends Command {
@@ -25,6 +26,7 @@ export default class ConfigSet extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ConfigSet);
     const provider = resolveProvider(args.provider);
+    await ensureVaultUnlocked();
     const store = new LocalConfigStore();
 
     if (provider === CloudProvider.CHERRY) {

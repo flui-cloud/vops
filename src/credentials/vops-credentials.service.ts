@@ -10,6 +10,8 @@ import {
   ProviderCredentials,
 } from '@flui-cloud/infra';
 import { LocalConfigStore } from '../lib/config/local-config-store';
+import { ensureVaultUnlocked } from '../lib/keyring/unlock';
+import { VaultLockedError } from '../lib/keyring/vault-session';
 import { resolveProvider } from '../lib/providers';
 import {
   CONFIGURABLE_PROVIDERS,
@@ -37,10 +39,18 @@ export class VopsCredentialsService implements OnModuleInit {
   onModuleInit(): void {
     // Make UI-stored credentials visible to env-based providers on startup.
     // An explicit environment/.env value still wins (force omitted).
-    hydrateEnvFromStore(this.store);
+    // A sealed vault is not an error here: boot must never prompt, or every
+    // command would ask for the passphrase whether or not it touches a secret.
+    // The credential path opens the vault later, on demand, and hydrates then.
+    try {
+      hydrateEnvFromStore(this.store);
+    } catch (e) {
+      if (!(e instanceof VaultLockedError)) throw e;
+    }
   }
 
   async list(): Promise<VopsCredentialStatus[]> {
+    await ensureVaultUnlocked();
     return Promise.all(
       CONFIGURABLE_PROVIDERS.map(async (provider) => {
         const info = await this.capabilities
@@ -61,6 +71,7 @@ export class VopsCredentialsService implements OnModuleInit {
     name: string,
     values: Record<string, string> | undefined,
   ): Promise<VopsCredentialSaveResult> {
+    await ensureVaultUnlocked();
     const provider = resolveProvider(name);
     const info = await this.capabilities
       .getCapabilitiesService(provider)
@@ -94,7 +105,8 @@ export class VopsCredentialsService implements OnModuleInit {
     return { provider, configured: true, validation };
   }
 
-  remove(name: string): { provider: CloudProvider; configured: false } {
+  async remove(name: string): Promise<{ provider: CloudProvider; configured: false }> {
+    await ensureVaultUnlocked();
     const provider = resolveProvider(name);
     this.store.remove(provider);
     clearEnvForProvider(provider);

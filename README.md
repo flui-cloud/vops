@@ -121,6 +121,10 @@ vops watch remove <id>
 
 # Local dashboard
 vops ui
+
+# Secrets — derive the encryption key from a passphrase instead of a key file
+vops keyring init                      # seal the profile (adopts the store + plaintext .env)
+vops keyring status / unlock / lock
 ```
 
 ## Highlights
@@ -152,6 +156,24 @@ vops config list                             # which providers are configured
 - `~/.config/vops/.env` — the environment-variable route, read directly (a `.env` in the current directory works too). Plain text, so it's on you to protect it.
 - `~/.config/vops/profiles/<profile>/keys/` — your SSH keys (private halves stay here, never uploaded, never copied on import).
 - A local libSQL cache and a plan/audit store.
+
+### Sealing it with a passphrase
+
+Both routes above share a weakness: the encryption key sits next to the ciphertext, and the `.env` isn't encrypted at all. Anything that can read one can read the other, so a stolen disk or a careless backup gives up working credentials.
+
+`vops keyring` replaces the key file with a key **derived from a passphrase** (scrypt, N=2¹⁶) that exists only in memory:
+
+```bash
+vops keyring init            # seal the profile; adopts the store and the plaintext .env
+vops keyring import-env --prune   # remove the adopted lines from the .env (keeps a .bak)
+vops keyring status          # sealed? unlocked? anything still in plaintext?
+vops keyring drop-legacy     # delete the old .key + secrets.json.enc, once you're happy
+vops keyring lock            # forget the key now
+```
+
+You are asked for the passphrase **only when a command actually reads a credential** — `compare`, `bench`, `host list` and the dashboard's public pages never ask. The first prompt starts a small keyring process that holds the key in memory (12 h sliding, `vops keyring lock` to end it early); it exits on lock, so an idle machine has no vops process holding key material. `VOPS_PASSPHRASE` covers scripted use.
+
+Migration keeps a way back at every step: `init` writes the vault and reads it back before reporting success, and `drop-legacy` refuses unless the new vault opens.
 
 Provider credential variables, if you use the `.env` route:
 

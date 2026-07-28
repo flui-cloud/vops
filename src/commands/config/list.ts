@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { LocalConfigStore } from '../../lib/config/local-config-store';
+import { ensureVaultUnlocked } from '../../lib/keyring/unlock';
 
 export default class ConfigList extends Command {
   static readonly description = 'List providers with locally-configured credentials';
@@ -11,6 +12,7 @@ export default class ConfigList extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(ConfigList);
+    await ensureVaultUnlocked();
     const configured = new LocalConfigStore().listConfigured();
 
     if (flags.json) {
