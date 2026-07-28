@@ -1,0 +1,550 @@
+      <!-- ============ APPS — offline marketplace over the bundled flui catalog ============ -->
+      <section x-show="view==='apps'" x-cloak x-effect="view==='apps' && !apps.loaded && loadApps()">
+
+        <p x-show="apps.err" class="mb-3 rounded-lg px-3 py-2 text-[12px]" style="background:var(--danger-soft);color:var(--danger)" x-text="apps.err"></p>
+        <p x-show="apps.msg" class="mb-3 rounded-lg px-3 py-2 text-[12px]" style="background:var(--panel-2);color:var(--text-dim)" x-text="apps.msg"></p>
+
+        <!-- Access / how-to-sign-in card (after a successful deploy) -->
+        <template x-if="apps.done && apps.done.access">
+          <div class="mb-3 rounded-xl border p-4" style="border-color:var(--border);background:var(--panel-2)">
+            <div class="flex items-start justify-between">
+              <div class="text-[13px] font-bold" style="color:var(--text)">✓ <span x-text="apps.done.app"></span> deployed — how to sign in</div>
+              <button class="icon-btn" @click="apps.done=null" aria-label="Dismiss">✕</button>
+            </div>
+            <div class="mt-2 grid gap-1 text-[12.5px]" style="color:var(--text-dim)">
+              <div x-show="apps.done.access.url">URL: <a class="underline" style="color:var(--accent)" :href="apps.done.access.url" target="_blank" rel="noopener" aria-label="Open the app URL" x-text="apps.done.access.url"></a></div>
+              <template x-if="apps.done.access.mode==='firstVisit'">
+                <div style="color:var(--warn)">⚠ <span x-text="apps.done.access.note || 'The first visitor to this URL becomes the admin — open it now to claim the account.'"></span></div>
+              </template>
+              <template x-if="apps.done.access.mode==='credentials'">
+                <div class="grid gap-1">
+                  <div x-show="apps.done.access.username">User: <span style="color:var(--text)" x-text="appCredText(apps.done.access.username)"></span></div>
+                  <div x-show="apps.done.access.password" class="flex items-center gap-2">
+                    <span>Password:
+                      <span x-show="!apps.revealed[apps.done.access.password.secret]" style="color:var(--text)" x-text="appCredText(apps.done.access.password)"></span>
+                      <span x-show="apps.revealed[apps.done.access.password.secret]" class="font-mono" style="color:var(--accent)" x-text="apps.revealed[apps.done.access.password.secret]"></span>
+                    </span>
+                    <button x-show="apps.done.access.password.secret && !apps.revealed[apps.done.access.password.secret]" class="btn-ghost px-2 text-[11px]" @click="appReveal(apps.done.app, apps.done.access.password.secret)">Reveal</button>
+                  </div>
+                  <div x-show="appAccessRotate(apps.done.access)" class="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold" style="color:var(--warn);background:var(--warn-soft)">🔑 Change this password right after your first login</div>
+                  <div x-show="apps.done.access.note" style="color:var(--text-faint)" x-text="apps.done.access.note"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- Hero -->
+        <div class="mkt-hero p-7 md:p-9">
+          <div class="mkt-glow" style="right:-70px;top:-90px;height:260px;width:260px;background:color-mix(in srgb, var(--accent) 26%, transparent)"></div>
+          <div class="mkt-glow" style="right:120px;bottom:-110px;height:220px;width:220px;background:color-mix(in srgb, var(--ovh) 22%, transparent)"></div>
+          <div class="relative">
+            <div class="text-[11px] font-bold uppercase tracking-[.12em]" style="color:var(--accent)">App Marketplace</div>
+            <h1 class="mt-1.5 max-w-2xl text-[26px] font-bold leading-tight tracking-tight md:text-[32px]">Deploy open-source apps in one click</h1>
+            <p class="mt-2 max-w-xl text-[13.5px] leading-relaxed" style="color:var(--text-dim)">
+              Curated, self-hostable alternatives to the tools you already pay for. Pick an app, choose a host — vops handles the container, secrets, DNS and TLS over SSH. Your server, your data.
+            </p>
+            <div class="mt-4 flex flex-wrap items-center gap-2.5 text-[12px]" style="color:var(--text-faint)">
+              <span class="chip"><span class="font-mono font-semibold" style="color:var(--text-dim)" x-text="apps.catalog.length"></span> apps</span>
+              <span class="chip" x-show="apps.installs.length"><span class="h-[7px] w-[7px] rounded-full" style="background:var(--ok)"></span><span x-text="apps.installs.length + ' deployed'"></span></span>
+              <span class="chip" x-show="appOrphanCount()" style="color:var(--warn)"><span class="h-[7px] w-[7px] rounded-full" style="background:var(--warn)"></span><span x-text="appOrphanCount() + ' need attention'"></span></span>
+              <span class="chip">rootful Podman · Quadlet · no agent</span>
+            </div>
+            <button class="btn-ghost mt-4" @click="apps.byop=true">Deploy your own code →</button>
+          </div>
+        </div>
+
+        <!--include: sections/apps-byop.html-->
+
+        <!-- Deployed -->
+        <div class="mt-7" x-show="apps.installs.length">
+          <div class="flex items-center gap-2">
+            <div class="text-[13px] font-bold tracking-tight">Deployed</div>
+            <span class="count-pill" style="margin-left:0" x-text="apps.installs.length"></span>
+          </div>
+          <div class="mt-2.5 grid gap-2.5" style="grid-template-columns:repeat(auto-fill,minmax(330px,1fr))">
+            <template x-for="i in apps.installs" :key="i.name">
+              <div class="card flex flex-col p-3.5">
+                <div class="flex items-center gap-3">
+                  <div class="icon-tile h-10 w-10">
+                    <img :src="'/assets/app-icons/'+i.appId+'.svg'" :alt="i.name" loading="lazy" @error="$el.style.visibility='hidden'">
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="truncate text-[13.5px] font-bold" x-text="i.name"></div>
+                      <span class="badge" :style="(i.hostMissing || i.status!=='deployed') ? 'color:var(--warn);background:var(--warn-soft)' : 'color:var(--ok);background:var(--ok-soft)'" x-text="i.hostMissing ? 'host missing' : i.status"></span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      <div class="truncate text-[11px]" style="color:var(--text-faint)" x-text="i.appId + ' · ' + i.host"></div>
+                      <!-- Deployed from the user's own repository, not the catalog. Worth
+                           saying: it is the one card here nobody can re-create from a click. -->
+                      <span x-show="i.kind === 'application'" class="badge shrink-0" style="color:var(--accent);background:var(--accent-soft)">your code</span>
+                    </div>
+                    <div x-show="i.hostMissing" class="mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-semibold" style="color:var(--warn)">⚠ host gone from inventory — vops can't reach it; use Forget</div>
+                    <template x-if="i.endpoints && i.endpoints.length">
+                      <div class="mt-1">
+                        <!-- A loopback endpoint is NOT a link: that 127.0.0.1 belongs to the
+                             server, so opening it here just hits the reader's own machine. -->
+                        <template x-if="i.endpoints[0].reach === 'loopback'">
+                          <div>
+                            <span class="block truncate text-[12px]" style="color:var(--text-faint)" x-text="i.endpoints[0].url"></span>
+                            <span class="block text-[10.5px]" style="color:var(--warn)"
+                                  x-text="'reachable only from ' + i.host + ' itself — expose it to open it from here'"></span>
+                          </div>
+                        </template>
+                        <template x-if="i.endpoints[0].reach !== 'loopback'">
+                          <a :href="i.endpoints[0].url" target="_blank" aria-label="Open app endpoint" class="block truncate text-[12px]" :style="i.hostMissing ? 'color:var(--text-faint);text-decoration:line-through' : 'color:var(--accent)'" :title="i.hostMissing ? 'Host is gone — this link may not resolve' : ''" x-text="i.endpoints[0].url"></a>
+                        </template>
+                      </div>
+                    </template>
+                    <template x-if="i.ingress">
+                      <div class="mt-1 flex items-center gap-1.5 text-[11px]">
+                        <span class="badge" :style="i.ingress.tls ? 'color:var(--ok);background:var(--ok-soft)' : 'color:var(--text-dim);background:var(--panel-3)'" x-text="i.ingress.tls ? (i.ingress.staging ? 'TLS·staging' : 'TLS') : 'HTTP'"></span>
+                        <span class="truncate" style="color:var(--text-faint)" x-text="i.ingress.hostname"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <!-- Primary actions (day-to-day) stay one fixed row so every card
+                     wraps identically; less-frequent + destructive actions move into
+                     the "⋯" menu instead of piling on more buttons. -->
+                <template x-if="!i.hostMissing">
+                  <div class="mt-auto flex items-center gap-1.5 pt-3">
+                    <button class="btn-xs btn-xs-muted" @click="appLogs(i.name)">Logs</button>
+                    <button class="btn-xs btn-xs-muted" @click="appShell(i.name)" title="Open a shell inside the container">Shell</button>
+                    <button class="btn-xs btn-xs-muted" :disabled="apps.restarting===i.name" @click="appRestart(i.name)" title="Restart the app's containers" x-text="apps.restarting===i.name ? 'Restarting…' : 'Restart'"></button>
+                    <div class="relative ml-auto" @click.stop @click.outside="apps.menu===i.name && (apps.menu='')">
+                      <button class="icon-btn h-7 w-7 text-sm" @click="apps.menu = apps.menu===i.name ? '' : i.name" aria-label="More actions" title="More actions">⋯</button>
+                      <div x-show="apps.menu===i.name" x-cloak class="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg py-1 text-[12px]" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)">
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" @click="appStatus(i.name); apps.menu=''">Status</button>
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" x-show="!i.ingress" @click="appAskExpose(i.name); apps.menu=''">Expose…</button>
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" x-show="i.ingress" @click="appAskUnexpose(i.name); apps.menu=''">Unexpose</button>
+                        <div class="my-1" style="border-top:1px solid var(--border)"></div>
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--danger)" @click="appAskRemove(i.name, false); apps.menu=''">Remove</button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <template x-if="i.hostMissing">
+                  <div class="mt-auto flex items-center gap-1.5 pt-3">
+                    <button class="btn-xs" style="color:var(--danger);border-color:var(--danger-soft)" @click="appAskRemove(i.name, true)">Forget</button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Inspect (status / logs of a deployed install) -->
+        <template x-if="apps.inspect">
+          <div class="mt-3 card p-4">
+            <div class="flex items-center justify-between">
+              <div class="text-[13px] font-bold" x-text="'‹ ' + apps.inspect.name"></div>
+              <div class="flex gap-1.5">
+                <button class="btn-xs btn-xs-muted" x-show="apps.inspect.logs" @click="appDownloadLogs()">Download</button>
+                <button class="btn-xs btn-xs-muted" @click="appCloseInspect()">Close</button>
+              </div>
+            </div>
+            <template x-if="apps.inspect.units">
+              <div class="mt-2">
+                <template x-for="u in apps.inspect.units" :key="u.service">
+                  <div class="flex justify-between py-0.5 text-[12px]" style="border-bottom:1px solid var(--border-2)">
+                    <span x-text="u.service"></span>
+                    <span :style="u.active==='active' ? 'color:var(--ok)' : 'color:var(--warn)'" x-text="u.active + ' · ' + u.sub"></span>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <template x-if="apps.inspect.logs">
+              <pre class="mt-2 max-h-[320px] overflow-auto rounded-lg p-2.5 text-[11px] leading-snug" style="background:var(--panel-2);color:var(--text-dim)" x-text="apps.inspect.logs"></pre>
+            </template>
+          </div>
+        </template>
+
+        <!-- Container shell: opens the user's own terminal; nothing is proxied through the browser -->
+        <template x-if="apps.shell">
+          <div class="mt-3 card p-4">
+            <div class="flex items-center justify-between">
+              <div class="text-[13px] font-bold" x-text="'⌨ shell · ' + apps.shell.name"></div>
+              <button class="btn-xs btn-xs-muted" @click="appCloseShell()">Close</button>
+            </div>
+            <template x-if="!apps.shell.loading">
+              <div class="mt-2">
+                <template x-if="(apps.shell.components || []).length > 1">
+                  <div class="mb-2 flex flex-wrap items-center gap-1.5">
+                    <span class="text-[11px]" style="color:var(--text-faint)">Container</span>
+                    <template x-for="c in apps.shell.components" :key="c.name">
+                      <button class="btn-xs" :class="c.name === apps.shell.component ? '' : 'btn-xs-muted'" @click="appShell(apps.shell.name, c.name)" x-text="c.name"></button>
+                    </template>
+                  </div>
+                </template>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button class="btn-xs" @click="appShellOpen()" :disabled="apps.shell.busy" x-text="apps.shell.busy ? 'Opening…' : 'Open in terminal'"></button>
+                  <button class="btn-xs btn-xs-muted" @click="copy(apps.shell.cli)">Copy vops command</button>
+                  <button class="btn-xs btn-xs-muted" @click="copy(apps.shell.command)">Copy ssh command</button>
+                </div>
+                <template x-if="apps.shell.reason">
+                  <div class="mt-2 text-[11px]" style="color:var(--warn)" x-text="apps.shell.reason"></div>
+                </template>
+                <div class="mt-2 text-[11px]" style="color:var(--text-faint)">
+                  <span x-text="apps.shell.container"></span> on <span x-text="apps.shell.host"></span> — runs on this machine, in your terminal.
+                </div>
+                <pre class="mt-1 overflow-auto rounded-lg p-2.5 text-[11px] leading-snug" style="background:var(--panel-2);color:var(--text-dim)" x-text="apps.shell.cli"></pre>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- Catalog toolbar -->
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          <div class="text-[13px] font-bold tracking-tight">Browse the catalog</div>
+          <span class="text-[12px]" style="color:var(--text-faint)" x-text="catalogView().length + ' of ' + apps.catalog.length"></span>
+          <div class="relative ml-auto w-full sm:w-[280px]">
+            <svg class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-faint)"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input class="field" style="padding-left:34px" x-model="apps.q" aria-label="Search apps" placeholder='Search — try "password" or "monitoring"…'>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          <button class="filter-chip" :class="apps.cat==='' && 'filter-chip-active'" @click="apps.cat=''">All</button>
+          <template x-for="c in appCategories()" :key="c.id">
+            <button class="filter-chip" :class="apps.cat===c.id && 'filter-chip-active'" @click="apps.cat=c.id">
+              <span class="capitalize" x-text="c.id.replace(/-/g,' ')"></span>
+              <span class="ml-1 opacity-60" x-text="c.count"></span>
+            </button>
+          </template>
+        </div>
+
+        <!-- Catalog grid -->
+        <div class="mt-4 grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+          <template x-if="!apps.loaded">
+            <template x-for="n in 6" :key="n"><div class="card p-4"><div class="flex gap-3"><div class="skel h-12 w-12"></div><div class="flex-1"><div class="skel h-4 w-2/3"></div><div class="skel mt-2 h-3 w-1/3"></div></div></div><div class="skel mt-3 h-3 w-full"></div><div class="skel mt-2 h-3 w-4/5"></div></div></template>
+          </template>
+          <template x-for="c in catalogView()" :key="c.id">
+            <div class="app-card group p-4" @click="appOpen(c)">
+              <div class="flex items-center gap-3">
+                <div class="icon-tile h-12 w-12">
+                  <img :src="appIconUrl(c)" :alt="c.name" loading="lazy" @error="$el.style.visibility='hidden'">
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <div class="truncate text-[14px] font-bold" x-text="c.name"></div>
+                    <span class="shrink-0 text-[11px] font-mono" style="color:var(--text-faint)" x-text="'v'+c.version"></span>
+                  </div>
+                  <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
+                    <span class="badge-off capitalize" x-text="c.category.replace(/-/g,' ')"></span>
+                    <template x-if="appRating(c)!==null">
+                      <span class="inline-flex items-center gap-0.5 text-[11px] font-semibold" style="color:var(--warn)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"/></svg>
+                        <span x-text="appRating(c).toFixed(1)"></span>
+                      </span>
+                    </template>
+                    <template x-if="appInstalls(c.id).length">
+                      <span class="badge-ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg><span x-text="appInstalls(c.id).length"></span></span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <p class="clamp-2 mt-3 text-[12px] leading-snug" style="color:var(--text-dim)" x-text="c.description"></p>
+              <template x-if="c.alternativeTo && c.alternativeTo.length">
+                <div class="mt-2.5 flex flex-wrap items-center gap-1">
+                  <span class="text-[9.5px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">alt to</span>
+                  <template x-for="a in c.alternativeTo.slice(0,3)" :key="a"><span class="alt-chip" x-text="a"></span></template>
+                </div>
+              </template>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <template x-for="t in (c.tags||[]).slice(0,4)" :key="t"><span class="tag-chip" x-text="t"></span></template>
+              </div>
+              <div class="mt-3 flex items-center gap-1 text-[11.5px] font-semibold opacity-0 transition group-hover:opacity-100" style="color:var(--accent)">
+                View details <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </div>
+            </div>
+          </template>
+          <template x-if="apps.loaded && !catalogView().length">
+            <div class="col-span-full rounded-2xl border border-dashed p-10 text-center" style="border-color:var(--border);color:var(--text-faint)">
+              <div class="text-[13px]">No apps match your filters.</div>
+              <button class="btn-xs btn-xs-muted mt-3" @click="apps.q='';apps.cat=''">Reset filters</button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Detail drawer -->
+        <template x-if="apps.sel">
+          <div class="fixed inset-0 z-40 flex justify-end" style="background:rgba(0,0,0,.45)" @click.self="appCloseSel()" @keydown.escape.window="appCloseSel()">
+            <div class="h-full w-full max-w-[520px] overflow-auto p-6" style="background:var(--panel);border-left:1px solid var(--border)">
+              <div class="flex items-center gap-3.5">
+                <div class="icon-tile h-14 w-14">
+                  <img :src="appIconUrl(apps.sel)" :alt="apps.sel.name" @error="$el.style.visibility='hidden'">
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="text-[17px] font-bold leading-tight" x-text="apps.sel.name"></div>
+                  <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]" style="color:var(--text-faint)">
+                    <span class="badge-off capitalize" x-text="apps.sel.category.replace(/-/g,' ')"></span>
+                    <span class="font-mono" x-text="'v'+apps.sel.version"></span>
+                    <span x-show="apps.sel.license" x-text="'· '+apps.sel.license"></span>
+                    <span x-text="'· '+appKindLabel(apps.sel.type)"></span>
+                  </div>
+                </div>
+                <button class="icon-btn" @click="appCloseSel()">✕</button>
+              </div>
+
+              <div class="mt-3 flex flex-wrap gap-3 text-[12px]" x-show="apps.sel.links">
+                <a x-show="apps.sel.links?.website" :href="apps.sel.links?.website" target="_blank" class="inline-flex items-center gap-1" style="color:var(--accent)">Website</a>
+                <a x-show="apps.sel.links?.docs" :href="apps.sel.links?.docs" target="_blank" class="inline-flex items-center gap-1" style="color:var(--accent)">Docs</a>
+                <a x-show="apps.sel.links?.source" :href="apps.sel.links?.source" target="_blank" class="inline-flex items-center gap-1" style="color:var(--accent)">Source</a>
+              </div>
+
+              <div class="seg mt-4 w-fit">
+                <button class="seg-btn" :class="apps.selTab==='about' && 'seg-btn-active'" @click="apps.selTab='about'">About</button>
+                <button class="seg-btn" :class="apps.selTab==='config' && 'seg-btn-active'" @click="apps.selTab='config'">Configuration</button>
+              </div>
+
+              <!-- About -->
+              <div class="mt-4" x-show="apps.selTab==='about'">
+                <p class="text-[13px] leading-relaxed" style="color:var(--text-dim)" x-text="apps.sel.description"></p>
+                <template x-if="appRating(apps.sel)!==null">
+                  <div class="mt-4 grid grid-cols-2 gap-2">
+                    <template x-for="r in [['Wow','wow'],['Utility','utility'],['EU fit','euFit'],['Community','community']]" :key="r[1]">
+                      <div class="rounded-xl border p-2.5" style="border-color:var(--border);background:var(--panel-2)" x-show="typeof apps.sel.ratings[r[1]]==='number'">
+                        <div class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)" x-text="r[0]"></div>
+                        <div class="mt-1 flex items-center gap-1 text-[13px] font-bold" style="color:var(--warn)">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17.8 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"/></svg>
+                          <span x-text="apps.sel.ratings[r[1]] + ' / 5'"></span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="apps.sel.alternativeTo && apps.sel.alternativeTo.length">
+                  <div class="mt-4">
+                    <div class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-faint)">Alternative to</div>
+                    <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="a in apps.sel.alternativeTo" :key="a"><span class="alt-chip" x-text="a"></span></template></div>
+                  </div>
+                </template>
+                <div class="mt-4 flex flex-wrap gap-1.5" x-show="apps.sel.tags && apps.sel.tags.length">
+                  <template x-for="t in apps.sel.tags" :key="t"><span class="tag-chip" x-text="t"></span></template>
+                </div>
+              </div>
+
+              <!-- Configuration -->
+              <div class="mt-4" x-show="apps.selTab==='config'">
+                <template x-if="apps.sel.inputs && apps.sel.inputs.length">
+                  <div>
+                    <div class="text-[12px]" style="color:var(--text-dim)">You'll be asked for:</div>
+                    <div class="mt-2 grid gap-2">
+                      <template x-for="inp in apps.sel.inputs" :key="inp.name">
+                        <div class="rounded-xl border p-3" style="border-color:var(--border);background:var(--panel-2)">
+                          <div class="flex items-center gap-2">
+                            <span class="font-mono text-[12px] font-semibold" x-text="inp.label"></span>
+                            <span class="badge-warn" x-show="inp.sensitive">secret</span>
+                          </div>
+                          <div class="mt-0.5 text-[11.5px]" style="color:var(--text-faint)" x-text="inp.description || inp.name"></div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="!apps.sel.inputs || !apps.sel.inputs.length" class="rounded-xl border border-dashed p-6 text-center text-[12.5px]" style="border-color:var(--border);color:var(--text-faint)">
+                  Works out of the box — no configuration required.
+                </div>
+              </div>
+
+              <button class="btn-primary mt-6 w-full" @click="appDeployFromSel()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c3 2.5 5 6 5 10a5 5 0 0 1-10 0c0-4 2-7.5 5-10Z"/><path d="M9 18l-2 3M15 18l2 3"/></svg>
+                Deploy to a host
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Deploy modal -->
+        <template x-if="apps.form">
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,.5)" @click.self="!apps.busy && appCloseDeploy()" @keydown.escape.window="!apps.busy && appCloseDeploy()">
+            <div class="card w-full max-w-[660px] p-5" style="max-height:88vh;overflow:auto">
+              <div class="flex items-center justify-between">
+                <div class="text-[15px] font-bold" x-text="'Deploy ' + (appFormEntry()?.name || apps.form.catalog)"></div>
+                <button class="icon-btn" @click="appCloseDeploy()">✕</button>
+              </div>
+              <div class="mt-4 grid gap-3">
+                <label class="block">
+                  <span class="label">Host</span>
+                  <select class="field" x-model="apps.form.host" @change="appPickerRetarget()">
+                    <template x-for="h in apps.hosts" :key="h.name"><option :value="h.name" x-text="h.name + ' (' + h.address + ')'"></option></template>
+                  </select>
+                </label>
+                <label class="block">
+                  <span class="label">Install name (optional)</span>
+                  <input class="field" x-model="apps.form.name" :placeholder="apps.form.catalog" @change="appPickerRetarget()">
+                </label>
+                <template x-if="appFormInputs().length">
+                  <div class="grid gap-3 rounded-xl border p-3" style="border-color:var(--border);background:var(--panel-2)">
+                    <div class="text-[11px] font-bold uppercase tracking-wide" style="color:var(--text-faint)">Configuration</div>
+                    <template x-for="inp in appFormInputs()" :key="inp.name">
+                      <label class="block">
+                        <div x-show="appGroupFirst(inp)" class="text-[11px] font-semibold" style="color:var(--text-dim);margin-bottom:3px">At least one of these is required</div>
+                        <span class="label"><span x-text="inp.label"></span><span x-show="appInputRequired(inp)" style="color:var(--danger)"> *</span><span x-show="!appInputRequired(inp) && !inp.group" style="color:var(--text-faint);font-weight:400"> · optional</span></span>
+                        <div class="flex gap-1.5">
+                          <input class="field flex-1" :type="inp.sensitive && !apps.form.reveal[inp.name] ? 'password' : 'text'" x-model="apps.form.set[inp.name]" :placeholder="inp.placeholder || inp.default || ''" :aria-label="inp.label" autocomplete="off">
+                          <button x-show="inp.sensitive" type="button" class="btn-ghost px-2" @click="appToggleReveal(inp.name)" :aria-label="apps.form.reveal[inp.name] ? 'Hide value' : 'Show value'" x-text="apps.form.reveal[inp.name] ? 'Hide' : 'Show'"></button>
+                          <button x-show="appCanGenerate(inp)" type="button" class="btn-ghost px-2" @click="appGenSecret(inp.name)">Generate</button>
+                        </div>
+                        <template x-if="inp.confirm">
+                          <input class="field mt-1.5" :type="apps.form.reveal[inp.name] ? 'text' : 'password'" x-model="apps.form.confirm[inp.name]" :placeholder="'Confirm ' + inp.label" :aria-label="'Confirm ' + inp.label" autocomplete="off">
+                        </template>
+                        <span x-show="inp.description" class="mt-1 block text-[11px]" style="color:var(--text-faint)" x-text="inp.description"></span>
+                      </label>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="appFormAccess()">
+                  <div class="grid gap-2 rounded-xl border p-3" style="border-color:var(--border);background:var(--panel-2)">
+                    <div class="text-[11px] font-bold uppercase tracking-wide" style="color:var(--text-faint)">After install — how you'll sign in</div>
+                    <template x-if="appFormAccess().mode==='firstVisit'">
+                      <div class="text-[12px]" style="color:var(--warn)">⚠ <span x-text="appFormAccess().note || 'The first visitor to this URL becomes the admin — open it right after deploy to claim the account.'"></span></div>
+                    </template>
+                    <template x-if="appFormAccess().mode==='credentials'">
+                      <div class="grid gap-1.5 text-[12px]" style="color:var(--text-dim)">
+                        <div x-show="appFormAccess().username" class="flex items-center gap-2"><span class="w-[68px] shrink-0" style="color:var(--text-faint)">User</span><span class="font-mono" style="color:var(--text)" x-text="appAccessPartText(appFormAccess().username)"></span></div>
+                        <div x-show="appFormAccess().password" class="flex items-center gap-2">
+                          <span class="w-[68px] shrink-0" style="color:var(--text-faint)">Password</span>
+                          <span :class="appFormAccess().password?.kind==='value' && 'font-mono'" :style="appFormAccess().password?.kind==='value' ? 'color:var(--text)' : 'color:var(--text-faint);font-style:italic'" x-text="appAccessPartText(appFormAccess().password)"></span>
+                        </div>
+                        <div x-show="appAccessRotate(appFormAccess())" class="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold" style="color:var(--warn);background:var(--warn-soft)">🔑 Change this password right after your first login</div>
+                        <div x-show="appFormAccess().note" class="text-[11px]" style="color:var(--text-faint)" x-text="appFormAccess().note"></div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <!--include: sections/domain-picker.html-->
+                <template x-if="appPickerDomain()">
+                  <div class="grid gap-3">
+                    <label class="block">
+                      <span class="label">ACME email (to provision ingress on a fresh host)</span>
+                      <input class="field" x-model="apps.form.email" placeholder="you@example.com">
+                    </label>
+                    <div class="flex items-center gap-4 text-[12px]" style="color:var(--text-dim)">
+                      <label class="flex items-center gap-1.5"><input type="checkbox" x-model="apps.form.tls"> TLS certificate</label>
+                      <label class="flex items-center gap-1.5"><input type="checkbox" x-model="apps.form.staging"> LE staging (test)</label>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <template x-if="apps.progress">
+                <div class="mt-4">
+                  <div class="flex items-center justify-between text-[12px]" style="color:var(--text-dim)">
+                    <span x-text="apps.progress.label"></span>
+                    <span class="font-mono" style="color:var(--text-faint)" x-text="Math.round(apps.progress.pct)+'%'"></span>
+                  </div>
+                  <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full" style="background:var(--panel-3)">
+                    <div class="h-full rounded-full" style="transition:width .3s ease-out" :style="'width:'+apps.progress.pct+'%;background:var(--accent);transition:width .3s ease-out'"></div>
+                  </div>
+                  <div x-show="apps.progress.pct>=88 && apps.progress.pct<100" class="mt-1.5 text-[11px]" style="color:var(--text-faint)">Almost there — waiting for the container to become healthy…</div>
+                </div>
+              </template>
+              <div class="mt-4 flex gap-2" x-show="!apps.progress">
+                <button class="btn-ghost" @click="appPreview()" :disabled="apps.busy">Dry-run</button>
+                <button class="btn-primary flex-1" @click="appDeploy()" :disabled="apps.busy" x-text="apps.busy ? 'Working…' : 'Deploy'"></button>
+              </div>
+              <p x-show="apps.err" class="mt-2 text-[11.5px]" style="color:var(--danger)" x-text="apps.err"></p>
+
+              <template x-if="apps.preview">
+                <div class="mt-3 rounded-xl border p-3" style="border-color:var(--border);background:var(--panel-2)">
+                  <div class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide" style="color:var(--text-faint)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Dry-run — what will be created (nothing deployed yet)
+                  </div>
+                  <div class="text-[11.5px]" style="color:var(--text-dim)">
+                    <span x-text="apps.preview.host + ' · ' + apps.preview.kind"></span>
+                    <span x-show="apps.preview.coexistence" class="ml-1" style="color:var(--warn)">· k3s coexistence</span>
+                  </div>
+                  <template x-for="e in apps.preview.endpoints" :key="e.url">
+                    <div class="text-[12px]" :style="e.reach === 'loopback' ? 'color:var(--text-faint)' : 'color:var(--accent)'">
+                      <span x-text="'endpoint: ' + e.url"></span>
+                      <span x-show="e.reach === 'loopback'" class="text-[10.5px]" style="color:var(--warn)"> · only from the server itself</span>
+                    </div>
+                  </template>
+                  <template x-if="apps.preview.ingress">
+                    <div class="mt-1 text-[11.5px]" style="color:var(--text-dim)">
+                      <div>ingress: <span style="color:var(--accent)" x-text="apps.preview.ingress.hostname"></span> <span x-text="apps.preview.ingress.tls ? (apps.preview.ingress.staging ? '· TLS (staging)' : '· TLS (Let’s Encrypt)') : '· plain HTTP'"></span></div>
+                      <template x-for="w in apps.preview.ingress.warnings" :key="w"><div style="color:var(--warn)" x-text="'! ' + w"></div></template>
+                    </div>
+                  </template>
+                  <template x-for="(content,name) in apps.preview.files" :key="name">
+                    <div class="mt-2">
+                      <div class="text-[11px] font-bold" style="color:var(--text-faint)" x-text="'# ' + name"></div>
+                      <pre class="max-h-[280px] overflow-auto rounded-lg p-2.5 text-[11px] leading-snug" style="background:var(--panel);color:var(--text-dim)" x-text="content"></pre>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- In-page confirm for remove / expose / unexpose (no native dialogs) -->
+        <template x-if="apps.confirm">
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,.5)" @click.self="appCloseConfirm()" @keydown.escape.window="appCloseConfirm()">
+            <div class="card w-full max-w-[440px] p-5">
+              <template x-if="apps.confirm.kind==='remove'">
+                <div>
+                  <div class="text-[15px] font-bold" :style="apps.confirm.orphaned ? 'color:var(--warn)' : 'color:var(--danger)'">
+                    <span x-text="apps.confirm.orphaned ? 'Forget' : 'Remove'"></span> <span x-text="apps.confirm.name"></span>?
+                  </div>
+                  <template x-if="!apps.confirm.orphaned">
+                    <div>
+                      <p class="mt-2 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">Stops its services and removes the containers on the host. Your data (volumes &amp; secrets) is kept by default — reinstalling the same app reuses it.</p>
+                      <label class="mt-3 flex items-start gap-2 rounded-xl border p-2.5 text-[12px]" style="border-color:var(--border);background:var(--panel-2)">
+                        <input type="checkbox" x-model="apps.confirm.purge" class="mt-0.5">
+                        <span style="color:var(--text-dim)">Also delete <b style="color:var(--text)">volumes &amp; secrets</b> — permanent, cannot be undone.</span>
+                      </label>
+                    </div>
+                  </template>
+                  <template x-if="apps.confirm.orphaned">
+                    <p class="mt-2 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">Its deploy host is <b style="color:var(--text)">no longer in your inventory</b>, so vops can't reach it to clean up. This only forgets the install from vops — if that server still exists, remove its containers by hand.</p>
+                  </template>
+                </div>
+              </template>
+              <template x-if="apps.confirm.kind==='unexpose'">
+                <div>
+                  <div class="text-[15px] font-bold">Detach <span x-text="apps.confirm.name"></span> from ingress?</div>
+                  <p class="mt-2 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">Removes the domain and its A-record. The app stays deployed and reachable on its direct port.</p>
+                </div>
+              </template>
+              <template x-if="apps.confirm.kind==='expose'">
+                <div class="grid gap-3">
+                  <div class="text-[15px] font-bold">Expose <span x-text="apps.confirm.name"></span> with a domain</div>
+                  <p class="text-[12.5px] leading-relaxed" style="color:var(--text-dim)">
+                    Right now it answers only on the server itself. Give it a hostname to reach it from anywhere.
+                  </p>
+
+                  <!--include: sections/domain-picker.html-->
+
+                  <label class="block">
+                    <span class="label">ACME email (only if the host has no ingress yet)</span>
+                    <input class="field" x-model="apps.confirm.email" placeholder="you@example.com">
+                  </label>
+                </div>
+              </template>
+
+              <p x-show="apps.confirm.err" class="mt-3 rounded-lg px-3 py-2 text-[12px]" style="background:var(--danger-soft);color:var(--danger)" x-text="apps.confirm.err"></p>
+
+              <!-- Live loader: what it's doing while the SSH op runs (so a fast op isn't a blank wait) -->
+              <template x-if="apps.confirm.busy">
+                <div class="mt-4">
+                  <div class="flex items-center gap-2 text-[12.5px]" style="color:var(--text-dim)">
+                    <span class="inline-block h-[9px] w-[9px] shrink-0 rounded-full" style="background:var(--accent);animation:vops-pulse 1.4s ease-in-out infinite"></span>
+                    <span x-text="appConfirmBusyLabel()"></span>
+                  </div>
+                  <div class="skel mt-2.5 h-2 w-full rounded-full"></div>
+                  <div class="mt-1.5 text-[11px]" style="color:var(--text-faint)">This can take a few seconds — the modal closes on its own when it's done.</div>
+                </div>
+              </template>
+
+              <div class="mt-4 flex justify-end gap-2" x-show="!apps.confirm.busy">
+                <button class="btn-ghost" @click="appCloseConfirm()">Cancel</button>
+                <button :class="apps.confirm.kind==='remove' && !apps.confirm.orphaned ? 'btn-danger' : 'btn-primary'" @click="appConfirmRun()" x-text="appConfirmCta()"></button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+      </section>

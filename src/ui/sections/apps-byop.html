@@ -1,0 +1,73 @@
+        <!-- "Deploy your own code" modal — deliberately thin, since reading the repo is the coding
+          agent's job. Supports multiple agents because each loads skills from a different, doc-verified path. -->
+        <div x-show="apps.byop" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0" style="background:rgba(8,10,16,.55)" @click="apps.byop=false"></div>
+          <div class="card relative w-full max-w-xl p-6">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3 class="text-base font-bold">Deploy your own code</h3>
+                <p class="mt-1 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">
+                  Your coding agent does it — it is the only thing here that can read your repository.
+                </p>
+              </div>
+              <button class="icon-btn shrink-0" @click="apps.byop=false" aria-label="Close">✕</button>
+            </div>
+
+            <!-- Pick the agent: the install path differs for each -->
+            <div class="mt-4 grid gap-1.5" style="grid-template-columns:repeat(4,1fr)">
+              <template x-for="a in byopAgents()" :key="a.id">
+                <button class="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2.5 transition"
+                        :style="apps.byopAgent===a.id ? 'background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)' : 'background:var(--panel-2)'"
+                        @click="apps.byopAgent=a.id">
+                  <!-- icon-tile keeps its white plate in both themes: these are brand marks,
+                       mostly monochrome black, and they would vanish on a dark panel. -->
+                  <span class="icon-tile h-8 w-8">
+                    <img :src="'/assets/agent-icons/'+a.id+'.svg'" :alt="a.name" loading="lazy" @error="$el.style.visibility='hidden'">
+                  </span>
+                  <span class="text-[11px] font-semibold leading-tight" x-text="a.name"></span>
+                </button>
+              </template>
+            </div>
+
+            <div class="mt-4 space-y-3">
+              <div>
+                <label class="label" for="byop-skill">Teach it, once — in your terminal or the IDE’s</label>
+                <div class="flex gap-2">
+                  <input id="byop-skill" class="field font-mono text-xs" readonly :value="byopCommand('home')" />
+                  <button class="btn-ghost shrink-0" @click="copy(byopCommand('home'))">Copy</button>
+                </div>
+                <p class="mt-1 text-[11px]" style="color:var(--text-faint)">
+                  Lands in <span class="font-mono" x-text="byopAgent().home"></span>.
+                  <template x-if="byopAgent().project">
+                    <span>This project only: <span class="font-mono" x-text="byopCommand('project')"></span> →
+                      <span class="font-mono" x-text="byopAgent().project"></span>.</span>
+                  </template>
+                </p>
+                <p x-show="byopAgent().note" class="mt-1 text-[11px]" style="color:var(--warn)" x-text="byopAgent().note"></p>
+              </div>
+
+              <div>
+                <label class="label" for="byop-ask">Then say this, inside your project</label>
+                <div class="flex gap-2">
+                  <input id="byop-ask" class="field font-mono text-xs" readonly value="Deploy this project to my VPS with vops" />
+                  <button class="btn-ghost shrink-0" @click="copy('Deploy this project to my VPS with vops')">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-1 text-[11px]">
+              <template x-for="(s, i) in byopSteps()" :key="s.t">
+                <span class="flex items-center gap-1">
+                  <span x-show="i" style="color:var(--text-faint)">→</span>
+                  <span class="chip" :style="s.stop ? 'color:var(--warn);border-color:var(--warn)' : ''" x-text="s.t"></span>
+                </span>
+              </template>
+            </div>
+
+            <p class="mt-3 text-[11px]" style="color:var(--text-faint)">
+              Using the agent inside an IDE — VS Code, JetBrains, Antigravity — changes nothing: run the command
+              in its integrated terminal, or copy the folder there by hand. The image is built on GitHub Actions,
+              never on your server, and nothing is deployed until you say yes.
+            </p>
+          </div>
+        </div>

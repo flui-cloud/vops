@@ -29,6 +29,8 @@ function dashboardCore() {
     loading: false,
     loads: 0,
     error: '',
+    offline: false,
+    pwa: false, svc: null, svcHintDismissed: false,
     comparedOnce: false,
     syncedLabel: 'just now',
     nav: [
@@ -40,8 +42,7 @@ function dashboardCore() {
         { id: 'backups', label: 'Backups', icon: ICONS.backups, soon: true },
       ] },
       { section: 'DEPLOY', items: [
-        { id: 'catalog', label: 'App Catalog', icon: ICONS.catalog, soon: true },
-        { id: 'deploy', label: 'Deploy App', icon: ICONS.deploy, soon: true },
+        { id: 'apps', label: 'Apps', icon: ICONS.deploy, pill: true },
       ] },
       { section: 'MARKET', items: [
         { id: 'compare', label: 'Compare', icon: ICONS.compare },
@@ -65,7 +66,7 @@ function dashboardCore() {
       { id: 'namerica', label: 'N. America' }, { id: 'asia', label: 'Asia-Pacific' },
     ],
     regions: [], regionsSource: '', regionsUpdated: '', hoverCode: '',
-    allPlans: [], serverTab: 'all', plansCache: {}, watched: [],
+    allPlans: [], serverTab: 'all', plansCache: {}, watched: [], serversReady: false,
     providerColors: { hetzner: 'var(--hetzner)', scaleway: 'var(--scaleway)', contabo: 'var(--contabo)', ovh: 'var(--ovh)', cherry: 'var(--cherry)' },
     cmp: { cpu: '', ramGb: '', region: '', provider: '', hourlyOnly: false },
     showDeprecated: false,
@@ -78,7 +79,7 @@ function dashboardCore() {
     get serverTabs() { return ['all', ...this.providerIds]; },
     get pageTitle() {
       const m = { overview: 'Overview', monitoring: 'Monitoring', watchers: 'Watchers', compare: 'Compare', servers: 'Servers', availability: 'Availability',
-        firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys', providers: 'Providers' };
+        firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys', apps: 'Apps', providers: 'Providers' };
       return m[this.view] || '';
     },
     get subtitle() {
@@ -91,6 +92,7 @@ function dashboardCore() {
         firewalls: 'Firewall per server — provider-native or vops nftables, one simple view.',
         vnets: 'Private networks, subnets and routes.',
         sshkeys: 'Local SSH keys — private keys never leave this machine.',
+        apps: 'Deploy flui.yaml apps to your hosts over SSH — rootful Podman + Quadlet, no agent installed.',
         providers: 'Connect your provider accounts — keys are stored encrypted on this machine and never leave it.' };
       return m[this.view] || '';
     },
@@ -106,6 +108,7 @@ function dashboardCore() {
       if (id === 'servers') return this.ov.serverCount;
       if (id === 'sshkeys') return this.sshKeys.length || (this.sshKeysLoaded ? 0 : null);
       if (id === 'monitoring' || id === 'hosts') return this.hosts.length || (this.hostsLoaded ? 0 : null);
+      if (id === 'apps') return this.apps.installs.length || (this.apps.loaded ? 0 : null);
       return null;
     },
     get availGroups() {
@@ -135,6 +138,8 @@ function dashboardCore() {
     get mapViewBox() { const v = this.mapView; return v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h; },
 
     async init() {
+      this.heartbeat();
+      this.pwaInit();
       this.applyTheme(this.readTheme());
       this.watched = this.loadWatched();
       try {
@@ -142,7 +147,21 @@ function dashboardCore() {
         if (r.ok) this.geo = await r.json();
       } catch { /* map is decorative — ignore fetch errors */ }
       this.jumpTo(this.geo.views?.europe ? 'europe' : 'world');
-      await this.loadOverview();
+      this.initRouting();
+      await this.reload();
+    },
+
+    // Sync `view` with the URL hash so a deep link (or a refresh) lands on the
+    // same section instead of snapping back to Overview. `go()` writes the hash;
+    // the `hashchange` guard is a no-op when go() already moved us (h === view).
+    initRouting() {
+      const ids = new Set(this.nav.flatMap((s) => s.items).filter((i) => !i.soon).map((i) => i.id));
+      const h = (location.hash || '').replace(/^#/, '');
+      if (ids.has(h)) this.view = h;
+      addEventListener('hashchange', () => {
+        const next = (location.hash || '').replace(/^#/, '');
+        if (ids.has(next) && next !== this.view) { this.view = next; this.error = ''; this.reload(); }
+      });
     },
 
     // Local marker of plans you've set an alert for, for the "N watching" badge.
@@ -174,7 +193,7 @@ function dashboardCore() {
       try { localStorage.setItem('vops-theme', t); } catch { /* private mode */ }
     },
 
-    go(v) { this.view = v; this.error = ''; if (this.$refs.main) { this.$refs.main.scrollTop = 0; } this.reload(); },
+    go(v) { this.view = v; this.error = ''; try { location.hash = v; } catch { /* file:// */ } if (this.$refs.main) { this.$refs.main.scrollTop = 0; } this.reload(); },
     setProvider(p) { this.provider = p; this.reload(); },
 
     async reload() {
@@ -189,15 +208,54 @@ function dashboardCore() {
       if (this.view === 'firewalls') return this.loadHosts();
       if (this.view === 'vnets') return this.load('vnets', '/vnets?provider=' + this.provider);
       if (this.view === 'sshkeys') return this.load('sshKeys', '/ssh-keys');
+      if (this.view === 'apps') return this.loadApps();
       if (this.view === 'providers') return this.loadCredentials();
     },
 
     async api(path, opts = {}) {
       opts.headers = { 'x-vops-session': this.token, 'content-type': 'application/json', ...opts.headers };
-      const r = await fetch('/api' + path, opts);
+      let r;
+      try {
+        r = await fetch('/api' + path, opts);
+      } catch (e) {
+        this.offline = true; // server unreachable — the reconnect overlay takes over
+        throw e;
+      }
       const text = await r.text();
       if (!r.ok) throw new Error(this.extract(text) || ('HTTP ' + r.status));
       return text ? JSON.parse(text) : null;
+    },
+
+    // Two independent "installs" exist: the browser PWA and the background service
+    // (`vops ui --install`). A PWA with no service opens onto a dead server, so once installed we nudge the user to finish setup (the browser can't run the command itself).
+    pwaInit() {
+      try {
+        this.pwa = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+        this.svcHintDismissed = localStorage.getItem('vops-svc-hint') === '1';
+      } catch { /* private mode / older engine */ }
+      addEventListener('appinstalled', () => { this.pwa = true; this.svcHintDismissed = false; this.loadService(); });
+      if (this.pwa) this.loadService();
+    },
+    async loadService() {
+      try { this.svc = await this.api('/ui-service'); } catch { /* server may be down */ }
+    },
+    needsService() { return this.pwa && !!this.svc && this.svc.supported && !this.svc.installed && !this.svcHintDismissed; },
+    dismissServiceHint() {
+      this.svcHintDismissed = true;
+      try { localStorage.setItem('vops-svc-hint', '1'); } catch { /* private mode */ }
+    },
+
+    // The dashboard is useless without the local API. When `vops ui` is stopped,
+    // show a reconnect screen and keep polling — the moment the server returns we
+    // reload, so the installed PWA springs back to life with no manual step.
+    heartbeat() {
+      fetch('/', { method: 'HEAD', cache: 'no-store' })
+        .then((r) => {
+          if (this.offline && r.ok) { location.reload(); return; }
+          this.offline = !r.ok;
+        })
+        .catch(() => { this.offline = true; })
+        .finally(() => setTimeout(() => this.heartbeat(), this.offline ? 2000 : 6000));
     },
     extract(text) { try { return JSON.parse(text).message; } catch { return text; } },
 

@@ -1,0 +1,55 @@
+<!-- Domain picker, shared by the deploy and expose modals (via apps.picker) so the two can't
+     drift. Deliberately compact: reasoning sits behind ⓘ, proposals are editable with ✎. -->
+<template x-if="apps.picker">
+ <div class="grid gap-2">
+  <div class="flex items-end justify-between">
+    <span class="label" style="margin-bottom:0" x-text="apps.picker.private ? 'How you\'ll reach it' : 'Domain'"></span>
+    <span x-show="apps.picker.loading" class="text-[11px]" style="color:var(--text-faint)">reading your DNS zones…</span>
+  </div>
+
+  <div class="grid gap-1.5" x-show="!apps.picker.loading">
+    <div x-show="apps.picker.private">
+      <div class="pick-row" :style="apps.picker.choice===-1 ? 'border-color:var(--accent);background:var(--accent-soft)' : ''">
+        <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
+          <input type="radio" :checked="apps.picker.choice===-1" @change="appPickerClick(-1)">
+          <span class="truncate text-[13px] font-semibold">Keep it private</span>
+        </label>
+        <span class="badge-off">this server only</span>
+        <button type="button" class="pick-mini" :aria-expanded="apps.picker.info===-1" aria-label="What this means" @click="appPickerInfo(-1)">i</button>
+      </div>
+      <p class="pick-note" x-show="apps.picker.info===-1">
+        No domain, no certificate. The app answers on <b x-text="apps.picker.host"></b> itself, so you reach it
+        with <span class="font-mono">ssh -L</span> — or publish it later from its card.
+      </p>
+    </div>
+
+    <template x-for="(o, idx) in apps.picker.options" :key="idx">
+      <div>
+        <div class="pick-row" data-pick-row :style="apps.picker.choice===idx ? 'border-color:var(--accent);background:var(--accent-soft)' : ''">
+          <div class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5" x-show="!appPickerEditing(idx)" @click="appPickerClick(idx)">
+            <input type="radio" :checked="apps.picker.choice===idx" :aria-label="appPickerLabel(o, idx)" @change="appPickerClick(idx)">
+            <span class="truncate text-[13px] font-semibold" x-text="appPickerLabel(o, idx)"></span>
+          </div>
+          <input type="text" class="field flex-1 py-1.5 text-[13px]" x-show="appPickerEditing(idx)" x-model="apps.picker.domain"
+                 @input="apps.picker.custom = true" @keydown.enter.prevent="apps.picker.edit = false"
+                 placeholder="app.example.com" aria-label="Hostname" autocomplete="off" spellcheck="false">
+          <span class="shrink-0" :class="o.tls==='reliable' ? 'badge-off' : 'badge-warn'" x-text="appPickerBadge(o)"></span>
+          <button type="button" class="pick-mini" :aria-label="'Edit ' + (o.hostname || 'hostname')" @click="appPickerEdit(idx, $event)">✎</button>
+          <button type="button" class="pick-mini" :aria-expanded="apps.picker.info===idx" aria-label="What this means" @click="appPickerInfo(idx)">i</button>
+        </div>
+        <p class="pick-note" x-show="apps.picker.info===idx">
+          <span x-text="o.detail"></span>
+          <span class="mt-1 block" style="color:var(--text-faint)">
+            <span x-text="o.dns==='automatic' ? 'DNS: vops creates the A record' : o.dns==='manual' ? 'DNS: you add the A record' : 'DNS: none needed'"></span>
+            ·
+            <span :style="o.tls==='reliable' ? '' : 'color:var(--warn)'"
+                  x-text="o.tls==='reliable' ? 'certificate: reliable' : 'certificate: best-effort'"></span>
+          </span>
+        </p>
+      </div>
+    </template>
+  </div>
+
+  <p x-show="apps.picker.note" class="text-[11.5px]" style="color:var(--warn)" x-text="apps.picker.note"></p>
+ </div>
+</template>

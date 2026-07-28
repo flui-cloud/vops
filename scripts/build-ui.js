@@ -51,16 +51,18 @@ const dashboardJs = fs
 const appJs = dashboardJs + '\n' + fs.readFileSync(path.join(src, 'app.js'), 'utf8');
 fs.writeFileSync(path.join(out, 'app.js'), appJs);
 
-// The HTML shell is assembled from per-section partials (src/ui/sections/*.html)
-// referenced by `<!--include: sections/x.html-->` directives — one file per view
-// keeps each unit small. The runtime CSS/JS/Alpine placeholders stay for serve
-// time (see ui/index.ts).
-const assembled = fs
-  .readFileSync(path.join(src, 'app.html'), 'utf8')
-  .replace(/<!--\s*include:\s*([\w./-]+)\s*-->/g, (_, rel) =>
-    fs.readFileSync(path.join(src, rel), 'utf8').trimEnd(),
+// HTML shell assembled from per-section partials via `<!--include-->` directives, resolved
+// recursively so a fragment shared across views (e.g. the domain picker) lives in one file, not copies that drift.
+const resolveIncludes = (html, depth = 0) => {
+  if (depth > 4) throw new Error('<!--include--> nested more than 4 deep — cycle?');
+  return html.replace(/<!--\s*include:\s*([\w./-]+)\s*-->/g, (_, rel) =>
+    resolveIncludes(fs.readFileSync(path.join(src, rel), 'utf8').trimEnd(), depth + 1),
   );
-fs.writeFileSync(path.join(out, 'app.html'), assembled);
+};
+fs.writeFileSync(
+  path.join(out, 'app.html'),
+  resolveIncludes(fs.readFileSync(path.join(src, 'app.html'), 'utf8')),
+);
 
 // Brand icons (logo + favicon) — served same-origin at /assets/*, never inlined.
 const assetsSrc = path.join(src, 'assets');
@@ -70,6 +72,18 @@ if (fs.existsSync(assetsSrc)) {
   for (const f of fs.readdirSync(assetsSrc)) {
     if (f.endsWith('.png')) fs.copyFileSync(path.join(assetsSrc, f), path.join(assetsOut, f));
   }
+  // Vendored catalog/agent icons (offline), served at /assets/{app,agent}-icons/<id>.svg;
+  // clear stale svgs first so a removed/denylisted icon doesn't linger.
+  for (const dir of ['app-icons', 'agent-icons']) {
+    const iconsSrc = path.join(assetsSrc, dir);
+    if (!fs.existsSync(iconsSrc)) continue;
+    const iconsOut = path.join(assetsOut, dir);
+    fs.rmSync(iconsOut, { recursive: true, force: true });
+    fs.mkdirSync(iconsOut, { recursive: true });
+    for (const f of fs.readdirSync(iconsSrc)) {
+      if (f.endsWith('.svg')) fs.copyFileSync(path.join(iconsSrc, f), path.join(iconsOut, f));
+    }
+  }
 }
 
 // Runtime data (region geo + seed pricing snapshot) read via fs at runtime.
@@ -78,4 +92,27 @@ const libOut = path.join(__dirname, '..', 'lib', 'lib');
 fs.mkdirSync(libOut, { recursive: true });
 for (const f of fs.readdirSync(libSrc)) {
   if (f.endsWith('.json')) fs.copyFileSync(path.join(libSrc, f), path.join(libOut, f));
+}
+
+// Canonical coding-agent skill (copied to a user's agent directory by
+// `vops agent skill install`, so it has to ship inside the package).
+const skillSrc = path.join(__dirname, '..', 'src', 'agent-api', 'skill');
+const skillOut = path.join(__dirname, '..', 'lib', 'agent-api', 'skill');
+if (fs.existsSync(skillSrc)) {
+  fs.rmSync(skillOut, { recursive: true, force: true });
+  fs.cpSync(skillSrc, skillOut, { recursive: true });
+}
+
+// Bundled flui.yaml catalog (read via fs at runtime by the apps subsystem).
+// Clear stale manifests first so a removed app doesn't linger in the bundle.
+const catSrc = path.join(__dirname, '..', 'src', 'apps', 'catalog');
+const catOut = path.join(__dirname, '..', 'lib', 'apps', 'catalog');
+if (fs.existsSync(catSrc)) {
+  fs.mkdirSync(catOut, { recursive: true });
+  for (const f of fs.readdirSync(catOut)) {
+    if (f.endsWith('.flui.yaml')) fs.rmSync(path.join(catOut, f));
+  }
+  for (const f of fs.readdirSync(catSrc)) {
+    if (f.endsWith('.flui.yaml')) fs.copyFileSync(path.join(catSrc, f), path.join(catOut, f));
+  }
 }

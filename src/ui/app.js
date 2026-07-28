@@ -3,6 +3,6 @@ function dashboard() {
     dashboardCore(), dashboardOverview(), dashboardMap(), dashboardAvailability(), dashboardCompare(),
     dashboardServers(), dashboardFirewallsVnets(), dashboardSshKeys(), dashboardHosts(), dashboardMonitoring(),
     dashboardFirewall(), dashboardBench(), dashboardBenchCard(), dashboardBenchCompareCard(), dashboardModals(), dashboardNotify(),
-    dashboardWatchers(), dashboardCredentials(),
+    dashboardWatchers(), dashboardCredentials(), dashboardApps(), dashboardAppsDomainPicker(),
   );
 }

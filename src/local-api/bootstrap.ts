@@ -1,8 +1,9 @@
 import { NestFactory } from '@nestjs/core';
-import { randomBytes } from 'node:crypto';
 import { AddressInfo, createServer } from 'node:net';
 import { LocalApiModule } from './local-api.module';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+import { sessionToken } from './session-token';
+import { disablePrompting } from '../lib/keyring/unlock';
 
 export interface LocalApiHandle {
   url: string;
@@ -36,11 +37,11 @@ async function preferredPort(port: number): Promise<number> {
 }
 
 /**
- * Start the local API bound to 127.0.0.1 only, guarded by a one-time session
+ * Start the local API bound to 127.0.0.1 only, guarded by the profile's session
  * token. Never binds 0.0.0.0; tokens/secrets never leave the machine.
  */
 export async function startLocalApi(): Promise<LocalApiHandle> {
-  const token = process.env.VOPS_SESSION || randomBytes(24).toString('hex');
+  const token = sessionToken();
   process.env.VOPS_SESSION = token;
 
   const app = await NestFactory.create(LocalApiModule, {
@@ -54,6 +55,11 @@ export async function startLocalApi(): Promise<LocalApiHandle> {
   const explicit = process.env.VOPS_PORT?.trim();
   const desiredPort = explicit ? Number(explicit) : await preferredPort(DEFAULT_UI_PORT);
   await app.listen(desiredPort, '127.0.0.1');
+
+  // From here on this process serves HTTP; a passphrase prompt would land in a
+  // terminal nobody is watching while the browser hangs. The vault is unlocked
+  // (or not) before this point, by whoever started the server.
+  disablePrompting();
 
   const address = app.getHttpServer().address() as AddressInfo;
   const port = address?.port ?? desiredPort;

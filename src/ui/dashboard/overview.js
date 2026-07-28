@@ -21,6 +21,13 @@ function dashboardOverview() {
         .sort((a, b) => a.fromMonthly - b.fromMonthly);
       this.ov.cheapest = priced[0] || null;
     },
+    // A plan only counts as "best value" if the region we'd actually quote is
+    // buyable now — the picked region is the cheapest one regardless of stock,
+    // so without this a sold-out region could win on price and get recommended.
+    regionAvailable(p) {
+      const rg = (p.regions || []).find(r => String(r.code).toLowerCase() === String(p.region).toLowerCase());
+      return rg?.up !== false;
+    },
     // Best value = the strongest €/GB plan at each RAM tier (2/4/8 GB), so the
     // panel shows a spread of real sizes instead of three tiny nano plans.
     // Hourly-billed plans get a small edge (no lock-in — vops's whole point).
@@ -31,7 +38,7 @@ function dashboardOverview() {
       const score = p => (p.monthly / p.memoryGb) * (p.hourly == null ? 1 : 0.9);
       this.ov.bestValue = tiers.map(t => {
         const bucket = this.allPlans
-          .filter(p => p.monthly != null && p.memoryGb >= t.min && p.memoryGb < t.max)
+          .filter(p => p.monthly != null && p.memoryGb >= t.min && p.memoryGb < t.max && this.regionAvailable(p))
           .sort((a, b) => score(a) - score(b));
         const p = bucket[0];
         return p ? { tier: t.label, key: this.providerKey(p.provider), provider: p.provider, plan: p.plan,

@@ -18,8 +18,8 @@
                 </div>
                 <div class="mt-2 truncate font-mono text-[12px]" style="color:var(--text-faint)">
                   <span class="capitalize" x-text="modal.mg.row?.provider || modal.mg.host?.provider || 'external'"></span>
-                  <span x-show="modal.mg.host" x-text="' · ' + modal.mg.host.user + '@' + modal.mg.host.address + ':' + modal.mg.host.port"></span>
-                  <span x-show="modal.mg.host?.os?.pretty" x-text="' · ' + modal.mg.host.os.pretty"></span>
+                  <span x-show="modal.mg.host" x-text="modal.mg.host ? ' · ' + modal.mg.host.user + '@' + modal.mg.host.address + ':' + modal.mg.host.port : ''"></span>
+                  <span x-show="modal.mg.host?.os?.pretty" x-text="modal.mg.host?.os?.pretty ? ' · ' + modal.mg.host.os.pretty : ''"></span>
                   <span x-show="modal.mg.row?.location" x-text="' · ' + modal.mg.row.location"></span>
                 </div>
               </div>
@@ -133,14 +133,16 @@
                               </div>
                               <p class="text-[10.5px]" style="color:var(--text-faint)">Key-only is much safer. Make sure you have a working SSH key first — vops can generate or import one.</p>
                             </div>
-                            <div x-show="f.id==='svc.failed' && f.detail" class="mt-1.5 space-y-1">
-                              <template x-for="(row, idx) in f.detail.split('\n')" :key="idx">
-                                <div class="flex items-center gap-2">
-                                  <span class="min-w-0 flex-1 break-all font-mono text-[10.5px]" style="color:var(--text-faint)" x-text="row"></span>
-                                  <button class="btn-xs shrink-0" :disabled="modal.mg.busy" @click="openUnitLogs(row.trim().split(/\s+/)[0])">logs</button>
-                                </div>
-                              </template>
-                            </div>
+                            <template x-if="f.id==='svc.failed' && f.detail">
+                              <div class="mt-1.5 space-y-1">
+                                <template x-for="(row, idx) in f.detail.split('\n')" :key="idx">
+                                  <div class="flex items-center gap-2">
+                                    <span class="min-w-0 flex-1 break-all font-mono text-[10.5px]" style="color:var(--text-faint)" x-text="row"></span>
+                                    <button class="btn-xs shrink-0" :disabled="modal.mg.busy" @click="openUnitLogs(row.trim().split(/\s+/)[0])">logs</button>
+                                  </div>
+                                </template>
+                              </div>
+                            </template>
                             <div x-show="f.id==='pkg.updates' && (f.severity==='warn' || f.severity==='info') && Number(f.value) > 0" class="mt-1.5">
                               <button class="btn-xs" :disabled="modal.mg.busy" @click="openPendingUpdates()">Show packages</button>
                             </div>

@@ -18,7 +18,7 @@ function dashboardServers() {
         }
         this.servers = rows;
       } catch (e) { this.error = e.message; this.servers = []; }
-      finally { this.endLoad(); }
+      finally { this.serversReady = true; this.endLoad(); }
     },
     setServerTab(t) { this.serverTab = t; this.loadServers(); },
     openServers() { this.serverTab = 'all'; this.go('servers'); },
@@ -42,9 +42,10 @@ function dashboardServers() {
       return [...rows, ...ext];
     },
     monitored(row) { return !!row.host?.monitorHostId; },
-    // Skeleton only stands in for an empty table — a background refresh (host
-    // chips, monitor toggle) must not blank out rows the user is already reading.
-    serversLoading() { return this.loading && !this.fleet().length; },
+    // Skeleton covers the first load (even when external hosts would otherwise
+    // fill the table), then only stands in for an empty table — a background
+    // refresh (host chips, monitor toggle) must not blank rows already on screen.
+    serversLoading() { return this.loading && (!this.serversReady || !this.fleet().length); },
 
     async runCompare() {
       this.beginLoad(); this.error = ''; this.comparedOnce = true; this.compareRows = [];
@@ -76,11 +77,21 @@ function dashboardServers() {
       this.closeModal(); this.notify('Server created: ' + (out.server?.id || '')); this.go('servers');
     },
 
+    // A row already tracked as a host connects via /hosts/:name/connect (ops key first, else
+    // the user key) — never the cloud-provider lookup below, which deliberately refuses the ops key.
     async openConnect(server) {
+      const hostBased = !!server.host;
+      this.modal = { ...this.modal, open: true, type: 'connect', title: 'Connect to ' + server.name, cta: 'Close',
+        danger: false, dryRun: false,
+        conn: {
+          server, hostBased, user: 'root', key: '', command: '',
+          cli: hostBased ? '' : `vops ssh ${server.provider} ${server.id || server.name}`,
+          keys: [],
+        } };
+      if (hostBased) return this.doHostConnect();
       let keys = this.sshKeys;
       if (!keys.length) { try { keys = await this.api('/ssh-keys'); } catch { keys = []; } }
-      this.modal = { ...this.modal, open: true, type: 'connect', title: 'Connect to ' + server.name, cta: 'Close',
-        danger: false, dryRun: false, conn: { server, user: 'root', key: '', command: '', keys: keys.filter(k => k.hasPrivateKey) } };
+      this.modal.conn.keys = keys.filter(k => k.hasPrivateKey);
       this.doConnect();
     },
     async doConnect() {
@@ -90,6 +101,15 @@ function dashboardServers() {
         const info = await this.api('/ssh-keys/connect', { method: 'POST',
           body: JSON.stringify({ provider: c.server.provider || this.provider, server: c.server.id, user: c.user || undefined, key: c.key || undefined }) });
         this.modal.conn.command = info.command;
+      } catch (e) { this.modal.conn.command = ''; this.notify(e.message, 'error'); }
+    },
+    async doHostConnect() {
+      const c = this.modal.conn;
+      try {
+        const info = await this.api('/hosts/' + encodeURIComponent(c.server.host.name) + '/connect');
+        this.modal.conn.command = info.command;
+        this.modal.conn.cli = info.cli;
+        this.modal.conn.user = info.user;
       } catch (e) { this.modal.conn.command = ''; this.notify(e.message, 'error'); }
     },
     async copy(text) {

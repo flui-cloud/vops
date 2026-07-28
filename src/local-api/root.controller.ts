@@ -16,6 +16,7 @@ export class RootController {
    */
   @Get()
   @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Cache-Control', 'no-cache')
   root(@Res({ passthrough: true }) res: Response): string {
     const token = process.env.VOPS_SESSION;
     if (token) {
@@ -68,6 +69,32 @@ export class RootController {
     res.set('Cache-Control', 'public, max-age=86400');
     res.end(fs.readFileSync(p));
   }
+
+  /**
+   * Vendored catalog app logos, served offline at /assets/app-icons/<id>.svg.
+   * basename-only lookup — no path traversal. SVGs in an <img> can't run script.
+   */
+  @Get('assets/app-icons/:file')
+  appIcon(@Param('file') file: string, @Res() res: Response): void {
+    sendSvg(res, path.join(__dirname, '..', 'ui', 'assets', 'app-icons', path.basename(file)));
+  }
+
+  /** Coding-agent marks for the "Deploy your own code" picker, same rules. */
+  @Get('assets/agent-icons/:file')
+  agentIcon(@Param('file') file: string, @Res() res: Response): void {
+    sendSvg(res, path.join(__dirname, '..', 'ui', 'assets', 'agent-icons', path.basename(file)));
+  }
+}
+
+/** Serve a vendored SVG, or 404. The caller has already reduced the request to a basename. */
+function sendSvg(res: Response, p: string): void {
+  if (!p.endsWith('.svg') || !fs.existsSync(p)) {
+    res.status(404).end();
+    return;
+  }
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.end(fs.readFileSync(p));
 }
 
 /** Reads a build-time asset from lib/ui, falling back if the build skipped it. */

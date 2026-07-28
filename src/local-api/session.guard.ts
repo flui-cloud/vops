@@ -1,19 +1,13 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Request } from 'express';
+import { tokenMatches } from './session-token';
 
 /** Name of the cookie minted when the UI shell is served. */
 export const SESSION_COOKIE = 'vops_session';
 
-/**
- * Guards the local API: only requests carrying the one-time session token
- * (minted at `vops ui` start) may reach /api. Non-API paths (the UI shell) pass.
- *
- * The cookie exists for the installed (PWA) app. A manifest freezes `start_url`
- * at install time, so it cannot carry the token, which is regenerated per run.
- * Serving the shell sets the cookie instead, so it is refreshed on every launch
- * and can never go stale. It is HttpOnly + SameSite=Strict, so a hostile page
- * that reaches 127.0.0.1 can neither read it nor ride on it.
- */
+/** Guards the local API: only requests carrying the profile's session token may reach /api.
+ * Cookie is HttpOnly + SameSite=Strict (for the installed PWA, whose frozen `start_url` can't
+ * carry a token) and persisted per profile, so an already-open dashboard survives a restart. */
 @Injectable()
 export class SessionGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -26,7 +20,7 @@ export class SessionGuard implements CanActivate {
       (req.headers['x-vops-session'] as string) ||
       (req.query.session as string) ||
       readCookie(req.headers.cookie, SESSION_COOKIE);
-    return provided === expected;
+    return tokenMatches(provided, expected);
   }
 }
 

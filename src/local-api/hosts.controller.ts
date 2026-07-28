@@ -8,6 +8,7 @@ import { VopsSshLockdownService } from '../host-ops/vops-ssh-lockdown.service';
 import { VopsHostUpdateService } from '../host-ops/vops-host-update.service';
 import { VopsOpsRotationService } from '../host-ops/vops-ops-rotation.service';
 import { VopsHostConnService } from '../host-ops/vops-host-conn.service';
+import { VopsHostShellService } from '../host-ops/host-shell.service';
 import { VopsMonitorService } from '../monitor/vops-monitor.service';
 import { VopsServerFirewallService } from '../firewall/vops-server-firewall.service';
 import { FirewallService } from '../firewall/firewall-services';
@@ -24,6 +25,7 @@ export class HostsController {
     private readonly rotation: VopsOpsRotationService,
     private readonly monitor: VopsMonitorService,
     private readonly conn: VopsHostConnService,
+    private readonly shell: VopsHostShellService,
     private readonly firewall: VopsServerFirewallService,
     private readonly sshLockdown: VopsSshLockdownService,
   ) {}
@@ -108,6 +110,13 @@ export class HostsController {
   @Get(':name/ssh')
   sshConn(@Param('name') name: string) {
     return this.conn.check(name);
+  }
+
+  /** Resolved login-shell session for THIS host (ops key first, else the
+   * assigned user key) — the "Connect (SSH)" card on the host page. */
+  @Get(':name/connect')
+  connectInfo(@Param('name') name: string) {
+    return this.shell.access(name);
   }
 
   @Post(':name/user-key')

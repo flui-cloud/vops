@@ -95,15 +95,20 @@
 
         <template x-if="modal.type==='connect'">
           <div class="space-y-3">
-            <div class="grid grid-cols-2 gap-2">
-              <div><label class="label" for="conn-user">User</label><input id="conn-user" class="field" x-model="modal.conn.user" @change="doConnect()" /></div>
-              <div><label class="label" for="conn-key">Key</label>
-                <select id="conn-key" class="field" x-model="modal.conn.key" @change="doConnect()">
-                  <option value="">auto</option>
-                  <template x-for="k in modal.conn.keys" :key="k.name"><option :value="k.name" x-text="k.name"></option></template>
-                </select>
+            <template x-if="!modal.conn.hostBased">
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="label" for="conn-user">User</label><input id="conn-user" class="field" x-model="modal.conn.user" @change="doConnect()" /></div>
+                <div><label class="label" for="conn-key">Key</label>
+                  <select id="conn-key" class="field" x-model="modal.conn.key" @change="doConnect()">
+                    <option value="">auto</option>
+                    <template x-for="k in modal.conn.keys" :key="k.name"><option :value="k.name" x-text="k.name"></option></template>
+                  </select>
+                </div>
               </div>
-            </div>
+            </template>
+            <template x-if="modal.conn.hostBased">
+              <p class="text-xs" style="color:var(--text-dim)">Connecting as <span class="font-mono" style="color:var(--text)" x-text="modal.conn.user"></span> — resolved the same way vops itself connects to this host (ops key first, else the assigned user key).</p>
+            </template>
             <div>
               <label class="label" for="conn-command">Run this in your terminal</label>
               <div class="flex gap-2">
@@ -111,7 +116,14 @@
                 <button class="btn-ghost shrink-0" @click="copy(modal.conn.command)" :disabled="!modal.conn.command">Copy</button>
               </div>
             </div>
-            <p class="text-[11px]" style="color:var(--text-faint)">An interactive session opens in your terminal, not the browser — the private key stays local. From the CLI: <span class="font-mono" style="color:var(--text-dim)">vops ssh &lt;provider&gt; &lt;server&gt;</span></p>
+            <div>
+              <label class="label" for="conn-cli">Or from the CLI</label>
+              <div class="flex gap-2">
+                <input id="conn-cli" class="field font-mono text-xs" readonly :value="modal.conn.cli" />
+                <button class="btn-ghost shrink-0" @click="copy(modal.conn.cli)" :disabled="!modal.conn.cli">Copy</button>
+              </div>
+            </div>
+            <p class="text-[11px]" style="color:var(--text-faint)">An interactive session opens in your terminal, not the browser — the private key stays local.</p>
           </div>
         </template>
 
@@ -330,7 +342,8 @@
     </div>
 
     <!-- ============ CONFIRM (second layer — sits above the manage modal) ============ -->
-    <div x-show="ask.open" class="fixed inset-0 z-[70] flex items-center justify-center px-4" x-cloak>
+    <template x-if="ask.open">
+    <div class="fixed inset-0 z-[70] flex items-center justify-center px-4">
       <div class="absolute inset-0" style="background:rgba(8,10,16,.55)" @click="closeAsk()"></div>
       <div class="relative w-full max-w-[440px] rounded-2xl p-6" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)"
         x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
@@ -350,6 +363,34 @@
         </div>
       </div>
     </div>
+    </template>
+
+    <!-- ============ RECONNECT (local server stopped — covers everything) ============ -->
+    <template x-if="offline">
+    <div class="fixed inset-0 z-[200] flex items-center justify-center px-6" style="background:var(--bg)">
+      <div class="max-w-md text-center">
+        <div class="mx-auto mb-5 h-8 w-8 animate-spin rounded-full" style="border:2px solid var(--border);border-top-color:var(--accent)"></div>
+        <h2 class="text-lg font-bold" style="color:var(--text)">vops isn't running</h2>
+        <p class="mt-2 text-[13px] leading-relaxed" style="color:var(--text-dim)">The dashboard is served by the CLI on this machine. Start it in a terminal — this window reconnects on its own.</p>
+        <code class="mt-4 inline-block rounded-lg px-4 py-2 font-mono text-[13px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">vops ui</code>
+        <div class="mt-4 text-[12px]" style="color:var(--text-faint)">Reconnecting…</div>
+        <div x-show="pwa" class="mx-auto mt-5 max-w-sm border-t pt-3 text-[11.5px] leading-relaxed" style="border-color:var(--border);color:var(--text-faint)">Desktop app tip: run <span class="font-mono" style="color:var(--text-dim)">vops ui --install</span> so vops starts on its own — you won't land here again.</div>
+      </div>
+    </div>
+    </template>
+
+    <!-- ============ DESKTOP-APP SETUP HINT (installed PWA, no always-on service) ============ -->
+    <template x-if="needsService() && !offline">
+    <div class="fixed bottom-5 left-5 z-[55] max-w-xs rounded-xl p-3.5" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)">
+      <div class="text-[12.5px] font-semibold" style="color:var(--text)">Make vops always-on</div>
+      <p class="mt-1 text-[11.5px] leading-relaxed" style="color:var(--text-dim)">You're using the desktop app. Run this once so it's ready without starting vops by hand:</p>
+      <div class="mt-2 flex items-center gap-1.5">
+        <code class="flex-1 rounded-md px-2 py-1 font-mono text-[11px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">vops ui --install</code>
+        <button class="btn-xs" @click="copy('vops ui --install')">Copy</button>
+      </div>
+      <button class="mt-2 text-[11px] hover:underline" style="color:var(--text-faint)" @click="dismissServiceHint()">Dismiss</button>
+    </div>
+    </template>
 
     <!-- ===================== TOAST ===================== -->
     <div x-show="toast.show" x-cloak class="fixed bottom-5 right-5 z-[60] max-w-sm rounded-[10px] px-4 py-3 text-sm"

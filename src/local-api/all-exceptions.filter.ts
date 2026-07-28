@@ -1,5 +1,9 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Response } from 'express';
+import { VaultLockedError } from '../lib/keyring/vault-session';
+
+/** 423 Locked — this Nest version's HttpStatus enum stops short of it. */
+const HTTP_LOCKED = 423;
 
 /**
  * The local UI is a 127.0.0.1-only tool: surface the real failure reason (an SSH
@@ -17,6 +21,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       res.status(exception.getStatus()).json(exception.getResponse());
       return;
     }
+    // A locked vault is a state the user can fix, not a server fault: 423 lets
+    // the dashboard say "unlock it" instead of showing a gateway error.
+    if (exception instanceof VaultLockedError) {
+      res
+        .status(HTTP_LOCKED)
+        .json({ statusCode: HTTP_LOCKED, error: 'Locked', message: exception.message });
+      return;
+    }
+
     let message = 'Unexpected error';
     if (exception instanceof Error) message = exception.message;
     else if (typeof exception === 'string') message = exception;

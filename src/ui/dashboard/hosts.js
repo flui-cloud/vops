@@ -61,6 +61,7 @@ function dashboardHosts() {
       const mg = this.modal.mg;
       if (mg) { mg.busy = true; }
       this.hostBusy = h.name;
+      this.notify(h.name + ': updating over SSH — this can take a few minutes…');
       try {
         const res = await this.api('/hosts/' + encodeURIComponent(h.name) + '/update', { method: 'POST', body: JSON.stringify({}) });
         const r = res[0] || {};

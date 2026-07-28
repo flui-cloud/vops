@@ -36,7 +36,11 @@ function dashboardModals() {
             ? 'Detaches and deletes the firewall vops manages for this server at the provider. Any other firewalls on the server are left untouched.'
             : "Removes the vops firewall from this server. SSH stays reachable, and any firewall vops didn't create is left untouched." },
       }[action];
-      this.ask = { open: true, action, name, title: A.title, cta: A.cta, danger: A.danger, message: A.message };
+      // busy/disabled are always set (not omitted): the ssh-harden ask carries
+      // them as `true`, and Alpine's `:disabled` binding won't re-clear a stale
+      // `disabled` attribute if the next ask simply drops the key. Keeping the
+      // shape consistent makes the boolean re-bind cleanly.
+      this.ask = { open: true, action, name, title: A.title, cta: A.cta, danger: A.danger, message: A.message, busy: false, disabled: false };
     },
 
     async runHostAsk() {

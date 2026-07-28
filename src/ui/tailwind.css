@@ -140,6 +140,21 @@
     color: var(--text-faint); background: var(--panel-3);
   }
 
+  /* Domain picker (deploy + expose modals) — one compact line per choice */
+  .pick-row {
+    @apply flex items-center gap-2 rounded-[9px] px-2.5 py-2;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .pick-mini {
+    @apply inline-flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-md text-[12px] transition;
+    color: var(--text-faint); background: transparent; border: 1px solid var(--border);
+  }
+  .pick-mini:hover { color: var(--accent); border-color: var(--accent-border); }
+  .pick-note {
+    @apply mt-1 rounded-[9px] px-3 py-2 text-[11.5px] leading-relaxed;
+    color: var(--text-dim); background: var(--panel-3);
+  }
+
   /* Tables */
   .th {
     @apply px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider;
@@ -191,6 +206,43 @@
     animation: vops-skel 1.4s ease-in-out infinite;
   }
   @keyframes vops-skel { 100% { transform: translateX(100%); } }
+
+  /* ── App marketplace ── gradient hero, logo tiles, filter/tag chips, hover cards */
+  .mkt-hero {
+    position: relative; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 20px;
+    background:
+      radial-gradient(130% 150% at 0% 0%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 58%),
+      linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--panel)), var(--panel));
+    box-shadow: var(--shadow);
+  }
+  .mkt-glow { position: absolute; border-radius: 9999px; filter: blur(58px); pointer-events: none; }
+  .app-card {
+    @apply cursor-pointer transition;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+  }
+  .app-card:hover { border-color: var(--accent-border); transform: translateY(-2px); }
+  .icon-tile {
+    @apply flex shrink-0 items-center justify-center overflow-hidden;
+    background: #fff; border: 1px solid var(--border); border-radius: 13px;
+  }
+  .icon-tile img { width: 100%; height: 100%; object-fit: contain; padding: 7px; }
+  .filter-chip {
+    @apply cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition;
+    color: var(--text-dim); background: var(--panel); border-color: var(--border);
+  }
+  .filter-chip:hover { border-color: var(--accent-border); color: var(--accent); }
+  .filter-chip-active { color: #fff; background: var(--accent); border-color: var(--accent); }
+  .tag-chip {
+    @apply inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px] font-medium;
+    color: var(--accent); background: var(--accent-soft);
+  }
+  .alt-chip {
+    @apply inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10.5px];
+    color: var(--text-dim); background: var(--panel-2); border-color: var(--border);
+  }
+  .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 }
 
 /* ── World map ── country outlines + region pins share one projected SVG, so

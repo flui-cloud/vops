@@ -1,18 +1,16 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-let cached: string | null = null;
+const INLINED = ['app.html', 'app.css', 'app.js', 'alpine.js'];
 
-/**
- * Local UI shell — a single self-contained, offline HTML document. The compiled
- * Tailwind CSS, the app logic and the vendored Alpine runtime are inlined into
- * the `<!--TAILWIND-->`, `<!--APP-->` and `<!--ALPINE-->` placeholders (in that
- * order — the dashboard() factory must exist before Alpine boots), so no request
- * ever leaves this machine. Data comes from the local API with the URL token.
- */
+let cached: { key: string; html: string } | null = null;
+
+/** Composes the local UI shell by inlining CSS/app.js/Alpine into their placeholders, in that
+ * order (dashboard() must exist before Alpine boots). Cached by source mtime, so a UI rebuild shows up on reload with no `vops ui` restart. */
 export function renderUi(): string {
-  if (cached) return cached;
   const dir = __dirname;
+  const key = INLINED.map((f) => mtime(path.join(dir, f))).join(':');
+  if (cached?.key === key) return cached.html;
   let html = fs.readFileSync(path.join(dir, 'app.html'), 'utf8');
   html = html.replace(
     '<!--TAILWIND-->',
@@ -26,8 +24,12 @@ export function renderUi(): string {
     '<!--ALPINE-->',
     () => `<script>${readOptional(dir, 'alpine.js')}</script>`,
   );
-  cached = html;
-  return cached;
+  cached = { key, html };
+  return html;
+}
+
+function mtime(p: string): number {
+  return fs.existsSync(p) ? fs.statSync(p).mtimeMs : 0;
 }
 
 function readOptional(dir: string, file: string): string {

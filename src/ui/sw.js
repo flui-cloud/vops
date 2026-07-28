@@ -131,6 +131,7 @@ function notRunningPage() {
     <code>vops ui</code>
     <button onclick="location.reload()">Reload</button>
   </div>
+  <script>setInterval(function(){fetch('/',{method:'HEAD',cache:'no-store'}).then(function(r){if(r.ok)location.reload()}).catch(function(){})},2000);</script>
 </body>
 </html>`;
   return new Response(html, {
