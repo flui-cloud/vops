@@ -44,7 +44,8 @@
     "sonar:loop": "pnpm run sonar:scan && pnpm run sonar:report"
   },
   "dependencies": {
-    "@flui-cloud/infra": "^0.2.2",
+    "@flui-cloud/infra": "^0.4.0",
+    "@flui-cloud/spec": "^0.9.0",
     "@libsql/client": "^0.14.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
@@ -53,6 +54,7 @@
     "@nestjs/swagger": "^7.0.0",
     "@oclif/core": "^3.0.0",
     "axios": "^1.6.0",
+    "bcryptjs": "^3.0.3",
     "chalk": "^5.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
@@ -95,8 +97,26 @@
       "providers": {
         "description": "Research and compare cloud providers (capabilities, prices, availability)"
       },
+      "agent": {
+        "description": "Agent-first surface: capability discovery, the deployment workflow map, project init, skill install"
+      },
+      "spec": {
+        "description": "flui.yaml: framework templates, deterministic generation, schema validation"
+      },
+      "catalog": {
+        "description": "Browse what can be deployed: packaged products and reusable building blocks"
+      },
+      "build": {
+        "description": "Build the application image on GitHub Actions (vops never builds locally or on the VPS)"
+      },
+      "deploy": {
+        "description": "Immutable plan, explicit approval, apply, verify"
+      },
       "config": {
         "description": "Local encrypted provider credentials (tokens stay on this machine)"
+      },
+      "keyring": {
+        "description": "Passphrase-derived vault for local secrets (the key is derived, never stored)"
       },
       "servers": {
         "description": "Plan and safely provision VPS resources (hourly-billed only)"
@@ -136,7 +156,19 @@
       },
       "backup": {
         "description": "restic backups over SSH to any S3-compatible repo (verified binary, cron)"
+      },
+      "app": {
+        "description": "Deploy flui.yaml apps to a host over SSH (rootful Podman + Quadlet, no agent)"
+      },
+      "ingress": {
+        "description": "Per-host Traefik ingress: real hostnames + ACME TLS for deployed apps"
       }
+    }
+  },
+  "pnpm": {
+    "overrides": {
+      "@flui-cloud/infra": "file:../flui-infra",
+      "@flui-cloud/spec": "file:../flui-spec/packages/flui-spec-js"
     }
   }
 }
