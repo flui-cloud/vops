@@ -1,0 +1,116 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: ntfy
+  name: ntfy
+  description: >
+    Simple pub-sub notification service — send push notifications to your phone
+    or desktop from any script with a single HTTP request. Self-hosted, works
+    with the ntfy mobile apps and any webhook. No signup, no vendor lock-in.
+  appKind: APPLICATION
+  category: communication
+  tags:
+    - notifications
+    - push
+    - pub-sub
+    - webhooks
+    - self-hosted
+  license: Apache-2.0
+  version: "2.26.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/ntfy.svg
+  links:
+    website: https://ntfy.sh
+    docs: https://docs.ntfy.sh
+    source: https://github.com/binwiederhier/ntfy
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Pushover
+    - Pushbullet
+    - Gotify
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: binwiederhier/ntfy
+    tag: "v2.26.3"
+
+  # The image entrypoint is `ntfy`; it prints help and exits without a subcommand.
+  startCommand: "ntfy serve"
+
+  ports:
+    - name: http
+      internal: 80
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /var/lib/ntfy
+      required: true
+      size: 2Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 50m
+          max: "1"
+        memory:
+          min: 32Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 80
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+    note: >-
+      ntfy runs open by default — anyone can publish and subscribe to topics.
+      Add a server.yml with auth-default-access set to deny and create users
+      before exposing it as a public endpoint.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

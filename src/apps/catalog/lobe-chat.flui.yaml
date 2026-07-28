@@ -1,0 +1,111 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: lobe-chat
+  name: LobeChat
+  description: >
+    A gorgeous, fast chat UI for LLMs with plugins, artifacts, vision and
+    text-to-speech. Bring your own OpenAI-compatible key (or point at LiteLLM)
+    and chat with any model — conversations stay in your browser by default.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - ai
+    - llm
+    - chat
+    - agentic
+    - plugins
+  license: Apache-2.0
+  version: "1.143.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/lobechat.svg
+  links:
+    website: https://lobehub.com
+    docs: https://lobehub.com/docs
+    source: https://github.com/lobehub/lobe-chat
+  ratings:
+    wow: 5
+    utility: 4
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - ChatGPT
+    - Open WebUI
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: lobehub/lobe-chat
+    tag: "1.143.3"
+
+  ports:
+    - name: http
+      internal: 3210
+      expose: true
+      protocol: http
+
+  env:
+    - name: ACCESS_CODE
+      valueFrom:
+        generate: secret
+        length: 24
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 256Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3210
+    initialDelay: 10s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /
+    password:
+      fromEnv: ACCESS_CODE
+    note: Enter this access code (Settings → password) to unlock chat. Set your own model API key in Settings.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

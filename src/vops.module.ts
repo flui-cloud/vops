@@ -1,5 +1,4 @@
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import {
@@ -25,9 +24,14 @@ import {
   ScalewayIamAdapter,
   CherryProviderService,
   CherryCapabilitiesService,
+  DnsProvider,
+  DnsProviderFactory,
+  HetznerDnsService,
+  ScalewayDnsService,
 } from '@flui-cloud/infra';
 import { LocalCredentialProvider } from './lib/credentials/local-credential-provider';
 import { LocalStore } from './lib/store/local-store';
+import { configBase } from './lib/profile';
 import { VopsProvidersService } from './providers/vops-providers.service';
 import { VopsCredentialsService } from './credentials/vops-credentials.service';
 import { VopsCatalogService } from './catalog/vops-catalog.service';
@@ -42,6 +46,7 @@ import { RealSshExec } from './lib/ssh-exec';
 import { VopsHostsService } from './hosts/vops-hosts.service';
 import { VopsHostKeysService } from './host-ops/vops-host-keys.service';
 import { VopsHostConnService } from './host-ops/vops-host-conn.service';
+import { VopsHostShellService } from './host-ops/host-shell.service';
 import { VopsHostStatusService } from './host-ops/vops-host-status.service';
 import { VopsHostHardenService } from './host-ops/vops-host-harden.service';
 import { VopsSshLockdownService } from './host-ops/vops-ssh-lockdown.service';
@@ -52,6 +57,12 @@ import { VopsMonitorService } from './monitor/vops-monitor.service';
 import { VopsBackupService } from './backup/vops-backup.service';
 import { VopsAgentService } from './agent/vops-agent.service';
 import { VopsBenchService } from './bench/vops-bench.service';
+import { VopsAppsService } from './apps/vops-apps.service';
+import { VopsAgentApiService } from './agent-api/vops-agent-api.service';
+import { VopsSpecService } from './spec/vops-spec.service';
+import { VopsBuildService } from './build/vops-build.service';
+import { VopsAppShellService } from './apps/app-shell.service';
+import { VopsIngressService } from './apps/vops-ingress.service';
 
 /**
  * vops runtime. Deliberately light: it wires the Hetzner + Scaleway provider and
@@ -63,9 +74,12 @@ import { VopsBenchService } from './bench/vops-bench.service';
 // Load creds from the vops package .env and the profile dir regardless of the
 // working directory — `vops` is symlinked globally, so cwd is rarely vops/.
 // Package .env takes precedence; cwd .env stays a dev convenience.
+// configBase() rather than a hardcoded ~/.config/vops: VOPS_CONFIG_DIR moves the
+// whole profile, and `vops keyring import-env` prunes the file this list loads —
+// the two must agree on which file that is.
 const ENV_FILES = [
   path.resolve(__dirname, '../../../.env'),
-  path.join(os.homedir(), '.config', 'vops', '.env'),
+  path.join(configBase(), '.env'),
   '.env',
 ];
 
@@ -162,6 +176,18 @@ const ENV_FILES = [
       inject: [HetznerFirewallService, ScalewayFirewallService, OvhFirewallService],
     },
 
+    HetznerDnsService,
+    ScalewayDnsService,
+    {
+      provide: DnsProviderFactory,
+      useFactory: (hetzner: HetznerDnsService, scaleway: ScalewayDnsService) =>
+        new DnsProviderFactory([
+          { provider: DnsProvider.HETZNER, service: hetzner },
+          { provider: DnsProvider.SCALEWAY, service: scaleway },
+        ]),
+      inject: [HetznerDnsService, ScalewayDnsService],
+    },
+
     LocalStore,
     VopsProvidersService,
     VopsCredentialsService,
@@ -176,6 +202,7 @@ const ENV_FILES = [
     VopsHostsService,
     VopsHostKeysService,
     VopsHostConnService,
+    VopsHostShellService,
     VopsHostStatusService,
     VopsHostHardenService,
     VopsSshLockdownService,
@@ -187,6 +214,12 @@ const ENV_FILES = [
     VopsBackupService,
     VopsAgentService,
     VopsBenchService,
+    VopsIngressService,
+    VopsAppsService,
+    VopsAppShellService,
+    VopsAgentApiService,
+    VopsSpecService,
+    VopsBuildService,
   ],
   exports: [
     VopsProvidersService,
@@ -200,6 +233,7 @@ const ENV_FILES = [
     VopsHostsService,
     VopsHostKeysService,
     VopsHostConnService,
+    VopsHostShellService,
     VopsHostStatusService,
     VopsHostHardenService,
     VopsSshLockdownService,
@@ -211,6 +245,12 @@ const ENV_FILES = [
     VopsBackupService,
     VopsAgentService,
     VopsBenchService,
+    VopsIngressService,
+    VopsAppsService,
+    VopsAppShellService,
+    VopsAgentApiService,
+    VopsSpecService,
+    VopsBuildService,
     LocalStore,
   ],
 })

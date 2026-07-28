@@ -1,0 +1,109 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: ollama
+  name: Ollama
+  description: >
+    Run open LLMs locally with one command and a clean REST API. Serves models
+    to Open WebUI, LobeChat and your agents. CPU-only works for small models;
+    for larger ones use a GPU box or point your apps at a remote endpoint
+    instead.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - ai
+    - llm
+    - local-models
+    - inference
+    - api
+  license: MIT
+  version: "0.32.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/ollama.svg
+  links:
+    website: https://ollama.com
+    docs: https://github.com/ollama/ollama/blob/main/docs/api.md
+    source: https://github.com/ollama/ollama
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - LM Studio
+    - llama.cpp
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: ollama/ollama
+    tag: "0.32.2"
+
+  ports:
+    - name: http
+      internal: 11434
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: models
+      mountPath: /root/.ollama
+      required: true
+      size: 20Gi
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 6Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 500m
+          max: "8"
+        memory:
+          min: 1Gi
+          max: 16Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 11434
+    initialDelay: 5s
+    interval: 15s
+    timeout: 5s
+    retries: 6
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+    note: The API is unauthenticated — keep it private (ingress basic-auth gate) or bind it only to trusted apps.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 45
+    retries: 10

@@ -1,0 +1,117 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: node-red
+  name: Node-RED
+  description: >
+    Low-code, flow-based programming for event-driven apps and automation.
+    Wire together APIs, hardware and online services in a browser editor and
+    deploy in a click — thousands of community nodes available.
+  appKind: APPLICATION
+  category: developer-tools
+  tags:
+    - low-code
+    - automation
+    - iot
+    - flow-programming
+    - developer-tools
+  license: Apache-2.0
+  version: "5.0.1"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/node-red.svg
+  links:
+    website: https://nodered.org
+    docs: https://nodered.org/docs/
+    source: https://github.com/node-red/node-red
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Zapier
+    - n8n
+    - IFTTT
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: nodered/node-red
+    tag: "5.0.1"
+
+  ports:
+    - name: http
+      internal: 1880
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 2Gi
+
+  env:
+    - name: TZ
+      value: "UTC"
+      userEditable: true
+      description: Server timezone (IANA format, e.g. Europe/Rome)
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 1880
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+    note: >
+      The Node-RED editor is unauthenticated by default — anyone who can reach
+      the URL can edit and run flows. Keep it private or enable adminAuth in
+      settings.js before exposing it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

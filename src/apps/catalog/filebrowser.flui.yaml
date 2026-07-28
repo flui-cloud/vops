@@ -1,0 +1,127 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: filebrowser
+  name: File Browser
+  description: >
+    A clean web file manager for a single directory tree — browse, upload,
+    edit, share and preview files from your browser. Multi-user with per-user
+    scopes and permissions. Runs entirely on your own server.
+  appKind: TOOL
+  category: productivity
+  tags:
+    - files
+    - file-manager
+    - storage
+    - sharing
+    - privacy
+  license: Apache-2.0
+  version: "2.63.18"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/filebrowser.svg
+  links:
+    website: https://filebrowser.org
+    docs: https://filebrowser.org
+    source: https://github.com/filebrowser/filebrowser
+  ratings:
+    wow: 3
+    utility: 5
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Dropbox
+    - Google Drive web
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: filebrowser/filebrowser
+    tag: "v2.63.18"
+
+  ports:
+    - name: http
+      internal: 8080
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: database
+      mountPath: /database
+      required: true
+      size: 1Gi
+    - name: config
+      mountPath: /config
+      required: true
+      size: 1Gi
+    - name: files
+      mountPath: /srv
+      required: true
+      size: 20Gi
+
+  # v2.63 runs as a non-root user and cannot bind the privileged port 80, so
+  # move it to an unprivileged port.
+  env:
+    - name: FB_PORT
+      value: "8080"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 50m
+          max: "1"
+        memory:
+          min: 64Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8080
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /
+    username:
+      value: admin
+    note: >-
+      First boot creates the 'admin' user with a randomly generated password
+      printed to the container logs (`vops app logs`). Log in and change it
+      immediately under Settings.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

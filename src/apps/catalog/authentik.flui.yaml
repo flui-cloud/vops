@@ -1,0 +1,220 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: authentik
+  name: authentik
+  description: >
+    A self-hosted identity provider and SSO server. Put a single sign-on login
+    in front of every app you run — OAuth2/OIDC, SAML, LDAP and forward-auth —
+    with MFA, flows and a slick admin UI. Bundles its Postgres and Redis, and
+    runs the required server + worker pair as one atomic install.
+  appKind: APPLICATION
+  category: security
+  tags:
+    - sso
+    - identity
+    - oauth
+    - saml
+    - composed
+  license: MIT
+  version: "2024.12.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/authentik.svg
+  links:
+    website: https://goauthentik.io
+    docs: https://docs.goauthentik.io
+    source: https://github.com/goauthentik/authentik
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Okta
+    - Keycloak
+    - Auth0
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: authentik.internal
+
+  components:
+    - name: db
+      image:
+        registry: docker.io
+        repository: library/postgres
+        tag: "16-alpine"
+      ports:
+        - name: pg
+          internal: 5432
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+          required: true
+          size: 5Gi
+      env:
+        - name: POSTGRES_DB
+          value: authentik
+        - name: POSTGRES_USER
+          value: authentik
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      healthcheck:
+        type: tcp
+        port: 5432
+        initialDelay: 10s
+        interval: 10s
+        timeout: 5s
+        retries: 12
+
+    - name: redis
+      image:
+        registry: docker.io
+        repository: library/redis
+        tag: "7-alpine"
+      ports:
+        - name: redis
+          internal: 6379
+          expose: false
+          protocol: tcp
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      healthcheck:
+        type: tcp
+        port: 6379
+        initialDelay: 5s
+        interval: 10s
+        timeout: 5s
+        retries: 10
+
+    - name: server
+      dependsOn:
+        - db
+        - redis
+      image:
+        registry: ghcr.io
+        repository: goauthentik/server
+        tag: "2024.12.3"
+      startCommand: "ak server"
+      ports:
+        - name: http
+          internal: 9000
+          expose: true
+          protocol: http
+      volumes:
+        - name: media
+          mountPath: /media
+          required: true
+          size: 5Gi
+      env:
+        - name: AUTHENTIK_SECRET_KEY
+          valueFrom:
+            generate: secret
+            length: 50
+        - name: AUTHENTIK_POSTGRESQL__HOST
+          value: "{{components.db.host}}"
+        - name: AUTHENTIK_POSTGRESQL__USER
+          value: authentik
+        - name: AUTHENTIK_POSTGRESQL__NAME
+          value: authentik
+        - name: AUTHENTIK_POSTGRESQL__PASSWORD
+          value: "{{components.db.env.POSTGRES_PASSWORD}}"
+        - name: AUTHENTIK_REDIS__HOST
+          value: "{{components.redis.host}}"
+        - name: AUTHENTIK_BOOTSTRAP_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 24
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      healthcheck:
+        type: http
+        path: /
+        port: 9000
+        initialDelay: 30s
+        interval: 15s
+        timeout: 5s
+        retries: 15
+
+    - name: worker
+      dependsOn:
+        - db
+        - redis
+        - server
+      image:
+        registry: ghcr.io
+        repository: goauthentik/server
+        tag: "2024.12.3"
+      startCommand: "ak worker"
+      env:
+        - name: AUTHENTIK_SECRET_KEY
+          value: "{{components.server.env.AUTHENTIK_SECRET_KEY}}"
+        - name: AUTHENTIK_POSTGRESQL__HOST
+          value: "{{components.db.host}}"
+        - name: AUTHENTIK_POSTGRESQL__USER
+          value: authentik
+        - name: AUTHENTIK_POSTGRESQL__NAME
+          value: authentik
+        - name: AUTHENTIK_POSTGRESQL__PASSWORD
+          value: "{{components.db.env.POSTGRES_PASSWORD}}"
+        - name: AUTHENTIK_REDIS__HOST
+          value: "{{components.redis.host}}"
+        - name: AUTHENTIK_BOOTSTRAP_PASSWORD
+          value: "{{components.server.env.AUTHENTIK_BOOTSTRAP_PASSWORD}}"
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+
+  access:
+    mode: credentials
+    path: /if/admin/
+    username:
+      value: akadmin
+    password:
+      fromEnv: AUTHENTIK_BOOTSTRAP_PASSWORD
+      component: server
+    note: >-
+      Log in as akadmin with the generated bootstrap password (reveal it with
+      `vops app credentials --show`), then finish setup at /if/flow/initial-setup/.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 200
+    retries: 40

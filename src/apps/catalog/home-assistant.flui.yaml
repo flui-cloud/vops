@@ -1,0 +1,125 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: home-assistant
+  name: Home Assistant
+  description: >
+    The open-source home automation hub: control 3000+ device integrations,
+    build automations and dashboards, all processed locally so your home data
+    never touches a cloud. Onboarding runs in the browser on first launch.
+  appKind: APPLICATION
+  category: infrastructure
+  tags:
+    - home-automation
+    - iot
+    - smart-home
+    - privacy
+    - local
+  license: Apache-2.0
+  version: "2026.7.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/home-assistant.svg
+  links:
+    website: https://www.home-assistant.io
+    docs: https://www.home-assistant.io/docs/
+    source: https://github.com/home-assistant/core
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - SmartThings
+    - Google Home
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: home-assistant/home-assistant
+    tag: "2026.7.3"
+
+  ports:
+    - name: http
+      internal: 8123
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: config
+      mountPath: /config
+      required: true
+      size: 5Gi
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 250m
+          max: "4"
+        memory:
+          min: 512Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8123
+    initialDelay: 20s
+    interval: 15s
+    timeout: 5s
+    retries: 15
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first account you create at onboarding becomes the Home Assistant owner — open the URL to claim it.
+  auth:
+    mode: native
+
+  # Behind a reverse proxy HA 400s every request until use_x_forwarded_for/trusted_proxies
+  # are set — only configurable via configuration.yaml, no env var. Appended idempotently
+  # after first boot, once HA has written its own defaults.
+  postInstall:
+    - name: trust-reverse-proxy
+      description: Accept X-Forwarded-For from the proxy in front of the app.
+      exec:
+        command:
+          - /bin/sh
+          - -c
+          - >-
+            test -f /config/configuration.yaml && { grep -q use_x_forwarded_for
+            /config/configuration.yaml || printf '\nhttp:\n  use_x_forwarded_for:
+            true\n  trusted_proxies:\n    - 127.0.0.1\n    - ::1\n    -
+            10.0.0.0/8\n    - 172.16.0.0/12\n    - 192.168.0.0/16\n' >>
+            /config/configuration.yaml; }
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 120
+    retries: 30

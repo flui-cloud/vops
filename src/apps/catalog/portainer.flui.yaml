@@ -1,0 +1,112 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: portainer
+  name: Portainer
+  description: >
+    Web UI to manage Docker and container environments: deploy stacks,
+    inspect containers, images, volumes and networks, view logs and open
+    a console — all from one dashboard. Community Edition.
+  appKind: APPLICATION
+  category: infrastructure
+  tags:
+    - docker
+    - containers
+    - management
+    - infrastructure
+  license: Zlib
+  version: "2.39.5"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/portainer.svg
+  links:
+    website: https://www.portainer.io
+    docs: https://docs.portainer.io
+    source: https://github.com/portainer/portainer
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Rancher
+    - Docker Desktop
+    - Kubernetes Dashboard
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: portainer/portainer-ce
+    tag: "2.39.5"
+
+  ports:
+    - name: http
+      internal: 9000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 1Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 50m
+          max: "1"
+        memory:
+          min: 64Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 9000
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: >
+      Open the URL within a few minutes of first boot and set the admin
+      username and password on the initialization screen — Portainer locks
+      new-admin creation shut if left idle too long after startup.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

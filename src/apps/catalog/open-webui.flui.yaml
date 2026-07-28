@@ -1,0 +1,115 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: open-webui
+  name: Open WebUI
+  description: >
+    A polished, self-hosted ChatGPT-style interface for LLMs. Talks to Ollama
+    or any OpenAI-compatible endpoint (point it at LiteLLM for any model),
+    with RAG, web search, multi-user chats and a plugin system. The model
+    lives on a remote API, so it runs comfortably on a CPU-only VPS.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - ai
+    - llm
+    - chat
+    - agentic
+    - openai-compatible
+  license: BSD-3-Clause
+  version: "0.10.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/open-webui.svg
+  links:
+    website: https://openwebui.com
+    docs: https://docs.openwebui.com
+    source: https://github.com/open-webui/open-webui
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - ChatGPT
+    - Poe
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: open-webui/open-webui
+    tag: "v0.10.2"
+
+  ports:
+    - name: http
+      internal: 8080
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /app/backend/data
+      required: true
+      size: 5Gi
+
+  env:
+    - name: WEBUI_SECRET_KEY
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 250m
+          max: "4"
+        memory:
+          min: 1Gi
+          max: 6Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /health
+    port: 8080
+    initialDelay: 20s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first account you create becomes the Open WebUI admin — open the URL and sign up to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /health
+    expectedStatus: 200
+    timeoutSeconds: 120
+    retries: 30

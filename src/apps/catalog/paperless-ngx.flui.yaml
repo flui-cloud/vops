@@ -1,0 +1,190 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: paperless-ngx
+  name: Paperless-ngx
+  description: >
+    Scan, index and archive all your physical documents. Paperless-ngx OCRs
+    every page, makes it full-text searchable, and auto-tags by
+    correspondent/type — a self-hosted, paperless office that keeps your
+    records on your own server. Bundles its Redis task broker; documents are
+    stored in SQLite so there is no external database to run.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - documents
+    - ocr
+    - dms
+    - archive
+    - search
+    - composed
+  license: GPL-3.0
+  version: "2.15.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/paperless-ngx.svg
+  links:
+    website: https://docs.paperless-ngx.com
+    docs: https://docs.paperless-ngx.com/setup/
+    source: https://github.com/paperless-ngx/paperless-ngx
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Mayan EDMS
+    - Evernote
+    - DocumentCloud
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: paperless.internal
+
+  components:
+    - name: broker
+      image:
+        registry: docker.io
+        repository: library/redis
+        tag: "7-alpine"
+      ports:
+        - name: redis
+          internal: 6379
+          expose: false
+          protocol: tcp
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 50m
+              max: "1"
+            memory:
+              min: 64Mi
+              max: 512Mi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: tcp
+        port: 6379
+        initialDelay: 5s
+        interval: 10s
+        timeout: 5s
+        retries: 10
+
+    - name: app
+      dependsOn:
+        - broker
+      image:
+        registry: ghcr.io
+        repository: paperless-ngx/paperless-ngx
+        tag: "2.15.3"
+      ports:
+        - name: http
+          internal: 8000
+          expose: true
+          protocol: http
+      volumes:
+        - name: data
+          mountPath: /usr/src/paperless/data
+          required: true
+          size: 5Gi
+        - name: media
+          mountPath: /usr/src/paperless/media
+          required: true
+          size: 20Gi
+      env:
+        - name: PAPERLESS_REDIS
+          value: "redis://{{components.broker.host}}:6379"
+        - name: PAPERLESS_SECRET_KEY
+          valueFrom:
+            generate: secret
+            length: 48
+        - name: PAPERLESS_ADMIN_USER
+          value: admin
+        - name: PAPERLESS_ADMIN_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 24
+        - name: PAPERLESS_TIME_ZONE
+          value: "Etc/UTC"
+          userEditable: true
+          description: IANA timezone Paperless stamps documents with — set it to your local zone.
+        - name: PAPERLESS_OCR_LANGUAGE
+          value: "eng"
+          userEditable: true
+          description: Tesseract OCR language(s), e.g. "eng", "ita", or "eng+ita".
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 250m
+              max: "4"
+            memory:
+              min: 512Mi
+              max: 3Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /accounts/login/
+        port: 8000
+        initialDelay: 20s
+        interval: 15s
+        timeout: 5s
+        retries: 10
+
+  access:
+    mode: credentials
+    path: /
+    username:
+      fromEnv: PAPERLESS_ADMIN_USER
+      component: app
+    password:
+      fromEnv: PAPERLESS_ADMIN_PASSWORD
+      component: app
+    note: >-
+      Log in as 'admin' with the generated password (reveal it with
+      `vops app credentials --show`). Behind a public domain, also set
+      PAPERLESS_URL to your https URL so login CSRF checks pass.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /accounts/login/
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

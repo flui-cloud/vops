@@ -1,0 +1,121 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: grafana
+  name: Grafana
+  description: >
+    The open observability platform: build dashboards and alerts over
+    Prometheus, Loki, SQL and dozens of other data sources. Query, visualize
+    and explore all your metrics and logs in one place.
+  appKind: APPLICATION
+  category: monitoring
+  tags:
+    - dashboards
+    - metrics
+    - observability
+    - monitoring
+    - visualization
+  license: AGPL-3.0
+  version: "13.1.1"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/grafana.svg
+  links:
+    website: https://grafana.com
+    docs: https://grafana.com/docs/grafana/latest/
+    source: https://github.com/grafana/grafana
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Datadog
+    - Kibana
+    - New Relic
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: grafana/grafana
+    tag: "13.1.1"
+
+  ports:
+    - name: http
+      internal: 3000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /var/lib/grafana
+      required: true
+      size: 2Gi
+
+  env:
+    - name: GF_SECURITY_ADMIN_USER
+      value: "admin"
+    - name: GF_SECURITY_ADMIN_PASSWORD
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /api/health
+    port: 3000
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /login
+    username:
+      fromEnv: GF_SECURITY_ADMIN_USER
+    password:
+      fromEnv: GF_SECURITY_ADMIN_PASSWORD
+    note: Sign in as admin with the generated password, then change it in your profile.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /api/health
+    expectedStatus: 200
+    timeoutSeconds: 120
+    retries: 30

@@ -44,6 +44,44 @@ export type ProcessRunner = (
 
 const DEFAULT_TIMEOUT = 30_000;
 
+/** Profile-scoped known_hosts — vops never writes the user's ~/.ssh/known_hosts. */
+export function knownHostsPath(): string {
+  const dir = profileDir();
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return path.join(dir, 'known_hosts');
+}
+
+export interface InteractiveSshOptions {
+  /** Allocate a remote TTY — needed for any live foreground session (a login shell, `podman exec -it`). */
+  tty: boolean;
+  /** Command to run remotely; omitted opens the target's login shell. */
+  remote?: string;
+  knownHosts: string;
+}
+
+/** ssh argv for a live, foreground session (inherited TTY, never through `SshExec.run`) —
+ * skips `run`'s BatchMode/shared ControlPath since an interactive session must allow prompting. */
+export function buildInteractiveSshArgv(t: SshTarget, opts: InteractiveSshOptions): string[] {
+  return [
+    '-i', t.keyPath,
+    '-p', String(t.host.port || 22),
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', `UserKnownHostsFile=${opts.knownHosts}`,
+    ...(opts.tty ? ['-t'] : []),
+    `${t.host.user}@${t.host.address}`,
+    ...(opts.remote ? [opts.remote] : []),
+  ];
+}
+
+const SQ_ESCAPE = String.raw`'\''`;
+const BARE_ARG = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/** Copy-pasteable one-liner for an ssh argv, quoting only what needs it. */
+export function displaySshCommand(argv: string[]): string {
+  return ['ssh', ...argv.map((a) => (BARE_ARG.test(a) ? a : `'${a.replaceAll("'", SQ_ESCAPE)}'`))].join(' ');
+}
+
 function realRunner(
   cmd: string,
   args: string[],
@@ -138,7 +176,7 @@ export class RealSshExec implements SshExec {
       // master (a shared connection would "verify" a new key over the old session).
       '-o', 'IdentitiesOnly=yes',
       '-o', 'ControlPath=none',
-      '-o', `UserKnownHostsFile=${this.knownHostsFile()}`,
+      '-o', `UserKnownHostsFile=${knownHostsPath()}`,
     ];
   }
 
@@ -153,11 +191,5 @@ export class RealSshExec implements SshExec {
 
   private scpArgs(t: SshTarget): string[] {
     return ['-i', t.keyPath, '-P', String(t.host.port || 22), ...this.commonOpts()];
-  }
-
-  private knownHostsFile(): string {
-    const dir = profileDir();
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    return path.join(dir, 'known_hosts');
   }
 }

@@ -1,0 +1,134 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: copyparty
+  name: Copyparty
+  description: >
+    Portable, feature-packed file server with resumable uploads, media
+    indexing and thumbnails, WebDAV/FTP/SMB access and a fast web UI — all from
+    a single process on your own server.
+  appKind: TOOL
+  category: productivity
+  tags:
+    - files
+    - file-server
+    - uploads
+    - webdav
+    - sharing
+  license: MIT
+  version: "1.20.18"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/copyparty.svg
+  links:
+    website: https://github.com/9001/copyparty
+    docs: https://github.com/9001/copyparty#readme
+    source: https://github.com/9001/copyparty
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 5
+    community: 3
+  alternativeTo:
+    - Dropbox
+    - WeTransfer
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: copyparty/ac
+    tag: "1.20.18"
+
+  ports:
+    - name: http
+      internal: 3923
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /w
+      required: true
+      size: 20Gi
+    - name: config
+      mountPath: /cfg
+      required: true
+      size: 1Gi
+
+  # With no config file copyparty serves nothing (0 volumes → HTTP 500), and its
+  # documented default would be world-writable. Instead we drive it entirely from
+  # args: serve the data volume with read-write for a generated `admin` account
+  # and no anonymous access. XDG_CONFIG_HOME keeps its state on the config volume.
+  env:
+    - name: COPYPARTY_ADMIN_PW
+      valueFrom:
+        generate: secret
+        length: 24
+    - name: XDG_CONFIG_HOME
+      value: "/cfg"
+
+  startCommand: "python3 -m copyparty -i 0.0.0.0 -p 3923 -v /w::rw,admin -a admin:$COPYPARTY_ADMIN_PW"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3923
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /
+    username:
+      value: admin
+    password:
+      fromEnv: COPYPARTY_ADMIN_PW
+    note: >-
+      Log in as 'admin' with the generated password (reveal it with
+      `vops app credentials --show`). The data volume is read-write for admin and
+      closed to anonymous visitors — add more accounts or open a public volume
+      from copyparty's own settings once you're in.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

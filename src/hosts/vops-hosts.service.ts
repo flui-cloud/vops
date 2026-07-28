@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ProviderFactory } from '@flui-cloud/infra';
+import { CloudProvider, ProviderFactory } from '@flui-cloud/infra';
 import { LocalStore } from '../lib/store/local-store';
 import { profileDir } from '../lib/profile';
 import { SshExec } from '../lib/ssh-exec';
 import { resolveProvider, defaultSshUser } from '../lib/providers';
+import { notFound } from '../agent-api/agent-http-errors';
 import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { deriveConnState, sshOutcome } from '../host-ops/ssh-conn';
 import { VopsHost, VopsHostOs, OsFamily } from './host.model';
@@ -51,7 +52,9 @@ export class VopsHostsService {
 
   show(name: string): VopsHost {
     const host = this.get(name);
-    if (!host) throw new BadRequestException(`Host '${name}' not found.`);
+    if (!host) {
+      throw notFound('VOPS_HOST_NOT_FOUND', `Host '${name}' not found.`, 'List the inventory with `vops host list --json`.');
+    }
     return host;
   }
 
@@ -105,18 +108,24 @@ export class VopsHostsService {
     return { host, probe };
   }
 
-  async import(
-    providerName: string,
-    serverIdOrName: string,
-  ): Promise<{ host: VopsHost; probe: HostProbe }> {
-    const provider = resolveProvider(providerName);
+  /** Resolve a provider server by id or name; throws if the provider doesn't have it. */
+  private async resolveProviderServer(provider: CloudProvider, serverIdOrName: string) {
     const impl = this.providers.getProvider(provider);
     const server =
       (await impl.getServerDetailsAsDto(serverIdOrName).catch(() => null)) ??
       (await impl.listServersAsDto().then((all) => all.find((s) => s.name === serverIdOrName)));
     if (!server) {
-      throw new BadRequestException(`Server '${serverIdOrName}' not found on ${providerName}.`);
+      throw new BadRequestException(`Server '${serverIdOrName}' not found on ${provider}.`);
     }
+    return server;
+  }
+
+  async import(
+    providerName: string,
+    serverIdOrName: string,
+  ): Promise<{ host: VopsHost; probe: HostProbe }> {
+    const provider = resolveProvider(providerName);
+    const server = await this.resolveProviderServer(provider, serverIdOrName);
     if (!server.public_ip) {
       throw new BadRequestException(`Server '${server.name}' has no public IP.`);
     }
@@ -146,10 +155,25 @@ export class VopsHostsService {
    */
   async ensureFromServer(providerName: string, serverIdOrName: string): Promise<VopsHost> {
     const provider = resolveProvider(providerName);
-    const existing = this.list().find(
+    const linked = this.list().find(
       (h) => h.provider === provider && (h.providerServerId === serverIdOrName || h.name === serverIdOrName),
     );
-    if (existing) return existing;
+    if (linked) return linked;
+    const server = await this.resolveProviderServer(provider, serverIdOrName);
+    // A host may already track this machine by name without the provider link
+    // (e.g. it was added as an external host). Adopt it into the provider plane
+    // so Manage reuses that record instead of colliding on the unique name.
+    const existing = this.get(server.name);
+    if (existing) {
+      const adopted: VopsHost = { ...existing, provider, providerServerId: server.id };
+      if (!adopted.os) {
+        const probe = await this.probe(adopted);
+        if (probe.os) adopted.os = probe.os;
+      }
+      this.update(adopted);
+      await this.store.appendAudit('host.adopt', { provider, name: adopted.name });
+      return adopted;
+    }
     const { host } = await this.import(provider, serverIdOrName);
     return host;
   }

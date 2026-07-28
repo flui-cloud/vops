@@ -1,0 +1,117 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: code-server
+  name: code-server
+  description: >
+    VS Code running in the browser on your own server. Full editor,
+    integrated terminal, extensions and settings sync — code from any
+    device without shipping your source to a third party.
+  appKind: APPLICATION
+  category: developer-tools
+  tags:
+    - ide
+    - vscode
+    - remote-development
+    - developer-tools
+    - browser
+  license: MIT
+  version: "4.129.0"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/code-server.svg
+  links:
+    website: https://coder.com
+    docs: https://coder.com/docs/code-server
+    source: https://github.com/coder/code-server
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - GitHub Codespaces
+    - Gitpod
+    - VS Code Remote
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: codercom/code-server
+    tag: "4.129.0"
+
+  ports:
+    - name: http
+      internal: 8080
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /home/coder
+      required: true
+      size: 10Gi
+
+  env:
+    - name: PASSWORD
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "2"
+        memory:
+          min: 256Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /healthz
+    port: 8080
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /
+    password:
+      fromEnv: PASSWORD
+    note: code-server prompts only for a password — paste this value to sign in.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /healthz
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

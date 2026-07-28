@@ -1,0 +1,186 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: firefly-iii
+  name: Firefly III
+  description: >
+    A free, self-hosted personal finance manager. Track expenses and income,
+    set budgets and savings goals, reconcile accounts and see where your money
+    goes — all on your own server, with a Postgres database bundled in. Import
+    from your bank via the companion importer.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - finance
+    - budgeting
+    - accounting
+    - self-hosted
+    - composed
+  license: AGPL-3.0
+  version: "6.1.21"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/firefly-iii.svg
+  links:
+    website: https://www.firefly-iii.org
+    docs: https://docs.firefly-iii.org
+    source: https://github.com/firefly-iii/firefly-iii
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - YNAB
+    - Mint
+    - Quicken
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: firefly.internal
+
+  components:
+    - name: db
+      image:
+        registry: docker.io
+        repository: library/postgres
+        tag: "16-alpine"
+      ports:
+        - name: pg
+          internal: 5432
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+          required: true
+          size: 5Gi
+      env:
+        - name: POSTGRES_DB
+          value: firefly
+        - name: POSTGRES_USER
+          value: firefly
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "2"
+            memory:
+              min: 128Mi
+              max: 1Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: tcp
+        port: 5432
+        initialDelay: 10s
+        interval: 10s
+        timeout: 5s
+        retries: 10
+
+    - name: app
+      dependsOn:
+        - db
+      image:
+        registry: docker.io
+        repository: fireflyiii/core
+        tag: "version-6.1.21"
+      ports:
+        - name: http
+          internal: 8080
+          expose: true
+          protocol: http
+      volumes:
+        - name: upload
+          mountPath: /var/www/html/storage/upload
+          required: true
+          size: 2Gi
+      env:
+        - name: APP_KEY
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: DB_CONNECTION
+          value: pgsql
+        - name: DB_HOST
+          value: "{{components.db.host}}"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_DATABASE
+          value: firefly
+        - name: DB_USERNAME
+          value: firefly
+        - name: DB_PASSWORD
+          value: "{{components.db.env.POSTGRES_PASSWORD}}"
+        - name: TRUSTED_PROXIES
+          value: "**"
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "2"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 250m
+              max: "4"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /login
+        port: 8080
+        initialDelay: 20s
+        interval: 15s
+        timeout: 5s
+        retries: 10
+
+  access:
+    mode: firstVisit
+    note: The first account you register becomes the owner — open the URL and sign up to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /login
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

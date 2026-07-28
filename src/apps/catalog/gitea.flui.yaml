@@ -1,0 +1,116 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: gitea
+  name: Gitea
+  description: >
+    Lightweight self-hosted Git service with a full web UI: repositories,
+    issues, pull requests, wikis, releases and a built-in CI (Actions).
+    Runs from a single Go binary on SQLite — no external database needed.
+  appKind: APPLICATION
+  category: developer-tools
+  tags:
+    - git
+    - code-hosting
+    - developer-tools
+    - ci-cd
+    - self-hosted
+  license: MIT
+  version: "1.27.0"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gitea.svg
+  links:
+    website: https://gitea.com
+    docs: https://docs.gitea.com
+    source: https://github.com/go-gitea/gitea
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - GitHub
+    - GitLab
+    - Bitbucket
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: gitea/gitea
+    tag: "1.27.0"
+
+  ports:
+    - name: http
+      internal: 3000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 10Gi
+
+  env:
+    - name: USER_UID
+      value: "1000"
+    - name: USER_GID
+      value: "1000"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3000
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: >
+      Complete the one-time install page (SQLite is preselected), then the
+      first account you register becomes the site administrator.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 120
+    retries: 30

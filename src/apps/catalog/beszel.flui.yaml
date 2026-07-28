@@ -1,0 +1,109 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: beszel
+  name: Beszel
+  description: >
+    Lightweight server monitoring hub with historical CPU, memory, disk and
+    network charts, Docker stats and configurable alerts. A tiny agent on
+    each host reports back to this dashboard — no heavy agent stack.
+  appKind: APPLICATION
+  category: monitoring
+  tags:
+    - monitoring
+    - server-metrics
+    - lightweight
+    - alerts
+  license: MIT
+  version: "0.18.7"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/beszel.svg
+  links:
+    website: https://beszel.dev
+    docs: https://beszel.dev/guide/getting-started
+    source: https://github.com/henrygd/beszel
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 4
+    community: 4
+  alternativeTo:
+    - Netdata
+    - Grafana
+    - Datadog
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: henrygd/beszel
+    tag: "0.18.7"
+
+  ports:
+    - name: http
+      internal: 8090
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /beszel_data
+      required: true
+      size: 1Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 50m
+          max: "1"
+        memory:
+          min: 64Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8090
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first visit opens a sign-up form — the account you create becomes the admin.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

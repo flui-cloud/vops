@@ -1,0 +1,184 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: librechat
+  name: LibreChat
+  description: >
+    A polished, self-hosted ChatGPT-style interface for every model at once —
+    OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint — with
+    conversation search, presets, and multi-user accounts. Bring your own API
+    keys; your chats stay in your own MongoDB. Add model keys after first login.
+  appKind: APPLICATION
+  category: ai
+  tags:
+    - ai
+    - chat
+    - llm
+    - chatgpt-alternative
+    - composed
+  license: MIT
+  version: "0.7.8"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/librechat.svg
+  links:
+    website: https://www.librechat.ai
+    docs: https://www.librechat.ai/docs
+    source: https://github.com/danny-avila/LibreChat
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - ChatGPT
+    - Open WebUI
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: librechat.internal
+
+  components:
+    - name: mongo
+      image:
+        registry: docker.io
+        repository: library/mongo
+        tag: "7"
+      ports:
+        - name: mongo
+          internal: 27017
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /data/db
+          required: true
+          size: 5Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "2"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: tcp
+        port: 27017
+        initialDelay: 10s
+        interval: 10s
+        timeout: 5s
+        retries: 10
+
+    - name: app
+      dependsOn:
+        - mongo
+      image:
+        registry: ghcr.io
+        repository: danny-avila/librechat
+        tag: "v0.7.8"
+      ports:
+        - name: http
+          internal: 3080
+          expose: true
+          protocol: http
+      env:
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "3080"
+        - name: MONGO_URI
+          value: "mongodb://{{components.mongo.host}}:27017/LibreChat"
+        # Disable the optional Meilisearch service — LibreChat runs fine without it.
+        - name: SEARCH
+          value: "false"
+        - name: ALLOW_REGISTRATION
+          value: "true"
+        - name: CREDS_KEY
+          valueFrom:
+            generate: secret
+            length: 64
+            format: hex
+        - name: CREDS_IV
+          valueFrom:
+            generate: secret
+            length: 32
+            format: hex
+        - name: JWT_SECRET
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: JWT_REFRESH_SECRET
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 250m
+              max: "4"
+            memory:
+              min: 512Mi
+              max: 3Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /
+        port: 3080
+        initialDelay: 20s
+        interval: 15s
+        timeout: 5s
+        retries: 10
+
+  access:
+    mode: firstVisit
+    note: >-
+      Open the URL and register the first account, then add your model API keys
+      under Settings. LibreChat ships no models by default — bring your own keys.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

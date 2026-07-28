@@ -1,0 +1,112 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: flowise
+  name: Flowise
+  description: >
+    Drag-and-drop builder for LLM apps and AI agents. Wire up chains, RAG
+    pipelines, tools and multi-agent flows visually, then expose them as an API
+    or chat widget. Points at any OpenAI-compatible endpoint — no GPU needed.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - ai
+    - agents
+    - llm
+    - low-code
+    - rag
+  license: Apache-2.0
+  version: "3.1.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/flowise.svg
+  links:
+    website: https://flowiseai.com
+    docs: https://docs.flowiseai.com
+    source: https://github.com/FlowiseAI/Flowise
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Langflow
+    - Stack AI
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: flowiseai/flowise
+    tag: "3.1.3"
+
+  ports:
+    - name: http
+      internal: 3000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /root/.flowise
+      required: true
+      size: 5Gi
+
+  env:
+    - name: FLOWISE_FILE_SIZE_LIMIT
+      value: "50mb"
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "4"
+        memory:
+          min: 512Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3000
+    initialDelay: 15s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first account you register becomes the Flowise admin — open the URL to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

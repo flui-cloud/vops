@@ -1,0 +1,102 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: redis
+  name: Redis
+  description: >
+    The original in-memory key-value store — cache, queue and message broker.
+    Used as a building block by composed catalog apps (e.g. Nextcloud). For a
+    fully open-source (BSD) drop-in, see Valkey. Not exposed publicly; reached
+    by other components on the host loopback.
+  appKind: DATABASE
+  category: cache
+  tags:
+    - cache
+    - key-value
+    - queue
+    - building-block
+    - redis
+  license: RSALv2
+  version: '7'
+  maintainedAt: '2026-07-22'
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/redis.svg
+  links:
+    website: https://redis.io
+    docs: https://redis.io/docs/
+    source: https://github.com/redis/redis
+  alternativeTo:
+    - Memcached
+    - Amazon ElastiCache
+
+spec:
+  type: building-block
+
+  image:
+    registry: docker.io
+    repository: library/redis
+    tag: '7-alpine'
+
+  ports:
+    - name: redis
+      internal: 6379
+      expose: false
+      protocol: tcp
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 2Gi
+
+  persistence:
+    scope: dedicated
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: '1'
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: '2'
+        memory:
+          min: 64Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+          - CPUThrottling
+        cooldown: 10m
+
+  healthcheck:
+    type: exec
+    command:
+      - redis-cli
+      - ping
+    initialDelay: 5s
+    interval: 10s
+    timeout: 3s
+    retries: 5
+
+  auth:
+    mode: none
+
+  smokeTest:
+    type: script
+    timeoutSeconds: 10
+    inline: |
+      redis-cli -h "$SMOKE_APP_FQDN" -p 6379 SET _smoke ok
+      redis-cli -h "$SMOKE_APP_FQDN" -p 6379 DEL _smoke

@@ -1,0 +1,123 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: mealie
+  name: Mealie
+  description: >
+    A self-hosted recipe manager and meal planner. Import recipes from any URL,
+    build weekly meal plans, generate shopping lists and keep your family's
+    cookbook on your own server. Clean mobile-friendly UI, SQLite-backed so it
+    runs as a single container.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - recipes
+    - meal-planning
+    - cooking
+    - self-hosted
+  license: AGPL-3.0
+  version: "2.7.0"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/mealie.svg
+  links:
+    website: https://mealie.io
+    docs: https://docs.mealie.io
+    source: https://github.com/mealie-recipes/mealie
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Paprika
+    - Whisk
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: mealie-recipes/mealie
+    tag: "v2.7.0"
+
+  ports:
+    - name: http
+      internal: 9000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /app/data
+      required: true
+      size: 5Gi
+
+  env:
+    - name: ALLOW_SIGNUP
+      value: "false"
+    - name: TZ
+      value: "Etc/UTC"
+      userEditable: true
+      description: IANA timezone for meal-plan dates.
+
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 150m
+          max: "2"
+        memory:
+          min: 256Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 9000
+    initialDelay: 15s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /login
+    username:
+      value: changeme@example.com
+    password:
+      value: MyPassword
+    note: >-
+      Mealie seeds a default admin (changeme@example.com / MyPassword) on first
+      boot — sign in and change both immediately under user settings.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

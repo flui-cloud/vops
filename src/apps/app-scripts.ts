@@ -1,0 +1,254 @@
+/** Pure shell-script builders for `vops app`, run over `ssh + sudo -n bash -s` (rootful);
+ * every file/command here is exactly what `--dry-run` prints and `remove` tears down. */
+export const APPS_UNIT_ROOT = '/etc/containers/systemd/vops';
+
+export function appUnitDir(app: string): string {
+  return `${APPS_UNIT_ROOT}/${app}`;
+}
+
+/** Read-only host probe: podman/quadlet presence, k3s coexistence, ports, selinux. */
+export function buildPreflightScript(): string {
+  return [
+    'set +e',
+    "echo '@@podman'",
+    'command -v podman >/dev/null 2>&1 && podman --version 2>/dev/null || echo MISSING',
+    "echo '@@quadlet'",
+    // Prefer the podman-static generator in /usr/local (a bootstrapped host) over a
+    // distro one in /usr/lib, so a `.pod` isn't dry-run by an older distro podman.
+    'for g in /usr/local/lib/systemd/system-generators/podman-system-generator /usr/lib/systemd/system-generators/podman-system-generator /usr/local/libexec/podman/quadlet /usr/libexec/podman/quadlet; do test -x "$g" && { echo "$g"; break; }; done; true',
+    "echo '@@k3s'",
+    'systemctl is-active k3s 2>/dev/null || systemctl is-active k3s-server 2>/dev/null || echo inactive',
+    "echo '@@selinux'",
+    'if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then echo yes; else echo no; fi',
+    "echo '@@arch'",
+    'uname -m',
+    "echo '@@ports'",
+    "ss -ltnH 2>/dev/null | awk '{print $4}' || netstat -ltn 2>/dev/null | awk 'NR>2{print $4}'",
+    "echo '@@diskkb'",
+    "df -Pk /var 2>/dev/null | awk 'NR==2{print $4}'",
+    "echo '@@networks'",
+    "podman network ls --format '{{.Name}}' 2>/dev/null",
+    "echo '@@done'",
+  ].join('\n');
+}
+
+export interface SecretMaterial {
+  name: string;
+  generate?: { length: number; format: 'base64url' | 'hex' };
+  value?: string;
+}
+
+export interface DeployScriptInput {
+  unitDir: string;
+  units: Record<string, string>;
+  secrets: SecretMaterial[];
+  /** Container service names in dependency order (start order). */
+  services: string[];
+  /** Network/volume services started BEFORE the containers (quadlet's implicit
+   * dependency is unreliable on older podman, so vops orders them explicitly). */
+  prereqServices: string[];
+  quadletGenerator: string;
+  /** Pull credentials for a private image registry (a private GHCR package). */
+  registry?: RegistryLogin;
+}
+
+/** Credentials podman uses to PULL the image (written to root's auth.json via `podman login`) —
+ * scope the token to read-only package access, since a host compromise hands it over. */
+export interface RegistryLogin {
+  /** Registry host, e.g. `ghcr.io`. */
+  host: string;
+  user: string;
+  token: string;
+}
+
+/** Quadlet service names started before the containers: volumes, then the pod. */
+export function prereqServiceNames(pod: string | undefined, volumes: string[]): string[] {
+  return [
+    ...volumes.map((v) => `${v}-volume.service`),
+    ...(pod ? [`${pod}-pod.service`] : []),
+  ];
+}
+
+/** Write units + ensure secrets + quadlet dry-run gate + daemon-reload + start. */
+export function buildDeployScript(input: DeployScriptInput): string {
+  const files = Object.entries(input.units).map(([name, content], i) =>
+    heredoc(`${input.unitDir}/${name}`, content, i),
+  );
+  const gen = shq(input.quadletGenerator);
+  const dir = shq(input.unitDir);
+  return [
+    'set -e',
+    `mkdir -p ${dir}`,
+    ...files,
+    ...registryLogin(input.registry),
+    'set +e',
+    ...input.secrets.map(ensureSecret),
+    'set -e',
+    `DRY=$(QUADLET_UNIT_DIRS=${dir} ${gen} --dryrun 2>&1) || { echo '@@error'; echo "quadlet dry-run failed"; echo "$DRY"; exit 3; }`,
+    ...input.services.map(
+      (s) => `echo "$DRY" | grep -q ${shq(s)} || { echo '@@error'; echo "quadlet skipped ${s} (bad unit)"; echo "$DRY"; exit 4; }`,
+    ),
+    'systemctl daemon-reload',
+    'set +e',
+    // `restart` (not `start`): a oneshot network/volume unit left `active (exited)`
+    // from a prior run would make `start` a no-op, so the network is never created.
+    // `podman network/volume create` is idempotent (--ignore), so re-running is safe.
+    ...input.prereqServices.map((p) => `systemctl reset-failed ${shq(p)} 2>/dev/null; systemctl restart ${shq(p)} >/dev/null 2>&1`),
+    "echo '@@started'",
+    ...input.services.map(
+      (s) => `systemctl start ${shq(s)} >/dev/null 2>&1; echo "${s}=$(systemctl is-active ${shq(s)} 2>/dev/null)"`,
+    ),
+    "echo '@@diag'",
+    ...[...input.prereqServices, ...input.services].map(
+      (s) => `if [ "$(systemctl is-active ${shq(s)} 2>/dev/null)" != active ]; then echo "### ${s}"; journalctl -u ${shq(s)} -n 12 --no-pager 2>&1 | tail -12; fi`,
+    ),
+    "echo '@@ok'",
+  ].join('\n');
+}
+
+/** `podman login` via stdin — the token never reaches the process list or a file
+ * vops writes. Failure aborts the deploy: a pull that would 401 later is worse
+ * than stopping here with the registry named. */
+function registryLogin(r?: RegistryLogin): string[] {
+  if (!r) return [];
+  return [
+    `printf %s ${shq(r.token)} | podman login ${shq(r.host)} -u ${shq(r.user)} --password-stdin >/dev/null 2>&1 || ` +
+      `{ echo '@@error'; echo "podman login ${r.host} failed (check the token scope: it needs read access to packages)"; exit 5; }`,
+  ];
+}
+
+function ensureSecret(s: SecretMaterial): string {
+  const name = shq(s.name);
+  const charClass = s.generate?.format === 'hex' ? 'a-f0-9' : 'a-zA-Z0-9';
+  const create = s.generate
+    ? `LC_ALL=C tr -dc '${charClass}' </dev/urandom | head -c ${s.generate.length} | podman secret create ${name} - >/dev/null 2>&1`
+    : `printf %s ${shq(s.value ?? '')} | podman secret create ${name} - >/dev/null 2>&1`;
+  // Reuse an existing secret (never --replace): a regenerated value would no longer
+  // match what was baked into the volume at first init.
+  return `podman secret inspect ${name} >/dev/null 2>&1 || { ${create}; }`;
+}
+
+export interface RemoveScriptInput {
+  unitDir: string;
+  services: string[];
+  /** Volume/pod services — stopped so they don't linger `active (exited)`. */
+  prereqServices: string[];
+  containers: string[];
+  pod?: string;
+  secrets: string[];
+  volumes: string[];
+  purge: boolean;
+}
+
+/** Caps the graceful stop then SIGKILLs the cgroup, so a SIGTERM-ignoring container can't hold
+ * remove hostage for `TimeoutStopSec` (~90s); `systemctl stop` first so Restart=always won't revive it. */
+function boundedStop(s: string): string {
+  const q = shq(s);
+  return (
+    `if command -v timeout >/dev/null 2>&1; then timeout 12 systemctl stop ${q}; else systemctl stop ${q}; fi >/dev/null 2>&1; ` +
+    `systemctl kill -s SIGKILL ${q} >/dev/null 2>&1; systemctl reset-failed ${q} 2>/dev/null`
+  );
+}
+
+export function buildRemoveScript(i: RemoveScriptInput): string {
+  const stopAll = [...[...i.services].reverse(), ...i.prereqServices];
+  const lines = [
+    'set +e',
+    ...stopAll.map(boundedStop),
+    `rm -rf ${shq(i.unitDir)}`,
+    'systemctl daemon-reload',
+    ...(i.pod ? [`podman pod rm -f ${shq(i.pod)} >/dev/null 2>&1`] : []),
+    ...i.containers.map((c) => `podman rm -f ${shq(c)} >/dev/null 2>&1`),
+    ...(i.purge ? i.secrets.map((s) => `podman secret rm ${shq(s)} >/dev/null 2>&1`) : []),
+    ...(i.purge ? i.volumes.map((v) => `podman volume rm ${shq(v)} >/dev/null 2>&1`) : []),
+    "echo '@@removed'",
+    i.purge ? 'echo purged' : 'echo kept-data',
+  ];
+  return lines.join('\n');
+}
+
+function statusTrailerLines(app: string, services: string[]): string[] {
+  return [
+    "echo '@@units'",
+    ...services.map(
+      (s) => `echo "${s}|$(systemctl is-active ${shq(s)} 2>/dev/null)|$(systemctl show -p SubState --value ${shq(s)} 2>/dev/null)"`,
+    ),
+    "echo '@@containers'",
+    `podman ps -a --filter name=vops-${app}- --format '{{.Names}}|{{.Status}}|{{.Image}}' 2>/dev/null`,
+  ];
+}
+
+export function buildStatusScript(app: string, services: string[]): string {
+  return ['set +e', ...statusTrailerLines(app, services)].join('\n');
+}
+
+/** Restart the app's own component units, then report back in the same
+ * `@@units`/`@@containers` shape `buildStatusScript` does — a restart's result
+ * IS a status check, so the caller parses both with `parseStatusOutput`. */
+export function buildRestartScript(app: string, services: string[]): string {
+  return [
+    'set +e',
+    ...services.map((s) => `systemctl restart ${shq(s)} >/dev/null 2>&1`),
+    'sleep 1',
+    ...statusTrailerLines(app, services),
+  ].join('\n');
+}
+
+// `sleep` is a FIXED per-iteration wait: on connection-refused curl returns
+// instantly, so retries alone would not give a slow-booting app real wall-clock
+// time (first-run image copy + DB init can take 1–2 min).
+export function buildSmokeHttpScript(port: number, path: string, expect: number, retries: number, sleepS = 5): string {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return [
+    'set +e',
+    "echo '@@http'",
+    `for i in $(seq 1 ${Math.max(1, retries)}); do`,
+    `  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:${port}${p} 2>/dev/null)`,
+    // Healthy = the manifest's expected status OR any 2xx/3xx (a fresh app that
+    // redirects to its installer is up); 000/4xx/5xx keep retrying then report.
+    `  case "$code" in ${expect}|2??|3??) echo "$code"; exit 0;; esac`,
+    `  sleep ${sleepS}`,
+    'done',
+    'echo "${code:-000}"',
+  ].join('\n');
+}
+
+export function buildSmokeTcpScript(port: number, retries: number, sleepS = 5): string {
+  return [
+    'set +e',
+    "echo '@@tcp'",
+    `for i in $(seq 1 ${Math.max(1, retries)}); do`,
+    `  if timeout 3 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null; then echo open; exit 0; fi`,
+    `  sleep ${sleepS}`,
+    'done',
+    'echo closed',
+  ].join('\n');
+}
+
+// `podman logs` (not journalctl): driver-agnostic, so it works with the systemd-less
+// podman-static build where the journald log driver is unavailable.
+export function buildLogsScript(container: string, lines: number): string {
+  return `podman logs --tail ${Math.max(1, Math.min(2000, lines))} ${shq(container)} 2>&1 || true`;
+}
+
+/** Failure diagnostics: container states + the primary component's recent logs. */
+export function buildDiagScript(app: string, primaryContainer: string): string {
+  return [
+    'set +e',
+    "echo '@@ps'",
+    `podman ps -a --filter name=vops-${app}- --format '{{.Names}} | {{.Status}} | {{.Ports}}' 2>&1`,
+    "echo '@@log'",
+    `podman logs --tail 25 ${shq(primaryContainer)} 2>&1 | tail -25`,
+  ].join('\n');
+}
+
+/** Single-quote for POSIX sh, safe for arbitrary content. */
+const SQ_ESCAPE = String.raw`'\''`;
+export function shq(v: string): string {
+  return `'${String(v).replaceAll("'", SQ_ESCAPE)}'`;
+}
+
+function heredoc(path: string, content: string, i: number): string {
+  const tag = `VOPS_UNIT_EOF_${i}`;
+  return `cat > ${shq(path)} <<'${tag}'\n${content}\n${tag}`;
+}

@@ -1,0 +1,118 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: jellyfin
+  name: Jellyfin
+  description: >
+    The free software media system. Stream your own movies, TV, music and
+    photos to any device with a polished web, mobile and TV client. No
+    accounts, no tracking, no phone-home — your library stays on your server.
+  appKind: APPLICATION
+  category: media
+  tags:
+    - media
+    - streaming
+    - movies
+    - tv
+    - music
+  license: GPL-2.0
+  version: "10.11.11"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg
+  links:
+    website: https://jellyfin.org
+    docs: https://jellyfin.org/docs/
+    source: https://github.com/jellyfin/jellyfin
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Plex
+    - Emby
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: jellyfin/jellyfin
+    tag: "10.11.11"
+
+  ports:
+    - name: http
+      internal: 8096
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: config
+      mountPath: /config
+      required: true
+      size: 4Gi
+    - name: cache
+      mountPath: /cache
+      required: true
+      size: 8Gi
+    - name: media
+      mountPath: /media
+      required: true
+      size: 50Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "6"
+        memory:
+          min: 256Mi
+          max: 6Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8096
+    initialDelay: 15s
+    interval: 30s
+    timeout: 5s
+    retries: 5
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The setup wizard on first visit creates the admin account — open the URL now to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

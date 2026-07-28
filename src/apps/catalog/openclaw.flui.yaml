@@ -1,0 +1,175 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: openclaw
+  name: OpenClaw
+  description: >
+    Your own self-hosted AI assistant. OpenClaw runs a local-first "Gateway"
+    agent: bring any model provider key (OpenAI, Anthropic, Gemini or
+    OpenRouter — no GPU needed) and chat right in your browser, with tools,
+    memory and voice. Add a Telegram bot to reach it from your phone too.
+    Model-agnostic, and entirely yours.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - agent
+    - assistant
+    - ai
+    - chatbot
+    - telegram
+  license: MIT
+  version: "2026.7.2-beta.4"
+  maintainedAt: "2026-07-23"
+  links:
+    website: https://openclaw.ai
+    docs: https://docs.openclaw.ai
+    source: https://github.com/openclaw/openclaw
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - ChatGPT
+    - Claude
+    - Poe
+
+spec:
+  type: standalone
+
+  image:
+    registry: docker.io
+    repository: openclaw/openclaw
+    tag: "2026.7.2-beta.4"
+
+  # Run the gateway non-interactively (no `openclaw setup` wizard): env keys +
+  # channel tokens configure it; --allow-unconfigured skips the onboarding gate.
+  startCommand: "node openclaw.mjs gateway --allow-unconfigured"
+
+  # In a container the Gateway binds 0.0.0.0:18789 (a token-protected control UI).
+  # Exposed so vops can front it (loopback by default) and smoke-check it.
+  ports:
+    - name: gateway
+      internal: 18789
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: state
+      mountPath: /data
+      required: true
+      size: 2Gi
+
+  env:
+    - name: OPENCLAW_STATE_DIR
+      value: /data
+    - name: OPENCLAW_GATEWAY_TOKEN
+      valueFrom:
+        generate: secret
+        length: 48
+    # LLM provider — set AT LEAST ONE. Each is a distinct provider; OpenClaw is
+    # model-agnostic and applies its own precedence when several are present.
+    - name: OPENROUTER_API_KEY
+      valueFrom:
+        userInput:
+          label: OpenRouter API key
+          sensitive: true
+          group: llm
+          format: password
+      description: >-
+        One key for every model — create it at https://openrouter.ai/keys.
+        Routes to Claude, GPT, Gemini and more, GPU-free (recommended if you
+        don't already have a provider key).
+    - name: OPENAI_API_KEY
+      valueFrom:
+        userInput:
+          label: OpenAI API key
+          sensitive: true
+          group: llm
+          format: password
+      description: A direct OpenAI key (sk-…) from platform.openai.com/api-keys.
+    - name: ANTHROPIC_API_KEY
+      valueFrom:
+        userInput:
+          label: Anthropic API key
+          sensitive: true
+          group: llm
+          format: password
+      description: A direct Anthropic key (sk-ant-…) from console.anthropic.com.
+    - name: GEMINI_API_KEY
+      valueFrom:
+        userInput:
+          label: Google Gemini API key
+          sensitive: true
+          group: llm
+          format: password
+      description: A direct Google Gemini key from aistudio.google.com/apikey.
+    - name: TELEGRAM_BOT_TOKEN
+      valueFrom:
+        userInput:
+          label: Telegram bot token
+          sensitive: true
+          required: false
+          format: password
+      description: >-
+        Optional — the channel your assistant answers on. Create a bot with
+        @BotFather and paste its token to wire up Telegram now, or leave it
+        blank and add Telegram (or Discord/Slack) later via the app config.
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 250m
+          max: "2"
+        memory:
+          min: 512Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: tcp
+    port: 18789
+    initialDelay: 20s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  smokeTest:
+    type: tcp
+    port: 18789
+    timeoutSeconds: 120
+    retries: 30
+
+  access:
+    mode: credentials
+    path: /
+    password:
+      fromEnv: OPENCLAW_GATEWAY_TOKEN
+    note: >-
+      The OpenClaw control panel needs this gateway token to connect. Easiest:
+      open the dashboard URL with the token in the fragment —
+      `<dashboard-url>/#token=<TOKEN>` — and it signs in in one click (reveal the
+      token with `vops app credentials openclaw --show`). Otherwise open the URL,
+      paste the token into the "Token del Gateway" field and press Connect (leave
+      "Password" empty; the WebSocket URL is pre-filled). Add a Telegram bot token
+      in the app config to also chat from your phone. Follow the first boot with
+      `vops app logs openclaw`.
+  auth:
+    mode: native

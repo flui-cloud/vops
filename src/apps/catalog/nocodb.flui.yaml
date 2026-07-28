@@ -1,0 +1,114 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: nocodb
+  name: NocoDB
+  description: >
+    The open-source Airtable alternative — turn any database into a smart
+    spreadsheet with grid, gallery, kanban and form views, roles and REST/GraphQL
+    APIs. Runs on its own SQLite store, no external database required.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - database
+    - spreadsheet
+    - no-code
+    - airtable-alternative
+    - privacy
+  license: AGPL-3.0
+  version: "2026.07.0"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/nocodb.svg
+  links:
+    website: https://nocodb.com
+    docs: https://docs.nocodb.com
+    source: https://github.com/nocodb/nocodb
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Airtable
+    - Google Sheets
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: nocodb/nocodb
+    tag: "2026.07.0"
+
+  ports:
+    - name: http
+      internal: 8080
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /usr/app/data
+      required: true
+      size: 5Gi
+
+  env:
+    - name: NC_AUTH_JWT_SECRET
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "4"
+        memory:
+          min: 256Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8080
+    initialDelay: 15s
+    interval: 30s
+    timeout: 5s
+    retries: 5
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first account you sign up becomes the super admin — open the URL now to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

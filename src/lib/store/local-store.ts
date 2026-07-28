@@ -4,8 +4,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { BenchResultV1, BenchRunSummary, benchSummary } from '../../bench/bench.model';
+import { AppInstallSummary, AppInstallV1, installSummary } from '../../apps/app.model';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Local operational store backed by a standard SQLite file (via libSQL) at
@@ -74,6 +75,35 @@ export class LocalStore implements OnModuleDestroy {
     return res.rows.map((row) => benchSummary(JSON.parse(String(row.result)) as BenchResultV1));
   }
 
+  /** Deployed app installs (whole record as JSON; secret VALUES never stored). */
+  async saveInstall(i: AppInstallV1): Promise<void> {
+    const db = await this.db();
+    await db.execute({
+      sql: 'INSERT OR REPLACE INTO app_installs (name, host, app_id, status, updated_at, record) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [i.name, i.host, i.appId, i.status, i.updatedAt, JSON.stringify(i)],
+    });
+  }
+
+  async getInstall(name: string): Promise<AppInstallV1 | null> {
+    const db = await this.db();
+    const res = await db.execute({ sql: 'SELECT record FROM app_installs WHERE name = ?', args: [name] });
+    const row = res.rows[0];
+    return row ? (JSON.parse(String(row.record)) as AppInstallV1) : null;
+  }
+
+  async listInstalls(host?: string): Promise<AppInstallSummary[]> {
+    const db = await this.db();
+    const res = host
+      ? await db.execute({ sql: 'SELECT record FROM app_installs WHERE host = ? ORDER BY updated_at DESC', args: [host] })
+      : await db.execute('SELECT record FROM app_installs ORDER BY updated_at DESC');
+    return res.rows.map((row) => installSummary(JSON.parse(String(row.record)) as AppInstallV1));
+  }
+
+  async deleteInstall(name: string): Promise<void> {
+    const db = await this.db();
+    await db.execute({ sql: 'DELETE FROM app_installs WHERE name = ?', args: [name] });
+  }
+
   async onModuleDestroy(): Promise<void> {
     this.client?.close();
     this.client = null;
@@ -84,6 +114,12 @@ export class LocalStore implements OnModuleDestroy {
     const dir = profileDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.client = createClient({ url: `file:${path.join(dir, 'vops.db')}` });
+    // WAL lets a reader (the UI polling installs) run without blocking a writer
+    // (a deploy/remove committing) — the default `delete` journal takes a
+    // whole-DB lock, so any overlap turned into a SQLITE_BUSY hang. busy_timeout
+    // makes the rare residual contention wait briefly instead of failing hard.
+    await this.client.execute('PRAGMA journal_mode = WAL');
+    await this.client.execute('PRAGMA busy_timeout = 5000');
     await this.migrate(this.client);
     return this.client;
   }
@@ -110,6 +146,16 @@ export class LocalStore implements OnModuleDestroy {
          host TEXT NOT NULL,
          started_at TEXT NOT NULL,
          result TEXT NOT NULL
+       )`,
+    );
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS app_installs (
+         name TEXT PRIMARY KEY,
+         host TEXT NOT NULL,
+         app_id TEXT NOT NULL,
+         status TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         record TEXT NOT NULL
        )`,
     );
     await db.execute(`PRAGMA user_version = ${SCHEMA_VERSION}`);

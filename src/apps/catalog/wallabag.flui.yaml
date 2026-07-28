@@ -1,0 +1,200 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: wallabag
+  name: Wallabag
+  description: >
+    A self-hosted read-it-later app: save articles from anywhere, strip the
+    clutter and read them later on any device — with tags, full-text search and
+    EPUB/PDF export. Your reading list stays on your own server, in a MariaDB
+    database bundled in. A privacy-first alternative to Pocket and Instapaper.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - read-later
+    - bookmarks
+    - articles
+    - reading
+    - composed
+  license: MIT
+  version: "2.6.14"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/wallabag.svg
+  links:
+    website: https://wallabag.org
+    docs: https://doc.wallabag.org
+    source: https://github.com/wallabag/wallabag
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Pocket
+    - Instapaper
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: wallabag.internal
+
+  components:
+    - name: db
+      image:
+        registry: docker.io
+        repository: library/mariadb
+        tag: "11"
+      ports:
+        - name: mysql
+          internal: 3306
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /var/lib/mysql
+          required: true
+          size: 5Gi
+      env:
+        - name: MARIADB_DATABASE
+          value: wallabag
+        - name: MARIADB_USER
+          value: wallabag
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "2"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 10m
+      healthcheck:
+        type: tcp
+        port: 3306
+        initialDelay: 15s
+        interval: 10s
+        timeout: 5s
+        retries: 12
+
+    - name: app
+      dependsOn:
+        - db
+      image:
+        registry: docker.io
+        repository: wallabag/wallabag
+        tag: "2.6.14"
+      ports:
+        - name: http
+          internal: 80
+          expose: true
+          protocol: http
+      volumes:
+        - name: images
+          mountPath: /var/www/wallabag/web/assets/images
+          required: true
+          size: 5Gi
+      env:
+        - name: SYMFONY__ENV__DATABASE_DRIVER
+          value: pdo_mysql
+        - name: SYMFONY__ENV__DATABASE_HOST
+          value: "{{components.db.host}}"
+        - name: SYMFONY__ENV__DATABASE_PORT
+          value: "3306"
+        - name: SYMFONY__ENV__DATABASE_NAME
+          value: wallabag
+        - name: SYMFONY__ENV__DATABASE_USER
+          value: wallabag
+        - name: SYMFONY__ENV__DATABASE_PASSWORD
+          value: "{{components.db.env.MARIADB_PASSWORD}}"
+        - name: SYMFONY__ENV__DATABASE_CHARSET
+          value: utf8mb4
+        - name: SYMFONY__ENV__DOMAIN_NAME
+          value: "http://localhost"
+          userEditable: true
+          description: Public URL Wallabag builds links from — set it to your https://your-domain in production.
+        - name: SYMFONY__ENV__SECRET
+          valueFrom:
+            generate: secret
+            length: 40
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "2"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 250m
+              max: "4"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /login
+        port: 80
+        initialDelay: 25s
+        interval: 15s
+        timeout: 5s
+        retries: 12
+
+  access:
+    mode: credentials
+    path: /login
+    username:
+      value: wallabag
+    password:
+      value: wallabag
+    note: >-
+      Default login is wallabag / wallabag — change it immediately from the user
+      config after first sign-in.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /login
+    expectedStatus: 200
+    timeoutSeconds: 180
+    retries: 30

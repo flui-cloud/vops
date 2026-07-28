@@ -1,0 +1,117 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: syncthing
+  name: Syncthing
+  description: >
+    Continuous, peer-to-peer file synchronization between your devices. No
+    central server, no cloud account — data is exchanged directly and
+    encrypted in transit. This runs a Syncthing node with its web GUI.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - files
+    - sync
+    - backup
+    - p2p
+    - privacy
+  license: MPL-2.0
+  version: "2.1.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/syncthing.svg
+  links:
+    website: https://syncthing.net
+    docs: https://docs.syncthing.net
+    source: https://github.com/syncthing/syncthing
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Dropbox
+    - Google Drive
+    - Resilio Sync
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: syncthing/syncthing
+    tag: "2.1.2"
+
+  ports:
+    - name: gui
+      internal: 8384
+      expose: true
+      protocol: http
+    - name: sync
+      internal: 22000
+      expose: false
+      protocol: tcp
+
+  volumes:
+    - name: data
+      mountPath: /var/syncthing
+      required: true
+      size: 20Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 128Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8384
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+    note: >-
+      The Syncthing web GUI has no login by default. As soon as it is running,
+      open Actions > Settings > GUI and set a username and password before
+      relying on the public URL.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

@@ -1,0 +1,117 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: baserow
+  name: Baserow
+  description: >
+    Open-source no-code database and Airtable alternative: build spreadsheets,
+    apps and APIs over your own data. This all-in-one image bundles Postgres and
+    Redis, so it runs as a single container with no extra services to wire up.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - no-code
+    - database
+    - airtable-alternative
+    - spreadsheet
+    - api
+  license: MIT
+  version: "2.3.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/baserow.svg
+  links:
+    website: https://baserow.io
+    docs: https://baserow.io/docs
+    source: https://gitlab.com/baserow/baserow
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Airtable
+    - NocoDB
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: baserow/baserow
+    tag: "2.3.3"
+
+  ports:
+    - name: http
+      internal: 80
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /baserow/data
+      required: true
+      size: 10Gi
+
+  # Baserow's bundled Caddy routes strictly by Host, 404-ing anything that isn't
+  # BASEROW_PUBLIC_URL's host. 127.0.0.1 matches the loopback smoke; production
+  # deployments behind a domain MUST set this to their https URL or Baserow 404s.
+  env:
+    - name: BASEROW_PUBLIC_URL
+      value: "http://127.0.0.1"
+      userEditable: true
+      description: Public base URL Baserow serves links from — set this to your https://your-domain in production.
+
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 300m
+          max: "4"
+        memory:
+          min: 512Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 80
+    initialDelay: 30s
+    interval: 15s
+    timeout: 5s
+    retries: 20
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first account you create becomes the Baserow admin — open the URL to sign up and claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

@@ -1,0 +1,117 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: nginx-proxy-manager
+  name: Nginx Proxy Manager
+  description: >
+    Point-and-click reverse proxy built on Nginx: expose your services with
+    free Let's Encrypt certificates, custom domains, access lists and
+    redirects — all managed from a web UI, no config files to edit.
+  appKind: APPLICATION
+  category: infrastructure
+  tags:
+    - reverse-proxy
+    - nginx
+    - ssl
+    - letsencrypt
+    - infrastructure
+  license: MIT
+  version: "2.15.1"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/nginx-proxy-manager.svg
+  links:
+    website: https://nginxproxymanager.com
+    docs: https://nginxproxymanager.com/guide/
+    source: https://github.com/NginxProxyManager/nginx-proxy-manager
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Traefik
+    - Caddy
+    - Cloudflare Tunnel
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: jc21/nginx-proxy-manager
+    tag: "2.15.1"
+
+  ports:
+    - name: http
+      internal: 81
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 2Gi
+    - name: letsencrypt
+      mountPath: /etc/letsencrypt
+      required: true
+      size: 1Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 81
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: >
+      Sign in with the default admin account admin@example.com / changeme on
+      first visit; you are immediately forced to set your own email and
+      password.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 120
+    retries: 30

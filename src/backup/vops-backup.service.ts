@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { SshExec, SshTarget } from '../lib/ssh-exec';
 import { LocalConfigStore } from '../lib/config/local-config-store';
+import { ensureVaultUnlocked } from '../lib/keyring/unlock';
 import { assertHostWritable } from '../safety/host-write-gate';
 import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
@@ -92,6 +93,9 @@ export class VopsBackupService {
   ) {}
 
   async setup(name: string, opts: BackupSetupOpts): Promise<BackupSetupDryRun | BackupSetupResult> {
+    // The repo password is read from (and written to) the profile store, so this
+    // is the one backup operation that needs the vault open.
+    await ensureVaultUnlocked();
     const host = this.hosts.show(name);
     assertHostWritable(host);
     if (!opts.paths?.length || !opts.to) throw new BadRequestException('--paths and --to are required.');

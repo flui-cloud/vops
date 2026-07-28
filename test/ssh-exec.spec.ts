@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { RealSshExec, ExecResult, ProcessRunner } from '../src/lib/ssh-exec';
+import { RealSshExec, ExecResult, ProcessRunner, SshTarget, buildInteractiveSshArgv, displaySshCommand } from '../src/lib/ssh-exec';
 import { VopsHost } from '../src/hosts/host.model';
 
 const host: VopsHost = {
@@ -65,5 +65,32 @@ describe('RealSshExec (fake transport)', () => {
   it('run never throws on a non-zero exit', async () => {
     const failing = new RealSshExec(() => Promise.resolve({ code: 7, stdout: '', stderr: 'boom' }));
     await expect(failing.run({ host, keyPath: '/k' }, 'false')).resolves.toEqual({ code: 7, stdout: '', stderr: 'boom' });
+  });
+});
+
+const target: SshTarget = { host: { ...host, user: 'ubuntu', address: '10.0.0.9', port: 22 }, keyPath: '/keys/id_ed25519' };
+
+describe('buildInteractiveSshArgv — foreground session (login shell, podman exec -it, …)', () => {
+  it('asks for a TTY only when requested and keeps known_hosts profile-scoped', () => {
+    const argv = buildInteractiveSshArgv(target, { tty: true, remote: 'podman exec -it c sh', knownHosts: '/cfg/known_hosts' });
+    expect(argv).toContain('-t');
+    expect(argv).toContain('UserKnownHostsFile=/cfg/known_hosts');
+    expect(argv[argv.length - 2]).toBe('ubuntu@10.0.0.9');
+    expect(buildInteractiveSshArgv(target, { tty: false, remote: 'x', knownHosts: '/k' })).not.toContain('-t');
+  });
+
+  it('never sets BatchMode — a passphrase-protected key must be able to prompt', () => {
+    expect(buildInteractiveSshArgv(target, { tty: true, remote: 'x', knownHosts: '/k' }).join(' ')).not.toContain('BatchMode');
+  });
+
+  it('omits the remote command entirely for a login shell (no trailing empty argv entry)', () => {
+    const argv = buildInteractiveSshArgv(target, { tty: true, knownHosts: '/k' });
+    expect(argv[argv.length - 1]).toBe('ubuntu@10.0.0.9');
+  });
+
+  it('renders a copy-pasteable line, quoting only what needs it', () => {
+    const line = displaySshCommand(buildInteractiveSshArgv(target, { tty: true, remote: `podman exec -it 'c' sh`, knownHosts: '/k' }));
+    expect(line.startsWith('ssh -i /keys/id_ed25519 -p 22')).toBe(true);
+    expect(line.endsWith(`'podman exec -it '\\''c'\\'' sh'`)).toBe(true);
   });
 });

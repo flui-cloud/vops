@@ -1,0 +1,117 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: qdrant
+  name: Qdrant
+  description: >
+    High-performance vector database for AI: semantic search, RAG and
+    recommendations over billions of embeddings. Ships a built-in web dashboard
+    and a fast REST/gRPC API — the memory layer for your agents and chatbots.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - vector-database
+    - ai
+    - rag
+    - embeddings
+    - search
+  license: Apache-2.0
+  version: "1.18.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/qdrant.svg
+  links:
+    website: https://qdrant.tech
+    docs: https://qdrant.tech/documentation/
+    source: https://github.com/qdrant/qdrant
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Pinecone
+    - Weaviate
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: qdrant/qdrant
+    tag: "v1.18.3"
+
+  ports:
+    - name: http
+      internal: 6333
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: storage
+      mountPath: /qdrant/storage
+      required: true
+      size: 10Gi
+
+  env:
+    - name: QDRANT__SERVICE__API_KEY
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "4"
+        memory:
+          min: 256Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /healthz
+    port: 6333
+    initialDelay: 5s
+    interval: 10s
+    timeout: 5s
+    retries: 6
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /dashboard
+    password:
+      fromEnv: QDRANT__SERVICE__API_KEY
+    note: Open /dashboard and paste this API key to browse collections; agents authenticate with the same key.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /healthz
+    expectedStatus: 200
+    timeoutSeconds: 45
+    retries: 12

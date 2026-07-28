@@ -1,0 +1,205 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: bookstack
+  name: BookStack
+  description: >
+    A simple, self-hosted platform for organising and storing information.
+    BookStack arranges documentation into Shelves, Books, Chapters and Pages
+    with a WYSIWYG editor, full-text search and page revisions — a clean wiki
+    for teams, with a MariaDB database bundled in.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - wiki
+    - documentation
+    - knowledge-base
+    - notes
+    - composed
+  license: MIT
+  version: "26.05.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/bookstack.svg
+  links:
+    website: https://www.bookstackapp.com
+    docs: https://www.bookstackapp.com/docs/
+    source: https://github.com/BookStackApp/BookStack
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Confluence
+    - Notion
+    - Wiki.js
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: bookstack.internal
+
+  components:
+    - name: db
+      image:
+        registry: docker.io
+        repository: library/mariadb
+        tag: "11"
+      ports:
+        - name: mysql
+          internal: 3306
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /var/lib/mysql
+          required: true
+          size: 5Gi
+      env:
+        - name: MARIADB_DATABASE
+          value: bookstackapp
+        - name: MARIADB_USER
+          value: bookstack
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "2"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 10m
+      healthcheck:
+        type: tcp
+        port: 3306
+        initialDelay: 15s
+        interval: 10s
+        timeout: 5s
+        retries: 12
+
+    - name: app
+      dependsOn:
+        - db
+      image:
+        registry: lscr.io
+        repository: linuxserver/bookstack
+        tag: "26.05.2"
+      ports:
+        - name: http
+          internal: 80
+          expose: true
+          protocol: http
+      volumes:
+        - name: config
+          mountPath: /config
+          required: true
+          size: 2Gi
+      env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: APP_URL
+          value: "https://{{app.domain}}"
+          userEditable: true
+          description: >-
+            Public URL BookStack builds every link and redirect from — must match
+            exactly how you reach it, or logins/redirects break. Resolved
+            automatically to your ingress domain; requires --domain (a bare-port
+            deploy has no stable URL to give BookStack).
+        - name: APP_KEY
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: DB_HOST
+          value: "{{components.db.host}}"
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_DATABASE
+          value: bookstackapp
+        - name: DB_USERNAME
+          value: bookstack
+        - name: DB_PASSWORD
+          value: "{{components.db.env.MARIADB_PASSWORD}}"
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "2"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 250m
+              max: "4"
+            memory:
+              min: 256Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /login
+        port: 80
+        initialDelay: 20s
+        interval: 15s
+        timeout: 5s
+        retries: 10
+
+  access:
+    mode: credentials
+    path: /login
+    username:
+      value: admin@admin.com
+    password:
+      value: password
+    note: >-
+      Default login is admin@admin.com / password — change it immediately under
+      your profile after first sign-in.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /login
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

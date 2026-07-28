@@ -1,0 +1,114 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: kavita
+  name: Kavita
+  description: >
+    Fast, self-hosted digital library for comics, manga, books and magazines.
+    Reads EPUB, PDF, CBZ/CBR and more in a slick in-browser reader, with
+    collections, reading progress and multi-user accounts.
+  appKind: APPLICATION
+  category: media
+  tags:
+    - media
+    - ebooks
+    - comics
+    - manga
+    - reader
+  license: GPL-3.0
+  version: "0.9.0.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/kavita.svg
+  links:
+    website: https://www.kavitareader.com
+    docs: https://wiki.kavitareader.com
+    source: https://github.com/Kareadita/Kavita
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Calibre-Web
+    - Komga
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: jvmilazz0/kavita
+    tag: "0.9.0.2"
+
+  ports:
+    - name: http
+      internal: 5000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: config
+      mountPath: /kavita/config
+      required: true
+      size: 4Gi
+    - name: library
+      mountPath: /library
+      required: true
+      size: 50Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 256Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 5000
+    initialDelay: 10s
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first-run wizard registers the admin account — open the URL now to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

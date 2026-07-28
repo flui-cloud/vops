@@ -1,0 +1,119 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: homepage
+  name: Homepage
+  description: >
+    A modern, fast, fully static homelab start page: bookmarks, service tiles
+    with live status, and 100+ widgets for the apps you run. Configured in
+    plain YAML, everything renders on the server.
+  appKind: APPLICATION
+  category: monitoring
+  tags:
+    - dashboard
+    - startpage
+    - homelab
+    - widgets
+    - monitoring
+  license: GPL-3.0
+  version: "1.13.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/homepage.svg
+  links:
+    website: https://gethomepage.dev
+    docs: https://gethomepage.dev/latest/
+    source: https://github.com/gethomepage/homepage
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Heimdall
+    - Organizr
+    - Dashy
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: gethomepage/homepage
+    tag: "v1.13.2"
+
+  ports:
+    - name: http
+      internal: 3000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: config
+      mountPath: /app/config
+      required: true
+      size: 1Gi
+
+  env:
+    - name: HOMEPAGE_ALLOWED_HOSTS
+      value: "*"
+      userEditable: true
+      description: >
+        Comma-separated hosts allowed to serve Homepage (host validation guard).
+        localhost is always allowed; "*" permits any host. For a public
+        deployment set this to your exact domain, e.g. home.example.com.
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 512Mi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3000
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+    note: >
+      Homepage has no built-in login — keep it private or put an authenticating
+      reverse proxy in front of it before exposing it publicly.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

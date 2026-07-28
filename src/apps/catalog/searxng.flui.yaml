@@ -1,0 +1,113 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: searxng
+  name: SearXNG
+  description: >
+    Privacy-respecting metasearch engine that aggregates 70+ sources without
+    tracking, profiling or ads. Self-host your own search — and give your AI
+    agents a web-search tool that isn't rate-limited by a third party.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - search
+    - privacy
+    - metasearch
+    - agentic
+    - no-tracking
+  license: AGPL-3.0
+  version: "2026.7.22"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/searxng.svg
+  links:
+    website: https://docs.searxng.org
+    docs: https://docs.searxng.org
+    source: https://github.com/searxng/searxng
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Google
+    - Brave Search API
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: searxng/searxng
+    tag: "2026.7.22-ef8f6470e"
+
+  ports:
+    - name: http
+      internal: 8080
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: config
+      mountPath: /etc/searxng
+      required: true
+      size: 1Gi
+
+  env:
+    - name: SEARXNG_SECRET
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /healthz
+    port: 8080
+    initialDelay: 10s
+    interval: 15s
+    timeout: 5s
+    retries: 8
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 60
+    retries: 15

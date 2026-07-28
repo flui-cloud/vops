@@ -1,0 +1,125 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: anythingllm
+  name: AnythingLLM
+  description: >
+    All-in-one AI workspace: chat with your documents (RAG), build no-code
+    agents and connect any LLM — with a built-in vector store, so it runs on a
+    plain CPU VPS when pointed at a remote model. Multi-user, per-workspace
+    permissions.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - ai
+    - rag
+    - agents
+    - documents
+    - workspace
+  license: MIT
+  version: "1.15.0"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/anythingllm.svg
+  links:
+    website: https://anythingllm.com
+    docs: https://docs.anythingllm.com
+    source: https://github.com/Mintplex-Labs/anything-llm
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - NotebookLM
+    - ChatGPT
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: mintplexlabs/anythingllm
+    tag: "1.15.0"
+
+  ports:
+    - name: http
+      internal: 3001
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: storage
+      mountPath: /app/server/storage
+      required: true
+      size: 5Gi
+
+  env:
+    - name: STORAGE_DIR
+      value: "/app/server/storage"
+    - name: JWT_SECRET
+      valueFrom:
+        generate: secret
+        length: 48
+    - name: SIG_KEY
+      valueFrom:
+        generate: secret
+        length: 36
+    - name: SIG_SALT
+      valueFrom:
+        generate: secret
+        length: 36
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "4"
+        memory:
+          min: 512Mi
+          max: 4Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3001
+    initialDelay: 15s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first visitor runs the setup and becomes the AnythingLLM admin — open the URL to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

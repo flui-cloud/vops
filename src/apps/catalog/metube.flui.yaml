@@ -1,0 +1,112 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: metube
+  name: MeTube
+  description: >
+    Web UI for yt-dlp — paste a video or playlist URL and download it to your
+    server in the format and quality you choose. Self-hosted, no ads, no
+    accounts, files land in a folder you control.
+  appKind: TOOL
+  category: media
+  tags:
+    - media
+    - downloader
+    - yt-dlp
+    - video
+    - self-hosted
+  license: AGPL-3.0
+  version: "2026.07.21"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/metube.svg
+  links:
+    website: https://github.com/alexta69/metube
+    docs: https://github.com/alexta69/metube#readme
+    source: https://github.com/alexta69/metube
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 4
+    community: 4
+  alternativeTo:
+    - youtube-dl web
+    - JDownloader
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: alexta69/metube
+    tag: "2026.07.21"
+
+  ports:
+    - name: http
+      internal: 8081
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: downloads
+      mountPath: /downloads
+      required: true
+      size: 50Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 128Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 8081
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: none
+    note: >-
+      MeTube ships with no login. Anyone who can reach the URL can queue
+      downloads to your server — keep it private or put an auth proxy in front
+      before exposing it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

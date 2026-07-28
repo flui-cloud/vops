@@ -1,0 +1,116 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: forgejo
+  name: Forgejo
+  description: >
+    Community-governed, self-hosted Git forge — repositories, issues, pull
+    requests, wikis, releases and Forgejo Actions CI. A hard fork of Gitea
+    backed by Codeberg e.V., runs from a single binary on SQLite.
+  appKind: APPLICATION
+  category: developer-tools
+  tags:
+    - git
+    - code-hosting
+    - developer-tools
+    - forge
+    - self-hosted
+  license: GPL-3.0-or-later
+  version: "16.0.1"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/forgejo.svg
+  links:
+    website: https://forgejo.org
+    docs: https://forgejo.org/docs/latest/
+    source: https://codeberg.org/forgejo/forgejo
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - GitHub
+    - GitLab
+    - Gitea
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: codeberg.org
+    repository: forgejo/forgejo
+    tag: "16.0.1"
+
+  ports:
+    - name: http
+      internal: 3000
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /data
+      required: true
+      size: 10Gi
+
+  env:
+    - name: USER_UID
+      value: "1000"
+    - name: USER_GID
+      value: "1000"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3000
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: >
+      Complete the one-time install page (SQLite is preselected), then the
+      first account you register becomes the site administrator.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 120
+    retries: 30

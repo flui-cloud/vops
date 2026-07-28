@@ -1,0 +1,189 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: ghost
+  name: Ghost
+  description: >
+    The professional publishing platform: a fast, clean blog + newsletter + paid
+    membership site in one. Write in a modern editor, send newsletters to your
+    audience, and take subscription payments — self-hosted, with a MySQL database
+    bundled in. A self-hosted alternative to Substack and Medium.
+  appKind: APPLICATION
+  category: cms
+  tags:
+    - blog
+    - newsletter
+    - cms
+    - publishing
+    - composed
+  license: MIT
+  version: "5"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/ghost.svg
+  links:
+    website: https://ghost.org
+    docs: https://ghost.org/docs/
+    source: https://github.com/TryGhost/Ghost
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 4
+    community: 5
+  alternativeTo:
+    - Substack
+    - Medium
+    - WordPress
+
+spec:
+  type: composed
+
+  domain:
+    auto: true
+    tls: true
+    userCustomizable: true
+
+  networking:
+    internal: ghost.internal
+
+  components:
+    - name: db
+      image:
+        registry: docker.io
+        repository: library/mysql
+        tag: "8"
+      ports:
+        - name: mysql
+          internal: 3306
+          expose: false
+          protocol: tcp
+      volumes:
+        - name: data
+          mountPath: /var/lib/mysql
+          required: true
+          size: 5Gi
+      env:
+        - name: MYSQL_DATABASE
+          value: ghost
+        - name: MYSQL_USER
+          value: ghost
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            generate: secret
+            length: 32
+      resources:
+        requests:
+          cpu: 100m
+          memory: 384Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 100m
+              max: "2"
+            memory:
+              min: 384Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 10m
+      healthcheck:
+        type: tcp
+        port: 3306
+        initialDelay: 20s
+        interval: 10s
+        timeout: 5s
+        retries: 15
+
+    - name: app
+      dependsOn:
+        - db
+      image:
+        registry: docker.io
+        repository: library/ghost
+        tag: "5-alpine"
+      ports:
+        - name: http
+          internal: 2368
+          expose: true
+          protocol: http
+      volumes:
+        - name: content
+          mountPath: /var/lib/ghost/content
+          required: true
+          size: 5Gi
+      env:
+        - name: NODE_ENV
+          value: production
+        - name: database__client
+          value: mysql
+        - name: database__connection__host
+          value: "{{components.db.host}}"
+        - name: database__connection__port
+          value: "3306"
+        - name: database__connection__database
+          value: ghost
+        - name: database__connection__user
+          value: ghost
+        - name: database__connection__password
+          value: "{{components.db.env.MYSQL_PASSWORD}}"
+      resources:
+        requests:
+          cpu: 250m
+          memory: 384Mi
+        limits:
+          cpu: "2"
+          memory: 1Gi
+      scaling:
+        horizontal:
+          enabled: false
+        vertical:
+          enabled: true
+          mode: Recreate
+          bounds:
+            cpu:
+              min: 250m
+              max: "4"
+            memory:
+              min: 384Mi
+              max: 2Gi
+          updatePolicy:
+            trigger:
+              - OOMKilled
+            cooldown: 5m
+      healthcheck:
+        type: http
+        path: /
+        port: 2368
+        initialDelay: 25s
+        interval: 15s
+        timeout: 5s
+        retries: 10
+
+  access:
+    mode: firstVisit
+    note: >-
+      Your blog is live immediately; open /ghost on the URL to create the admin
+      account and start writing. Set a custom domain in production so links and
+      emails point at the right place.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 150
+    retries: 30

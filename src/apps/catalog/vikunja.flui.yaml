@@ -1,0 +1,126 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: vikunja
+  name: Vikunja
+  description: >
+    The open-source, self-hosted to-do and project manager. Lists, kanban,
+    gantt and calendar views, reminders, labels and sharing — all backed by a
+    single binary and a SQLite file on your own server.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - todo
+    - tasks
+    - project-management
+    - kanban
+    - privacy
+  license: AGPL-3.0
+  version: "2.4.0"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/vikunja.svg
+  links:
+    website: https://vikunja.io
+    docs: https://vikunja.io/docs/
+    source: https://github.com/go-vikunja/vikunja
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Todoist
+    - Trello
+    - Asana
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: vikunja/vikunja
+    tag: "2.4.0"
+
+  ports:
+    - name: http
+      internal: 3456
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /db
+      required: true
+      size: 4Gi
+
+  env:
+    - name: VIKUNJA_SERVICE_SECRET
+      valueFrom:
+        generate: secret
+        length: 48
+    # Single-container image serves frontend + API from one origin, so CORS is
+    # unneeded; leaving it on makes Vikunja demand VIKUNJA_SERVICE_PUBLICURL and
+    # refuse to boot.
+    - name: VIKUNJA_CORS_ENABLE
+      value: "false"
+    - name: VIKUNJA_DATABASE_PATH
+      value: "/db/vikunja.db"
+    - name: VIKUNJA_FILES_BASEPATH
+      value: "/db/files"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 3456
+    initialDelay: 10s
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: >-
+      Registration is open on first run — create the first account, then
+      disable public registration in the settings once your users are in.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

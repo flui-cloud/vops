@@ -22,6 +22,8 @@ CLAUDE.md
 .claude/
 
 # docs/ is internal analysis + implementation plans, not public documentation.
-# Keep only docs/assets (logo + screenshot referenced by the public README).
+# Keep docs/assets (logo + screenshot referenced by the public README) and
+# docs/errors.md, which every structured error links to by URL.
 docs/*
 !docs/assets/
+!docs/errors.md

@@ -1,0 +1,124 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: siyuan
+  name: SiYuan
+  description: >
+    Privacy-first, block-based personal knowledge base. Markdown notes with
+    bidirectional links, a built-in database, and everything stored locally on
+    your own server. A self-hosted alternative to Notion and Obsidian Sync.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - notes
+    - knowledge-base
+    - markdown
+    - pkm
+    - privacy
+  license: AGPL-3.0
+  version: "3.7.3"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/siyuan.svg
+  links:
+    website: https://b3log.org/siyuan
+    docs: https://b3log.org/siyuan/en/
+    source: https://github.com/siyuan-note/siyuan
+  ratings:
+    wow: 4
+    utility: 4
+    euFit: 5
+    community: 4
+  alternativeTo:
+    - Notion
+    - Obsidian
+    - Evernote
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: b3log/siyuan
+    tag: "v3.7.3"
+
+  # Run the kernel directly (deterministic workspace/port) and lock network
+  # access behind the generated access-auth code.
+  startCommand: "/opt/siyuan/kernel serve --workspace=/siyuan/workspace --port=6806 --accessAuthCode=$SIYUAN_ACCESS_AUTH_CODE"
+
+  ports:
+    - name: http
+      internal: 6806
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: workspace
+      mountPath: /siyuan/workspace
+      required: true
+      size: 5Gi
+
+  env:
+    - name: SIYUAN_ACCESS_AUTH_CODE
+      valueFrom:
+        generate: secret
+        length: 48
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 256Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 6806
+    initialDelay: 10s
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: credentials
+    path: /
+    password:
+      fromEnv: SIYUAN_ACCESS_AUTH_CODE
+    note: >-
+      SiYuan is locked with a generated access-auth code. Reveal it with
+      `vops app credentials --show` and enter it to unlock the workspace.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 401
+    timeoutSeconds: 90
+    retries: 20

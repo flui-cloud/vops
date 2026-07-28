@@ -1,0 +1,118 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: n8n
+  name: n8n
+  description: >
+    Fair-code workflow automation with 400+ integrations and native AI nodes.
+    Build agents and automations visually or with code, self-hosted so your
+    data and credentials never leave your server.
+  appKind: APPLICATION
+  category: artificial-intelligence
+  tags:
+    - automation
+    - workflows
+    - ai
+    - agentic
+    - no-code
+  license: Sustainable-Use
+  version: "2.32.2"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/n8n.svg
+  links:
+    website: https://n8n.io
+    docs: https://docs.n8n.io
+    source: https://github.com/n8n-io/n8n
+  ratings:
+    wow: 5
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Zapier
+    - Make
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: n8nio/n8n
+    tag: "2.32.2"
+
+  ports:
+    - name: http
+      internal: 5678
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /home/node/.n8n
+      required: true
+      size: 2Gi
+
+  env:
+    - name: N8N_ENCRYPTION_KEY
+      valueFrom:
+        generate: secret
+        length: 48
+    - name: GENERIC_TIMEZONE
+      value: "UTC"
+      userEditable: true
+      description: Timezone for cron/schedule nodes (e.g. Europe/Rome)
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 200m
+          max: "4"
+        memory:
+          min: 256Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /healthz
+    port: 5678
+    initialDelay: 15s
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first account you create becomes the n8n owner/admin — open the URL and set it up to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /healthz
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

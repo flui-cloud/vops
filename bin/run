@@ -5,8 +5,10 @@ const path = require('path');
 const os = require('os');
 
 // Local config dir and project root .env (tokens stay local; no telemetry).
-dotenv.config({ path: path.join(os.homedir(), '.config', 'vops', '.env') });
-dotenv.config({ path: path.join(process.cwd(), '.env') });
+// `quiet` matters: dotenv's banner goes to STDOUT, and every `--json` command
+// promises parseable stdout to whatever is reading it.
+dotenv.config({ path: path.join(os.homedir(), '.config', 'vops', '.env'), quiet: true });
+dotenv.config({ path: path.join(process.cwd(), '.env'), quiet: true });
 
 require('@oclif/core')
   .run()

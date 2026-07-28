@@ -1,0 +1,119 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: freshrss
+  name: FreshRSS
+  description: >
+    Self-hosted RSS and Atom feed aggregator — fast, keyboard-driven, with
+    full-text search, sharing, WebSub push, an API for mobile clients and
+    extensions. Runs on SQLite out of the box.
+  appKind: APPLICATION
+  category: productivity
+  tags:
+    - rss
+    - feed-reader
+    - news
+    - self-hosted
+  license: AGPL-3.0
+  version: "1.29.1"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/freshrss.svg
+  links:
+    website: https://freshrss.org
+    docs: https://freshrss.github.io/FreshRSS/
+    source: https://github.com/FreshRSS/FreshRSS
+  ratings:
+    wow: 3
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Feedly
+    - Inoreader
+    - Google Reader
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: docker.io
+    repository: freshrss/freshrss
+    tag: "1.29.1"
+
+  ports:
+    - name: http
+      internal: 80
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: data
+      mountPath: /var/www/FreshRSS/data
+      required: true
+      size: 2Gi
+
+  env:
+    - name: TZ
+      value: "UTC"
+      userEditable: true
+      description: Server timezone (IANA format, e.g. Europe/Rome)
+    - name: CRON_MIN
+      value: "*/15"
+      userEditable: true
+      description: Cron schedule (minutes field) for automatic feed refresh
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "1"
+        memory:
+          min: 128Mi
+          max: 1Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 80
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: >
+      Complete the one-time install wizard (SQLite is preselected), where you
+      set the administrator username and password.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20

@@ -1,0 +1,118 @@
+kind: CatalogApp
+apiVersion: flui/v1
+
+metadata:
+  id: audiobookshelf
+  name: Audiobookshelf
+  description: >
+    Self-hosted audiobook and podcast server with progress sync across devices,
+    a polished web player and native mobile apps. Manage your own listening
+    library without handing your habits to a subscription service.
+  appKind: APPLICATION
+  category: media
+  tags:
+    - media
+    - audiobooks
+    - podcasts
+    - streaming
+    - privacy
+  license: GPL-3.0
+  version: "2.35.1"
+  maintainedAt: "2026-07-23"
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/audiobookshelf.svg
+  links:
+    website: https://www.audiobookshelf.org
+    docs: https://www.audiobookshelf.org/docs
+    source: https://github.com/advplyr/audiobookshelf
+  ratings:
+    wow: 4
+    utility: 5
+    euFit: 5
+    community: 5
+  alternativeTo:
+    - Audible
+    - Google Podcasts
+
+spec:
+  type: standalone
+  privatizable: true
+
+  image:
+    registry: ghcr.io
+    repository: advplyr/audiobookshelf
+    tag: "2.35.1"
+
+  ports:
+    - name: http
+      internal: 80
+      expose: true
+      protocol: http
+
+  volumes:
+    - name: config
+      mountPath: /config
+      required: true
+      size: 2Gi
+    - name: metadata
+      mountPath: /metadata
+      required: true
+      size: 10Gi
+    - name: audiobooks
+      mountPath: /audiobooks
+      required: true
+      size: 50Gi
+
+  env: []
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  scaling:
+    horizontal:
+      enabled: false
+    vertical:
+      enabled: true
+      mode: Recreate
+      bounds:
+        cpu:
+          min: 100m
+          max: "2"
+        memory:
+          min: 256Mi
+          max: 2Gi
+      updatePolicy:
+        trigger:
+          - OOMKilled
+        cooldown: 5m
+
+  healthcheck:
+    type: http
+    path: /
+    port: 80
+    initialDelay: 10s
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
+  domain:
+    auto: true
+    userCustomizable: true
+    tls: true
+
+  access:
+    mode: firstVisit
+    note: The first-run setup creates the root admin account — open the URL now to claim it.
+  auth:
+    mode: native
+
+  smokeTest:
+    type: http
+    path: /
+    expectedStatus: 200
+    timeoutSeconds: 90
+    retries: 20
