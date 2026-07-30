@@ -26,6 +26,15 @@ knowing on sight.
 | `VOPS_BUILD_FAILED` | The run finished red | Read the failing step at `runUrl`; it is a build problem, not a vops one |
 | `VOPS_BUILD_TIMEOUT` | Still running at the deadline (exit 8) | Watch `runUrl`, then deploy with `--image` once green |
 
+## Providers and credentials
+
+| Code | Meaning | Do |
+|---|---|---|
+| `VOPS_CREDENTIALS_MISSING` (exit 7) | No credential for the provider the command had to call — nothing was listed because nothing was asked | Ask the user for it, then `vops config set <provider>` (OVH reads `OS_*` from the environment). Never read an empty list as "the account is empty" |
+| `VOPS_CREDENTIALS_INVALID` (exit 7) | The credential is configured and the provider refused it (401) — revoked, mistyped, or another account's | Do not retry it. Ask the user for a working one, then `vops config set <provider>`. Never read the empty result as "the account is empty" |
+| `VOPS_PROVIDER_SKIPPED` (warning) | `vops compare` left an uncredentialed provider out | The rows are real, the comparison is partial. Say so before calling anything cheapest |
+| `VOPS_PROVIDER_VAULT_SEALED` (warning) | `vops compare` left a provider out because the vault is sealed, not because it is unconfigured | Same partial comparison, different remedy: offer to unlock (`vops keyring unlock`) and re-run, rather than asking for a credential the user already stored |
+
 ## Plan and deploy
 
 | Code | Meaning | Do |
@@ -36,7 +45,10 @@ knowing on sight.
 
 ## Deploy failures on the host
 
-A deploy that fails rolls back and leaves the host as it was.
+A deploy that fails rolls back and leaves the host as it was: units, containers, and — on a
+**first** install — the named volumes and podman secrets that run created, so the retry starts
+on a clean datadir. Data that was already on the host is never deleted; when a failing install
+inherited some, the error names the volume/secret and the command that removes it.
 
 - **quadlet skipped `<unit>`** — the generated unit is invalid. Read the plan's `files`.
 - **services not active** — the container exits at start. `vops app logs <name>` shows

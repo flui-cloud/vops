@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { Injectable } from '@nestjs/common';
 import { AgentFailure, ExitCode, agentError } from '../agent-api/agent-envelope';
-import { BuildRecord, readProject, updateProject } from '../agent-api/agent-project';
+import { BuildRecord, readProject, specPath, updateProject } from '../agent-api/agent-project';
 import { readManifest } from '../apps/app-source';
 import { LocalConfigStore } from '../lib/config/local-config-store';
 import { ensureVaultUnlocked } from '../lib/keyring/unlock';
@@ -66,7 +66,7 @@ export class VopsBuildService {
   /** Render the workflow into the working tree, driven by the manifest's build block. */
   setup(opts: SetupOptions): SetupResult {
     const repo = this.resolveRepo(opts.projectDir, opts.repo, opts.branch);
-    const build = this.readBuild(opts.specFile);
+    const build = this.readBuild(specPath(opts.projectDir, opts.specFile));
     const yaml = renderWorkflow({
       owner: repo.owner,
       repo: repo.repo,

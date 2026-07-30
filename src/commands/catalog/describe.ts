@@ -34,6 +34,7 @@ export default class CatalogDescribe extends Command {
       (e) => {
         this.log(chalk.bold(e.id) + chalk.dim(`  ${e.name} · ${e.kind} · ${e.category} · v${e.version}`));
         if (e.description) this.log(e.description);
+        if (!e.installable) this.log(chalk.yellow(`not installable yet: ${e.unavailableReason}`));
         if (e.alternativeTo.length) this.log(chalk.dim(`alternative to: ${e.alternativeTo.join(', ')}`));
         for (const i of e.inputs) {
           this.log(`  input ${chalk.cyan(i.name)} ${chalk.dim(i.label)}${i.required ? chalk.yellow(' (required)') : ''}${i.sensitive ? chalk.dim(' [secret]') : ''}`);

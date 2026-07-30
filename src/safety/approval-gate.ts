@@ -1,4 +1,5 @@
-import { AgentFailure, ExitCode, agentError } from '../agent-api/agent-envelope';
+import { AgentError, AgentFailure, ExitCode, agentError } from '../agent-api/agent-envelope';
+import { AgentBadRequest } from '../agent-api/agent-http-errors';
 
 /** Approval guard: nothing persistent happens because a caller forgot to ask "has a human said
  * yes to *this* operation". Lives in the service layer, not per-command, so forgetting it is not
@@ -22,6 +23,23 @@ export interface ApprovalRequest {
 export function assertApproved(req: ApprovalRequest): void {
   if (req.approved) return;
   throw approvalRequired(req);
+}
+
+/** The same refusal from a service both callers reach: the local API needs a NestJS exception
+ * (HTTP 400), the CLI needs the `approval` category and exit 5. A bare `BadRequestException`
+ * gives only the first, and `toFailure` deliberately flattens it to VOPS_OPERATION_FAILED/1 —
+ * "it broke", whose natural response is retrying a destructive command. */
+export function assertApprovedInService(req: ApprovalRequest): void {
+  if (req.approved) return;
+  throw new AgentBadRequest(approvalRequired(req).error, ExitCode.APPROVAL_REQUIRED);
+}
+
+/** Envelope fields for a command that has already computed the plan it is refusing to run: the
+ * plan stays in `data` so the agent can show it to the user, while the refusal rides in `errors`
+ * so the process still leaves with 5. Returning it beats throwing here — a throw would discard
+ * the plan, which is the one thing the user needs in order to approve. */
+export function approvalPending(req: Omit<ApprovalRequest, 'approved'>): { errors: AgentError[]; requiresApproval: true } {
+  return { errors: [approvalRequired({ ...req, approved: false }).error], requiresApproval: true };
 }
 
 export function approvalRequired(req: ApprovalRequest): AgentFailure {

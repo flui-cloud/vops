@@ -1,7 +1,8 @@
 import { Command } from '@oclif/core';
 import chalk from 'chalk';
-import { renderTable } from '../../lib/output';
+import { installableCell, renderTable } from '../../lib/output';
 import { CatalogListing, listCatalog } from '../../apps/catalog-view';
+import { unavailableNote } from '../../apps/catalog-installable';
 import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 
 export default class CatalogProducts extends Command {
@@ -22,9 +23,11 @@ export default class CatalogProducts extends Command {
 export function renderCatalog(cmd: Command, rows: CatalogListing[], hint: string): void {
   cmd.log(
     renderTable(
-      ['ID', 'NAME', 'CATEGORY', 'VERSION'],
-      rows.map((e) => [chalk.bold(e.id), e.name, chalk.dim(e.category), e.version]),
+      ['ID', 'NAME', 'CATEGORY', 'VERSION', 'INSTALLABLE'],
+      rows.map((e) => [chalk.bold(e.id), e.name, chalk.dim(e.category), e.version, installableCell(e.installable)]),
     ),
   );
   cmd.log(chalk.dim(`\n${rows.length} entries · ${hint}`));
+  const note = unavailableNote(rows);
+  if (note) cmd.log(chalk.yellow(`\n${note}`));
 }

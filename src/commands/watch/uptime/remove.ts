@@ -1,6 +1,7 @@
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
 import { CloudClient } from '../../../lib/cloud-client';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 
 export default class WatchUptimeRemove extends Command {
   static readonly description = 'Remove an uptime monitor';
@@ -11,21 +12,19 @@ export default class WatchUptimeRemove extends Command {
     id: Args.string({ description: 'Monitor id', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(WatchUptimeRemove);
-    try {
-      await new CloudClient().removeUptime(args.id);
-      if (flags.json) {
-        this.log(JSON.stringify({ removed: args.id }, null, 2));
-        return;
-      }
-      this.log(`${chalk.green('✓')} Removed uptime monitor ${args.id}`);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    }
+    await runAgentCommand(
+      this,
+      'vops watch uptime remove',
+      flags.json,
+      async () => {
+        await new CloudClient().removeUptime(args.id);
+        return { data: { removed: args.id } };
+      },
+      (res) => this.log(`${chalk.green('✓')} Removed uptime monitor ${res.removed}`),
+    );
   }
 }

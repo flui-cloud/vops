@@ -1,25 +1,28 @@
-import { Controller, Get, Header, Param, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Header, Param, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { renderUi } from '../ui/index';
-import { SESSION_COOKIE } from './session.guard';
+import { tokenMatches } from './session-token';
+import { providedToken, SESSION_COOKIE } from './session.guard';
 
 /** Serves the local UI shell + its static map data (same-origin, no session). */
 @Controller()
 export class RootController {
   /**
-   * Serving the shell also (re)mints the session cookie, which is how the
-   * installed app authenticates: its `start_url` is frozen at install time and
-   * cannot carry the per-run token. Refreshing it here means the cookie always
-   * matches the running server, across restarts and new tokens alike.
+   * Serving the shell (re)mints the session cookie only for a request that already
+   * proves it holds the token — `?session=` on the printed URL, the header, or a
+   * cookie from a previous run (the token is persisted per profile, so it survives
+   * restarts, which is what the installed app relies on: its `start_url` is frozen
+   * at install time and cannot carry a token). Minting for anyone would hand the
+   * token to any local process that can GET `/`.
    */
   @Get()
   @Header('Content-Type', 'text/html; charset=utf-8')
   @Header('Cache-Control', 'no-cache')
-  root(@Res({ passthrough: true }) res: Response): string {
+  root(@Req() req: Request, @Res({ passthrough: true }) res: Response): string {
     const token = process.env.VOPS_SESSION;
-    if (token) {
+    if (token && tokenMatches(providedToken(req), token)) {
       res.cookie(SESSION_COOKIE, token, {
         httpOnly: true,
         sameSite: 'strict',

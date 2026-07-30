@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { CloudClient } from '../../../lib/cloud-client';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 
 export default class WatchUptimeAdd extends Command {
   static readonly description = 'Add an external uptime monitor (the hosted relay probes it from outside)';
@@ -26,7 +27,7 @@ export default class WatchUptimeAdd extends Command {
     'webhook-secret': Flags.string({ description: 'Shared secret for the webhook HMAC' }),
     'telegram-chat': Flags.string({ description: 'Telegram chat id' }),
     'telegram-link': Flags.string({ description: 'Link code from `vops watch telegram`' }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -37,23 +38,24 @@ export default class WatchUptimeAdd extends Command {
       ...(flags['telegram-chat'] ? [{ type: 'telegram' as const, chatId: flags['telegram-chat'] }] : []),
       ...(flags['telegram-link'] ? [{ type: 'telegram' as const, linkCode: flags['telegram-link'] }] : []),
     ];
-    try {
-      const monitor = await new CloudClient().createUptime({
-        name: args.name,
-        target: flags.target,
-        check: flags.check,
-        interval: flags.interval,
-        expectStatus: flags['expect-status'],
-        channels,
-      });
-      if (flags.json) {
-        this.log(JSON.stringify(monitor, null, 2));
-        return;
-      }
-      this.log(`${chalk.green('✓')} Monitoring ${chalk.bold(monitor.name)} (${monitor.check} → ${monitor.target}) every ${monitor.interval}s`);
-      this.log(chalk.dim(`  id ${monitor.id} · alerts flow into your feed/channels`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    }
+    await runAgentCommand(
+      this,
+      'vops watch uptime add',
+      flags.json,
+      async () => ({
+        data: await new CloudClient().createUptime({
+          name: args.name,
+          target: flags.target,
+          check: flags.check,
+          interval: flags.interval,
+          expectStatus: flags['expect-status'],
+          channels,
+        }),
+      }),
+      (monitor) => {
+        this.log(`${chalk.green('✓')} Monitoring ${chalk.bold(monitor.name)} (${monitor.check} → ${monitor.target}) every ${monitor.interval}s`);
+        this.log(chalk.dim(`  id ${monitor.id} · alerts flow into your feed/channels`));
+      },
+    );
   }
 }

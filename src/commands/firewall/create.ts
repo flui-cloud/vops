@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsFirewallService } from '../../firewall/vops-firewall.service';
 import { VopsFirewallRule } from '../../dto/firewall.dto';
 
@@ -20,39 +21,36 @@ export default class FirewallCreate extends Command {
     apply: Flags.string({ description: 'Comma-separated server ids to apply to' }),
     'dry-run': Flags.boolean({ description: 'Preview without creating', default: false }),
     yes: Flags.boolean({ description: 'Confirm creation', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(FirewallCreate);
-    try {
-      const rules = parseRules(flags.rules);
-      const outcome = await (await getVopsApp())
-        .get(VopsFirewallService)
-        .create(
-          {
-            provider: flags.provider,
-            name: flags.name,
-            rules,
-            applyToServerIds: splitCsv(flags.apply),
-          },
-          { dryRun: flags['dry-run'], yes: flags.yes },
-        );
-
-      if (flags.json) {
-        this.log(JSON.stringify(outcome, null, 2));
-        return;
-      }
-      if (outcome.dryRun) {
-        this.log(chalk.yellow(`DRY RUN: would create firewall '${flags.name}' on ${flags.provider} with ${rules.length} rule(s). Nothing changed.`));
-        return;
-      }
-      this.log(chalk.green(`✓ Firewall created: ${outcome.firewall?.id}`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    let ruleCount = 0;
+    await runAgentCommand(
+      this,
+      'vops firewall create',
+      flags.json,
+      async () => {
+        const rules = parseRules(flags.rules);
+        ruleCount = rules.length;
+        return {
+          data: await withService(VopsFirewallService, (svc) =>
+            svc.create(
+              { provider: flags.provider, name: flags.name, rules, applyToServerIds: splitCsv(flags.apply) },
+              { dryRun: flags['dry-run'], yes: flags.yes },
+            ),
+          ),
+        };
+      },
+      (outcome) => {
+        if (outcome.dryRun) {
+          this.log(chalk.yellow(`DRY RUN: would create firewall '${flags.name}' on ${flags.provider} with ${ruleCount} rule(s). Nothing changed.`));
+          return;
+        }
+        this.log(chalk.green(`✓ Firewall created: ${outcome.firewall?.id}`));
+      },
+    );
   }
 }
 

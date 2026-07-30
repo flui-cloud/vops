@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsVnetService } from '../../vnet/vops-vnet.service';
 
 export default class VnetCreate extends Command {
@@ -20,7 +21,7 @@ export default class VnetCreate extends Command {
     'subnet-range': Flags.string({ description: 'CIDR of the initial subnet' }),
     'dry-run': Flags.boolean({ description: 'Preview without creating', default: false }),
     yes: Flags.boolean({ description: 'Confirm creation', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -29,32 +30,25 @@ export default class VnetCreate extends Command {
       flags.zone && flags['subnet-range']
         ? [{ networkZone: flags.zone, ipRange: flags['subnet-range'] }]
         : undefined;
-    try {
-      const outcome = await (await getVopsApp())
-        .get(VopsVnetService)
-        .create(
-          {
-            provider: flags.provider,
-            name: flags.name,
-            ipRange: flags['ip-range'],
-            subnets,
-          },
-          { dryRun: flags['dry-run'], yes: flags.yes },
-        );
-
-      if (flags.json) {
-        this.log(JSON.stringify(outcome, null, 2));
-        return;
-      }
-      if (outcome.dryRun) {
-        this.log(chalk.yellow(`DRY RUN: would create network '${flags.name}' (${flags['ip-range']}) on ${flags.provider}. Nothing changed.`));
-        return;
-      }
-      this.log(chalk.green(`✓ Network created: ${outcome.vnet?.id}`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops vnet create',
+      flags.json,
+      async () => ({
+        data: await withService(VopsVnetService, (svc) =>
+          svc.create(
+            { provider: flags.provider, name: flags.name, ipRange: flags['ip-range'], subnets },
+            { dryRun: flags['dry-run'], yes: flags.yes },
+          ),
+        ),
+      }),
+      (outcome) => {
+        if (outcome.dryRun) {
+          this.log(chalk.yellow(`DRY RUN: would create network '${flags.name}' (${flags['ip-range']}) on ${flags.provider}. Nothing changed.`));
+          return;
+        }
+        this.log(chalk.green(`✓ Network created: ${outcome.vnet?.id}`));
+      },
+    );
   }
 }

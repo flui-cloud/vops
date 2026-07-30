@@ -3,7 +3,8 @@ import chalk from 'chalk';
 import { closeVopsApp, getVopsApp } from '../../lib/nest';
 import { PlanCreated, VopsAgentApiService } from '../../agent-api/vops-agent-api.service';
 import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
-import { parseSet } from '../../apps/cli-deploy';
+import { carried, flagArg } from '../../agent-api/follow-up';
+import { ingressAuthFlag, parseSet } from '../../apps/deploy-flags';
 
 export default class DeployPlan extends Command {
   static readonly description =
@@ -25,7 +26,7 @@ export default class DeployPlan extends Command {
     domain: Flags.string({ description: 'Front the app with this hostname ("auto" for an sslip.io demo host)' }),
     tls: Flags.boolean({ default: true, allowNo: true, description: 'Request a certificate for --domain' }),
     staging: Flags.boolean({ default: false, description: "Use Let's Encrypt staging (untrusted by browsers — for testing)" }),
-    auth: Flags.string({ options: ['none', 'basic'], description: 'Put the exposed app behind an ingress login gate' }),
+    ...ingressAuthFlag,
     public: Flags.boolean({ allowNo: true, description: 'Bind published ports on 0.0.0.0 (default: loopback only)' }),
     ...agentJsonFlag,
   };
@@ -57,7 +58,7 @@ export default class DeployPlan extends Command {
             requiresApproval: true,
             warnings: (data.plan.warnings ?? []).map((message) => ({ code: 'VOPS_PLAN_ADVISORY', message })),
             nextActions: [
-              { command: `vops deploy apply --plan ${data.id} --yes --json`, description: 'Apply this exact plan, after the user approves it' },
+              { command: `vops deploy apply --plan ${data.id}${carried(flagArg('project', flags.project, '.'))} --yes --json`, description: 'Apply this exact plan, after the user approves it' },
             ],
           };
         },

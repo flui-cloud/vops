@@ -1,5 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsVnetService } from '../../vnet/vops-vnet.service';
 
 export default class VnetShow extends Command {
@@ -15,21 +16,21 @@ export default class VnetShow extends Command {
 
   static readonly flags = {
     provider: Flags.string({ description: 'hetzner | scaleway', required: true }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(VnetShow);
-    try {
-      const vnet = await (await getVopsApp())
-        .get(VopsVnetService)
-        .show(flags.provider, args.id);
-      if (!vnet) this.error(`Network '${args.id}' not found.`, { exit: 1 });
-      this.log(JSON.stringify(vnet, null, 2));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops vnet show',
+      flags.json,
+      async () => {
+        const vnet = await withService(VopsVnetService, (svc) => svc.show(flags.provider, args.id));
+        if (!vnet) throw new Error(`Network '${args.id}' not found.`);
+        return { data: vnet };
+      },
+      (vnet) => this.log(JSON.stringify(vnet, null, 2)),
+    );
   }
 }

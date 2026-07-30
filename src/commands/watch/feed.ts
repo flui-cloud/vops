@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { CloudClient, FeedEvent } from '../../lib/cloud-client';
+import { agentJsonFlag, failCommand, runAgentCommand } from '../../agent-api/agent-output';
 
 function colorState(state: string): string {
   if (state === 'up') return chalk.green(state);
@@ -28,27 +29,36 @@ export default class WatchFeed extends Command {
     since: Flags.string({ description: 'Only events after this ISO timestamp' }),
     limit: Flags.integer({ description: 'Max events (history)', default: 50 }),
     follow: Flags.boolean({ char: 'f', description: 'Stream new transitions live (Ctrl-C to stop)', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(WatchFeed);
     const client = new CloudClient();
-    try {
-      const events = await client.feed(flags.since, flags.limit);
-      if (flags.json && !flags.follow) {
-        this.log(JSON.stringify({ events }, null, 2));
-        return;
-      }
-      if (!events.length) this.log(chalk.dim('No matching transitions yet.'));
-      for (const e of events) this.log(line(e));
+    // `--follow` is a stream, not a result: an envelope would have to be closed before the
+    // first live event, so the followed form stays one JSON document per line.
+    if (flags.follow) return this.follow(client, flags.since, flags.limit, flags.json);
 
-      if (flags.follow) {
-        this.log(chalk.dim('— following (Ctrl-C to stop) —'));
-        await client.streamFeed((e) => this.log(flags.json ? JSON.stringify(e) : line(e)));
-      }
+    await runAgentCommand(
+      this,
+      'vops watch feed',
+      flags.json,
+      async () => ({ data: { events: await client.feed(flags.since, flags.limit) } }),
+      ({ events }) => {
+        if (!events.length) this.log(chalk.dim('No matching transitions yet.'));
+        for (const e of events) this.log(line(e));
+      },
+    );
+  }
+
+  private async follow(client: CloudClient, since: string | undefined, limit: number, json: boolean): Promise<void> {
+    try {
+      const events = await client.feed(since, limit);
+      for (const e of events) this.log(json ? JSON.stringify(e) : line(e));
+      if (!json) this.log(chalk.dim('— following (Ctrl-C to stop) —'));
+      await client.streamFeed((e) => this.log(json ? JSON.stringify(e) : line(e)));
     } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
+      failCommand(this, err, json);
     }
   }
 }

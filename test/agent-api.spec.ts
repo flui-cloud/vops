@@ -5,7 +5,8 @@ import { ExitCode, agentError, envelope, exitCodeFor } from '../src/agent-api/ag
 import { buildCapabilities } from '../src/agent-api/agent-capabilities';
 import { findWorkflow } from '../src/agent-api/agent-workflow';
 import { initProject, readProject, updateProject } from '../src/agent-api/agent-project';
-import { hashInputs, listPlans, loadPlan, planId, savePlan, stableStringify } from '../src/agent-api/plan-store';
+import { PLAN_SCHEMA_VERSION, hashInputs, listPlans, loadPlan, planId, savePlan, sha256, stableStringify } from '../src/agent-api/plan-store';
+import { setDigests } from '../src/agent-api/plan-secrets';
 import { toSpecErrors, toSpecWarnings } from '../src/spec/spec-errors';
 import { renderWorkflow, imageName, imageTagForSha, parseRepoSlug, MANAGED_MARKER } from '../src/build/github-workflow';
 
@@ -141,7 +142,7 @@ describe('plan store', () => {
     initProject(dir, { name: 'demo', spec: 'flui.yaml', vopsVersion: '0.1.1', now: 'x' });
     const hash = hashInputs(inputs, { app: 'demo' });
     const stored = {
-      schemaVersion: 1 as const,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       id: planId(hash),
       hash,
       createdAt: '2026-07-26T00:00:00.000Z',
@@ -154,6 +155,54 @@ describe('plan store', () => {
     expect(loadPlan(dir, stored.id)).toEqual(stored);
     expect(listPlans(dir).map((p) => p.id)).toEqual([stored.id]);
     expect(loadPlan(dir, planId(hashInputs(inputs, { app: 'other' })))).toBeNull();
+  });
+
+  it('never writes a --set value into the plan file, only its digest', () => {
+    const dir = tmpdir();
+    const secret = 'SuperSecretMarker42';
+    const withDigest = { ...inputs, setDigest: setDigests({ DB_PASSWORD: secret }) };
+    const hash = hashInputs(withDigest, { app: 'demo' });
+    const file = savePlan(dir, {
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      id: planId(hash),
+      hash,
+      createdAt: '2026-07-29T00:00:00.000Z',
+      vopsVersion: '0.1.1',
+      inputs: withDigest,
+      plan: { app: 'demo' },
+    });
+
+    const onDisk = fs.readFileSync(file, 'utf8');
+    expect(onDisk).not.toContain(secret);
+    expect(onDisk).toContain(sha256(secret));
+    // Still owner-only: the plan names a server and carries digests worth nobody else's time.
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(path.dirname(file)).mode & 0o777).toBe(0o700);
+  });
+
+  it('narrows a plan an older vops left world-readable, on read as well as on write', () => {
+    const dir = tmpdir();
+    const hash = hashInputs(inputs, { app: 'demo' });
+    const id = planId(hash);
+    const file = savePlan(dir, {
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      id,
+      hash,
+      createdAt: '2026-07-29T00:00:00.000Z',
+      vopsVersion: '0.1.1',
+      inputs,
+      plan: { app: 'demo' },
+    });
+    fs.chmodSync(file, 0o644);
+    fs.chmodSync(path.dirname(file), 0o755);
+
+    expect(loadPlan(dir, id)).not.toBeNull();
+    expect(fs.statSync(file).mode & 0o077).toBe(0);
+
+    fs.chmodSync(file, 0o644);
+    expect(listPlans(dir)).toHaveLength(1);
+    expect(fs.statSync(file).mode & 0o077).toBe(0);
+    expect(fs.statSync(path.dirname(file)).mode & 0o077).toBe(0);
   });
 
   it('never stores a registry token — credentials are not part of a plan', () => {

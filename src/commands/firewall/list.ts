@@ -1,5 +1,6 @@
 import { Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { renderTable } from '../../lib/output';
 import { VopsFirewallService } from '../../firewall/vops-firewall.service';
 
@@ -12,35 +13,23 @@ export default class FirewallList extends Command {
 
   static readonly flags = {
     provider: Flags.string({ description: 'hetzner | scaleway', required: true }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(FirewallList);
-    try {
-      const firewalls = await (await getVopsApp())
-        .get(VopsFirewallService)
-        .list(flags.provider);
-
-      if (flags.json) {
-        this.log(JSON.stringify(firewalls, null, 2));
-        return;
-      }
-      this.log(
-        renderTable(
-          ['ID', 'NAME', 'RULES', 'APPLIED TO'],
-          firewalls.map((f) => [
-            f.id,
-            f.name,
-            String(f.rules.length),
-            String(f.appliedTo.length),
-          ]),
+    await runAgentCommand(
+      this,
+      'vops firewall list',
+      flags.json,
+      async () => ({ data: await withService(VopsFirewallService, (svc) => svc.list(flags.provider)) }),
+      (firewalls) =>
+        this.log(
+          renderTable(
+            ['ID', 'NAME', 'RULES', 'APPLIED TO'],
+            firewalls.map((f) => [f.id, f.name, String(f.rules.length), String(f.appliedTo.length)]),
+          ),
         ),
-      );
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    );
   }
 }

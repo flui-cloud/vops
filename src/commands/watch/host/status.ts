@@ -1,6 +1,7 @@
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../../lib/nest';
+import { withService } from '../../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 import { VopsMonitorService } from '../../../monitor/vops-monitor.service';
 
 export default class WatchHostStatus extends Command {
@@ -15,28 +16,23 @@ export default class WatchHostStatus extends Command {
     name: Args.string({ description: 'Host name', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(WatchHostStatus);
-    try {
-      const res = await (await getVopsApp()).get(VopsMonitorService).status(args.name);
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      const state = { ok: chalk.green('ok'), alert: chalk.red('alert'), silent: chalk.red('silent') }[res.state] ?? chalk.dim(res.state);
-      this.log(`${chalk.bold(res.name)}  ${state}  ${chalk.dim('last seen ' + (res.lastSeen ?? 'never'))}`);
-      for (const a of res.openAlerts) {
-        this.log(`  ${chalk.yellow(a.severity)}  ${a.summary}`);
-      }
-      if (!res.openAlerts.length) this.log(chalk.dim('  no open alerts'));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops watch host status',
+      flags.json,
+      async () => ({ data: await withService(VopsMonitorService, (svc) => svc.status(args.name)) }),
+      (res) => {
+        const state = { ok: chalk.green('ok'), alert: chalk.red('alert'), silent: chalk.red('silent') }[res.state] ?? chalk.dim(res.state);
+        this.log(`${chalk.bold(res.name)}  ${state}  ${chalk.dim('last seen ' + (res.lastSeen ?? 'never'))}`);
+        for (const a of res.openAlerts) {
+          this.log(`  ${chalk.yellow(a.severity)}  ${a.summary}`);
+        }
+        if (!res.openAlerts.length) this.log(chalk.dim('  no open alerts'));
+      },
+    );
   }
 }

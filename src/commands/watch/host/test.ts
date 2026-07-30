@@ -1,6 +1,8 @@
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../../lib/nest';
+import { withService } from '../../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
+import { agentError } from '../../../agent-api/agent-envelope';
 import { VopsMonitorService } from '../../../monitor/vops-monitor.service';
 
 export default class WatchHostTest extends Command {
@@ -15,27 +17,30 @@ export default class WatchHostTest extends Command {
     name: Args.string({ description: 'Host name', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(WatchHostTest);
-    try {
-      const res = await (await getVopsApp()).get(VopsMonitorService).test(args.name);
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      if (res.ran) {
-        this.log(chalk.green(`✓ Monitor ran on '${res.host}' (heartbeat sent to relay)`));
-      } else {
-        this.error(`Monitor run failed on '${res.host}': ${res.stderr ?? 'unknown'}`, { exit: 1 });
-      }
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops watch host test',
+      flags.json,
+      async () => {
+        const data = await withService(VopsMonitorService, (svc) => svc.test(args.name));
+        return {
+          data,
+          errors: data.ran
+            ? []
+            : [
+                agentError('VOPS_OPERATION_FAILED', 'operational', `Monitor run failed on '${data.host}': ${data.stderr ?? 'unknown'}`, {
+                  suggestedAction: 'Read data.stderr; the monitor script or its relay credentials on the host need attention.',
+                }),
+              ],
+        };
+      },
+      (res) => {
+        if (res.ran) this.log(chalk.green(`✓ Monitor ran on '${res.host}' (heartbeat sent to relay)`));
+      },
+    );
   }
 }

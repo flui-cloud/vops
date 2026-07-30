@@ -41,7 +41,16 @@ Each of these is reported as a warning at plan time rather than silently dropped
 
 `{{app.domain}}` inside an env value resolves to the hostname the app is exposed on.
 Useful for `PUBLIC_URL`, `NEXTAUTH_URL`, `ALLOWED_HOSTS`. It is resolved at deploy
-time, so it works without pinning a domain in the manifest.
+time, so it works without pinning a domain in the manifest. Deployed without
+`--domain` it resolves to the install's loopback origin (`127.0.0.1:<published
+port>`), and a `https://` written in front of it becomes `http://` — a bare install
+serves plain HTTP on the host.
+
+`{{app.scheme}}` is the same idea for an env that carries the scheme on its own
+(`OVERWRITEPROTOCOL`, `*_PROTO`): `https` behind the TLS ingress, `http` for a bare
+install. Use it instead of a hardcoded `https`, or the app will redirect to a TLS
+origin nothing listens on when it is deployed without `--domain`. Unlike
+`{{app.domain}}` it never pulls in an ingress binding — it only follows one.
 
 ## Building blocks
 

@@ -8,12 +8,13 @@ import { vopsVersion } from '../build/vops-build.service';
 import { LocalConfigStore } from '../lib/config/local-config-store';
 import { vaultKey } from '../lib/keyring/vault-session';
 import { vaultExists } from '../lib/keyring/vault-store';
+import { ensureVaultUnlocked } from '../lib/keyring/unlock';
 import { FRAMEWORK_TEMPLATES } from '../spec/template-registry';
 import { specVersion } from '../spec/spec-versions';
 import { assertApproved } from '../safety/approval-gate';
 import { AgentFailure, ExitCode, agentError } from './agent-envelope';
 import { CapabilityReport, buildCapabilities } from './agent-capabilities';
-import { InitResult, initProject, updateProject } from './agent-project';
+import { InitResult, initProject, specPath, updateProject } from './agent-project';
 import {
   PLAN_SCHEMA_VERSION,
   PlanInputs,
@@ -24,14 +25,17 @@ import {
   planId,
   savePlan,
 } from './plan-store';
+import { digestsMatch, redactSet, setDigests } from './plan-secrets';
 import { VerifyReport, verifyDeployment } from './deploy-verify';
 
 /** The agent-facing orchestration layer: discovery, project state, and the plan → approve → apply
  * loop. Owns no infrastructure logic — deploying goes through `VopsAppsService` exactly as the
  * interactive CLI does, so the JSON and human paths cannot drift. */
 
-export interface PlanRequest extends Omit<PlanInputs, 'specHash'> {
+export interface PlanRequest extends Omit<PlanInputs, 'specHash' | 'setDigest'> {
   projectDir: string;
+  /** `--set KEY=value` as the user typed it. Digested into the plan, stored in the vault. */
+  set?: Record<string, string>;
 }
 
 export interface PlanCreated {
@@ -63,10 +67,16 @@ export class VopsAgentApiService {
     return initProject(projectDir, this.projectDefaults(projectDir, specFile));
   }
 
-  /** Render the deploy plan and persist it under its own content hash. */
+  /** Render the deploy plan and persist it under its own content hash. `--set` values are
+   * digested into the file and stored in the vault, so nothing readable is left behind. */
   async plan(req: PlanRequest): Promise<PlanCreated> {
-    const inputs: PlanInputs = { ...withoutProjectDir(req), specHash: hashFile(req.spec) };
-    const view = await this.render(req);
+    const setDigest = setDigests(req.set);
+    const inputs: PlanInputs = {
+      ...withoutProjectDir(req),
+      specHash: hashFile(specPath(req.projectDir, req.spec)),
+      ...(setDigest ? { setDigest } : {}),
+    };
+    const view = redactSet(await this.render(req), req.set);
 
     const hash = hashInputs(inputs, view);
     const stored: StoredPlan<DeployPlanView> = {
@@ -78,6 +88,8 @@ export class VopsAgentApiService {
       inputs,
       plan: view,
     };
+    // The id comes from the hash, so the values can only be filed once the plan exists.
+    if (req.set && setDigest) await this.storeSetValues(stored.id, req.set);
     const file = savePlan(req.projectDir, stored);
     this.remember(req.projectDir, req.spec);
     return { id: stored.id, hash, file, createdAt: stored.createdAt, plan: view };
@@ -103,11 +115,16 @@ export class VopsAgentApiService {
       suggestedAction: 'Show the plan to the user, then re-run with --yes once they agree.',
     });
 
-    const req: PlanRequest = { ...stored.inputs, projectDir };
-    if (hashFile(stored.inputs.spec) !== stored.inputs.specHash) {
+    if (stored.schemaVersion !== PLAN_SCHEMA_VERSION) {
+      throw stalePlan(id, `it was written by an older vops (schema ${stored.schemaVersion}), which kept --set values in the file.`);
+    }
+
+    const set = await this.setValues(stored);
+    const req: PlanRequest = { ...stored.inputs, projectDir, ...(set ? { set } : {}) };
+    if (hashFile(specPath(projectDir, stored.inputs.spec)) !== stored.inputs.specHash) {
       throw stalePlan(id, `${stored.inputs.spec} changed after the plan was approved.`);
     }
-    if (hashInputs(stored.inputs, await this.render(req)) !== stored.hash) {
+    if (hashInputs(stored.inputs, redactSet(await this.render(req), set)) !== stored.hash) {
       throw stalePlan(id, 'the host no longer produces the plan that was approved.');
     }
     return (await this.apps.deploy(this.source(req), req.host, { ...this.deployOptions(req), ...(registry ? { registry } : {}) })) as DeployResult;
@@ -116,6 +133,26 @@ export class VopsAgentApiService {
   async verify(app: string): Promise<VerifyReport> {
     const { install, units, containers } = await this.apps.status(app);
     return verifyDeployment(install, { units, containers });
+  }
+
+  /** File the `--set` values under the plan id. Reaching the vault is what makes this the
+   * first point where a deploy may ask for the passphrase — a plan with no secrets never does. */
+  private async storeSetValues(id: string, set: Record<string, string>): Promise<void> {
+    await ensureVaultUnlocked();
+    new LocalConfigStore().setPlanSecrets(id, set);
+  }
+
+  /** The approved values, proven to be the approved ones. A digest that no longer matches means
+   * the vault entry was edited under the plan, which is a changed plan and not an applyable one. */
+  private async setValues(stored: StoredPlan<DeployPlanView>): Promise<Record<string, string> | undefined> {
+    if (!stored.inputs.setDigest) return undefined;
+    await ensureVaultUnlocked();
+    const set = new LocalConfigStore().getPlanSecrets(stored.id);
+    if (!set) throw stalePlan(stored.id, 'its --set values are no longer in the vault — re-run `deploy plan` with the same flags.');
+    if (!digestsMatch(stored.inputs.setDigest, set)) {
+      throw stalePlan(stored.id, 'the stored --set values no longer match the ones that were approved.');
+    }
+    return set;
   }
 
   private async render(req: PlanRequest): Promise<DeployPlanView> {
@@ -131,7 +168,7 @@ export class VopsAgentApiService {
   }
 
   private source(req: PlanRequest): AppSource {
-    return { file: req.spec, ...(req.image ? { image: req.image } : {}) };
+    return { file: specPath(req.projectDir, req.spec), ...(req.image ? { image: req.image } : {}) };
   }
 
   private deployOptions(req: PlanRequest) {
@@ -170,8 +207,10 @@ function stalePlan(id: string, why: string): AgentFailure {
   );
 }
 
-function withoutProjectDir(req: PlanRequest): Omit<PlanInputs, 'specHash'> {
-  const { projectDir: _ignored, ...rest } = req;
+/** Drops `set` as well as `projectDir`: the values are digested and vaulted separately, and a
+ * spread that carried them through would put the plaintext straight back into the plan file. */
+function withoutProjectDir(req: PlanRequest): Omit<PlanInputs, 'specHash' | 'setDigest'> {
+  const { projectDir: _ignored, set: _values, ...rest } = req;
   return rest;
 }
 

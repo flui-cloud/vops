@@ -1,5 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsFirewallService } from '../../firewall/vops-firewall.service';
 
 export default class FirewallShow extends Command {
@@ -15,21 +16,21 @@ export default class FirewallShow extends Command {
 
   static readonly flags = {
     provider: Flags.string({ description: 'hetzner | scaleway', required: true }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(FirewallShow);
-    try {
-      const fw = await (await getVopsApp())
-        .get(VopsFirewallService)
-        .show(flags.provider, args.id);
-      if (!fw) this.error(`Firewall '${args.id}' not found.`, { exit: 1 });
-      this.log(JSON.stringify(fw, null, 2));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops firewall show',
+      flags.json,
+      async () => {
+        const fw = await withService(VopsFirewallService, (svc) => svc.show(flags.provider, args.id));
+        if (!fw) throw new Error(`Firewall '${args.id}' not found.`);
+        return { data: fw };
+      },
+      (fw) => this.log(JSON.stringify(fw, null, 2)),
+    );
   }
 }

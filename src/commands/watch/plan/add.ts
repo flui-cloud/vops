@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { CloudClient, ChannelInput, EventKind } from '../../../lib/cloud-client';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 
 export default class WatchPlanAdd extends Command {
   static readonly description =
@@ -29,7 +30,7 @@ export default class WatchPlanAdd extends Command {
     'webhook-secret': Flags.string({ description: 'Shared secret for the webhook HMAC signature' }),
     'telegram-chat': Flags.string({ description: 'Telegram chat id (if you already know it)' }),
     'telegram-link': Flags.string({ description: 'Link code from `vops watch telegram`' }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -41,31 +42,34 @@ export default class WatchPlanAdd extends Command {
       ...(flags['telegram-chat'] ? [{ type: 'telegram' as const, chatId: flags['telegram-chat'] }] : []),
       ...(flags['telegram-link'] ? [{ type: 'telegram' as const, linkCode: flags['telegram-link'] }] : []),
     ];
-    if (!channels.length) {
-      this.error('Provide at least one channel: --ntfy-topic, --webhook-url, --telegram-chat or --telegram-link', { exit: 1 });
-    }
 
-    try {
-      const watch = await new CloudClient().createWatch({
-        provider: args.provider,
-        serverType: args.serverType,
-        location: flags.location,
-        kinds: flags.kind as EventKind[] | undefined,
-        channels,
-      });
-      if (flags.json) {
-        this.log(JSON.stringify(watch, null, 2));
-        return;
-      }
-      const label = `${watch.provider} ${watch.serverType}`;
-      const locationSuffix = watch.location ? ` @ ${watch.location}` : ' (any location)';
-      this.log(
-        `${chalk.green('✓')} Watching ${chalk.bold(label)}` +
-          `${locationSuffix} · ${watch.kinds.join(', ')} → ${watch.channels.join(', ')}`,
-      );
-      this.log(chalk.dim(`  id ${watch.id}`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    }
+    await runAgentCommand(
+      this,
+      'vops watch plan add',
+      flags.json,
+      async () => {
+        if (!channels.length) {
+          throw new Error('Provide at least one channel: --ntfy-topic, --webhook-url, --telegram-chat or --telegram-link');
+        }
+        return {
+          data: await new CloudClient().createWatch({
+            provider: args.provider,
+            serverType: args.serverType,
+            location: flags.location,
+            kinds: flags.kind as EventKind[] | undefined,
+            channels,
+          }),
+        };
+      },
+      (watch) => {
+        const label = `${watch.provider} ${watch.serverType}`;
+        const locationSuffix = watch.location ? ` @ ${watch.location}` : ' (any location)';
+        this.log(
+          `${chalk.green('✓')} Watching ${chalk.bold(label)}` +
+            `${locationSuffix} · ${watch.kinds.join(', ')} → ${watch.channels.join(', ')}`,
+        );
+        this.log(chalk.dim(`  id ${watch.id}`));
+      },
+    );
   }
 }

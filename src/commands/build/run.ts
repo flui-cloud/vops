@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { closeVopsApp, getVopsApp } from '../../lib/nest';
 import { BuildRunResult, VopsBuildService } from '../../build/vops-build.service';
 import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { carried, flagArg } from '../../agent-api/follow-up';
 
 export default class BuildRun extends Command {
   static readonly description =
@@ -41,7 +42,7 @@ export default class BuildRun extends Command {
             wait: flags.wait,
             timeoutMs: flags.timeout * 60_000,
           });
-          return { data, warnings: privateWarning(data), nextActions: nextActions(data) };
+          return { data, warnings: privateWarning(data), nextActions: nextActions(data, flags.project) };
         },
         (data) => render(this, data),
       );
@@ -63,9 +64,10 @@ function privateWarning(r: BuildRunResult) {
   ];
 }
 
-function nextActions(r: BuildRunResult) {
+function nextActions(r: BuildRunResult, project: string) {
   if (r.imageRef) {
-    return [{ command: `vops deploy plan --spec flui.yaml --host <host> --image ${r.imageRef} --json`, description: 'Plan the deployment with this image' }];
+    const ctx = carried(flagArg('project', project, '.'));
+    return [{ command: `vops deploy plan --spec flui.yaml --host <host> --image ${r.imageRef}${ctx} --json`, description: 'Plan the deployment with this image' }];
   }
   return [{ command: 'vops build status --json', description: 'Check the run again' }];
 }

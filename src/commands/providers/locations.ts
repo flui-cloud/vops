@@ -1,5 +1,6 @@
-import { Args, Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { Args, Command } from '@oclif/core';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { renderTable, yesNo } from '../../lib/output';
 import { VopsProvidersService } from '../../providers/vops-providers.service';
 
@@ -15,39 +16,22 @@ export default class ProvidersLocations extends Command {
     provider: Args.string({ description: 'hetzner | scaleway', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ProvidersLocations);
-    try {
-      const locations = await (await getVopsApp())
-        .get(VopsProvidersService)
-        .locations(args.provider);
-
-      if (flags.json) {
-        this.log(JSON.stringify(locations, null, 2));
-        return;
-      }
-
-      this.log(
-        renderTable(
-          ['ID', 'NAME', 'COUNTRY', 'AVAILABLE'],
-          locations.map((l) => [
-            l.id,
-            l.name,
-            l.country ?? '-',
-            yesNo(l.available),
-          ]),
+    await runAgentCommand(
+      this,
+      'vops providers locations',
+      flags.json,
+      async () => ({ data: await withService(VopsProvidersService, (svc) => svc.locations(args.provider)) }),
+      (locations) =>
+        this.log(
+          renderTable(
+            ['ID', 'NAME', 'COUNTRY', 'AVAILABLE'],
+            locations.map((l) => [l.id, l.name, l.country ?? '-', yesNo(l.available)]),
+          ),
         ),
-      );
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), {
-        exit: 1,
-      });
-    } finally {
-      await closeVopsApp();
-    }
+    );
   }
 }

@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { closeVopsApp, getVopsApp } from '../../lib/nest';
 import { GenerateResult, VopsSpecService } from '../../spec/vops-spec.service';
 import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
-import { parseSet } from '../../apps/cli-deploy';
+import { parseSet } from '../../apps/deploy-flags';
 
 export default class SpecGenerate extends Command {
   static readonly description =

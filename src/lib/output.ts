@@ -15,6 +15,10 @@ export function renderTable(headers: string[], rows: string[][]): string {
 export const yesNo = (v: boolean): string =>
   v ? chalk.green('yes') : chalk.dim('no');
 
+/** Catalog installability cell: a marked `no` for an entry `app install` would refuse at plan time. */
+export const installableCell = (installable: boolean): string =>
+  installable ? chalk.green('yes') : chalk.yellow('no');
+
 /** Colourise a findings severity for terminal output. */
 export function severityBadge(severity: 'ok' | 'info' | 'warn' | 'fail'): string {
   const map = {
@@ -48,28 +52,34 @@ export const money = (n: number | null, digits = 4): string =>
  * Deprecated (retiring) regions are a distinct state, counted separately and
  * appended in magenta — only present when the caller opted into them.
  */
+const regionCount = (n: number): string => `${n} region${n === 1 ? '' : 's'}`;
+
+function stockLabel(n: number, deprecated: number, up: number, down: number, signal: boolean): string {
+  if (n === 0) return deprecated ? chalk.magenta(`${deprecated} deprecated`) : chalk.dim('-');
+  if (!signal) return regionCount(n);
+  if (up === 0) return chalk.red('sold out');
+  if (down > 0) return chalk.yellow(`${regionCount(n)} (${down} sold out)`);
+  return chalk.green(regionCount(n));
+}
+
 export function regionsLabel(
   regions: Array<{ code: string; up: boolean | null; deprecated?: boolean }>,
 ): string {
   const active = regions.filter((r) => !r.deprecated);
   const deprecated = regions.filter((r) => r.deprecated).length;
   const n = active.length;
-  const signal = active.some((r) => r.up !== null);
-  const up = active.filter((r) => r.up === true).length;
-  const down = active.filter((r) => r.up === false).length;
-  const dep = deprecated ? chalk.magenta(` · ${deprecated} deprecated`) : '';
-
-  let base: string;
-  if (n === 0) base = deprecated ? chalk.magenta(`${deprecated} deprecated`) : chalk.dim('-');
-  else if (signal && up === 0) base = chalk.red('sold out');
-  else if (signal && down > 0) base = chalk.yellow(`${n} region${n === 1 ? '' : 's'} (${down} sold out)`);
-  else if (signal) base = chalk.green(`${n} region${n === 1 ? '' : 's'}`);
-  else base = `${n} region${n === 1 ? '' : 's'}`;
-
-  return n === 0 ? base : base + dep;
+  const base = stockLabel(
+    n,
+    deprecated,
+    active.filter((r) => r.up === true).length,
+    active.filter((r) => r.up === false).length,
+    active.some((r) => r.up !== null),
+  );
+  if (n === 0) return base;
+  return base + (deprecated ? chalk.magenta(` · ${deprecated} deprecated`) : '');
 }
 
 const ANSI = /\[[0-9;]*m/g;
-const stripAnsi = (s: string): string => s.replace(ANSI, '');
+const stripAnsi = (s: string): string => s.replaceAll(ANSI, '');
 const pad = (s: string, w: number): string =>
   s + ' '.repeat(Math.max(0, w - stripAnsi(s).length));

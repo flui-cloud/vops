@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { renderTable } from '../../lib/output';
 import { renderShare } from '../../bench/bench-share';
 import { readings } from '../../bench/bench-bands';
@@ -22,30 +23,25 @@ export default class BenchShow extends Command {
 
   static readonly flags = {
     share: Flags.boolean({ description: 'Print a paste-ready markdown artifact', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(BenchShow);
-    try {
-      const run = await (await getVopsApp()).get(LocalStore).getBenchRun(args.id);
-      if (!run) {
-        this.error(`No benchmark run '${args.id}'.`, { exit: 1 });
-      }
-      if (flags.json) {
-        this.log(JSON.stringify(run, null, 2));
-        return;
-      }
-      if (flags.share) {
-        this.log(renderShare(run));
-        return;
-      }
-      this.renderHuman(run);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops bench show',
+      flags.json,
+      async () => {
+        const run = await withService(LocalStore, (store) => store.getBenchRun(args.id));
+        if (!run) throw new Error(`No benchmark run '${args.id}'.`);
+        return { data: run };
+      },
+      (run) => {
+        if (flags.share) this.log(renderShare(run));
+        else this.renderHuman(run);
+      },
+    );
   }
 
   private renderHuman(r: BenchResultV1): void {

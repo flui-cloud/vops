@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../../lib/nest';
+import { withService } from '../../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 import { VopsMonitorService } from '../../../monitor/vops-monitor.service';
 
 export default class WatchHostAdd extends Command {
@@ -30,7 +31,7 @@ export default class WatchHostAdd extends Command {
     'telegram-chat': Flags.string({ description: 'Telegram chat id' }),
     'telegram-link': Flags.string({ description: 'Link code from `vops watch telegram`' }),
     'dry-run': Flags.boolean({ description: 'Print the files/cron, apply nothing', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -41,41 +42,43 @@ export default class WatchHostAdd extends Command {
       ...(flags['telegram-chat'] ? [{ type: 'telegram' as const, chatId: flags['telegram-chat'] }] : []),
       ...(flags['telegram-link'] ? [{ type: 'telegram' as const, linkCode: flags['telegram-link'] }] : []),
     ];
-    // `watch plan add` already refuses a channel-less watch; the dead-man monitor
-    // needs the guard even more, since speaking up when the host stops is its only
-    // job. A dry run is exempt — it applies nothing.
-    if (!channels.length && !flags['dry-run']) {
-      this.error(
-        'A monitor needs at least one delivery channel — otherwise a silent host alerts nobody.\n' +
-          'Add one of: --ntfy-topic, --telegram-link (from `vops watch telegram`), --telegram-chat, --webhook-url',
-        { exit: 1 },
-      );
-    }
-    try {
-      const res = await (await getVopsApp()).get(VopsMonitorService).setup(args.name, {
-        intervalMin: flags.interval,
-        thresholds: { diskWarn: flags['disk-warn'], diskCrit: flags['disk-crit'], loadCrit: Number(flags['load-crit']) },
-        channels,
-        dryRun: flags['dry-run'],
-      });
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      if (res.dryRun === true) {
-        for (const [path, body] of Object.entries(res.files)) {
-          this.log(chalk.cyan(`[dry-run] ${path}`));
-          this.log(chalk.dim(body.split('\n').map((l) => '  ' + l).join('\n')));
+    await runAgentCommand(
+      this,
+      'vops watch host add',
+      flags.json,
+      async () => {
+        // `watch plan add` already refuses a channel-less watch; the dead-man monitor
+        // needs the guard even more, since speaking up when the host stops is its only
+        // job. A dry run is exempt — it applies nothing.
+        if (!channels.length && !flags['dry-run']) {
+          throw new Error(
+            'A monitor needs at least one delivery channel — otherwise a silent host alerts nobody.\n' +
+              'Add one of: --ntfy-topic, --telegram-link (from `vops watch telegram`), --telegram-chat, --webhook-url',
+          );
         }
-        this.log(chalk.cyan('[dry-run] crontab: ') + res.cron.join(' '));
-        return;
-      }
-      this.log(chalk.green(`✓ Monitor installed on '${res.host}' (every ${res.interval}min)`));
-      this.log(chalk.dim(`  relay host id ${res.hostId} · alerts on silence (dead-man switch)`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+        return {
+          data: await withService(VopsMonitorService, (svc) =>
+            svc.setup(args.name, {
+              intervalMin: flags.interval,
+              thresholds: { diskWarn: flags['disk-warn'], diskCrit: flags['disk-crit'], loadCrit: Number(flags['load-crit']) },
+              channels,
+              dryRun: flags['dry-run'],
+            }),
+          ),
+        };
+      },
+      (res) => {
+        if (res.dryRun === true) {
+          for (const [path, body] of Object.entries(res.files)) {
+            this.log(chalk.cyan(`[dry-run] ${path}`));
+            this.log(chalk.dim(body.split('\n').map((l) => '  ' + l).join('\n')));
+          }
+          this.log(chalk.cyan('[dry-run] crontab: ') + res.cron.join(' '));
+          return;
+        }
+        this.log(chalk.green(`✓ Monitor installed on '${res.host}' (every ${res.interval}min)`));
+        this.log(chalk.dim(`  relay host id ${res.hostId} · alerts on silence (dead-man switch)`));
+      },
+    );
   }
 }

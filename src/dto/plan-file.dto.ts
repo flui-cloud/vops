@@ -35,7 +35,10 @@ export interface VopsPlanFile {
   plan: string;
   location: string;
   image: string;
-  sshKey: { mode: 'existing' | 'none'; id: string | null };
+  /** `existing` = the id was confirmed to be registered at the provider when the plan was made;
+   * `unverified` = the check could not run (no credentials, or a provider with no key listing),
+   * so `id` is the name as given — never claim a check that did not happen. */
+  sshKey: { mode: 'existing' | 'unverified' | 'none'; id: string | null };
   hostFirewall?: VopsHostFirewall;
   billingGate: VopsBillingGate;
   estimatedCost: VopsEstimatedCost;

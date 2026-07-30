@@ -3,7 +3,8 @@ import * as path from 'node:path';
 
 /** The project-local `.vops/` directory: deployment artifacts (template, approved plan, build
  * output) live next to the repo they describe, not in `~/.config/vops`, since they're facts about
- * *this* project. Holds no secrets — the generated `.gitignore` keeps it out of git. */
+ * *this* project. `project.json` holds no secrets; `plans/` does (the `--set` values `apply`
+ * replays), so it is owner-only on disk and the generated `.gitignore` keeps it out of git. */
 
 export const PROJECT_DIR = '.vops';
 export const PROJECT_FILE = 'project.json';
@@ -50,6 +51,12 @@ export function projectRoot(dir: string): string {
 
 export function projectPath(dir: string, ...parts: string[]): string {
   return path.join(projectRoot(dir), PROJECT_DIR, ...parts);
+}
+
+/** A manifest path is recorded relative to the project root, not to the caller's working directory:
+ * `--project` exists so an agent never has to `cd`, so `--spec` at its default must follow it. */
+export function specPath(dir: string, spec: string): string {
+  return path.isAbsolute(spec) ? spec : path.join(projectRoot(dir), spec);
 }
 
 /** Create `.vops/` if absent. Idempotent: an existing project keeps its file. */

@@ -8,6 +8,7 @@ import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.serv
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHost } from '../hosts/host.model';
 import { agentArchFor, agentDistDir, loadAgentManifest } from './agent-manifest';
+import { agentRunFailure } from './agent-run-error';
 
 export const AGENT_REMOTE_PATH = '/usr/local/bin/vops-agent';
 
@@ -82,7 +83,7 @@ export class VopsAgentService {
 
   async snapshot(name: string): Promise<AgentSnapshot> {
     const res = await this.ssh.run(this.target(this.hosts.show(name)), AGENT_REMOTE_PATH, { timeoutMs: 15_000 });
-    if (res.code !== 0) throw new BadRequestException(`Agent run failed: ${res.stderr.trim() || 'not installed?'}`);
+    if (res.code !== 0) throw agentRunFailure(name, res);
     return JSON.parse(res.stdout) as AgentSnapshot;
   }
 

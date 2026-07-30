@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { CloudClient } from '../../lib/cloud-client';
+import { failCommand } from '../../agent-api/agent-output';
 
 export default class WatchLogin extends Command {
   static readonly description =
@@ -27,7 +28,7 @@ export default class WatchLogin extends Command {
     try {
       cfg = await client.setEndpoint(flags['api-url'], flags.token);
     } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
+      failCommand(this, err);
     }
     this.log(`${chalk.green('✓')} Connected to ${chalk.cyan(cfg.apiUrl)}`);
     if (flags.show || flags.token) {

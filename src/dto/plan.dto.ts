@@ -65,3 +65,29 @@ export interface VopsCompareRow {
    */
   regions: Array<{ code: string; up: boolean | null; deprecated: boolean }>;
 }
+
+/** Why a provider was never asked for a price. Two different remedies, so they are
+ * two different states: `unconfigured` needs a credential, `sealed` needs an unlock. */
+export type VopsCompareSkipCause = 'unconfigured' | 'sealed';
+
+/** A provider left out of a cross-provider comparison, and why — so "cheapest" is
+ * never read as complete when a provider was never asked. */
+export interface VopsCompareSkip {
+  provider: string;
+  cause: VopsCompareSkipCause;
+  reason: string;
+}
+
+/** A provider that WAS asked and failed. Distinct from a skip: nothing is known about
+ * its prices, and the error is carried verbatim so the command layer maps it to the same
+ * code and exit it would have had if it were the only provider in the fan-out. */
+export interface VopsCompareFailure {
+  provider: string;
+  error: unknown;
+}
+
+export interface VopsCompareReport {
+  rows: VopsCompareRow[];
+  skipped: VopsCompareSkip[];
+  failed: VopsCompareFailure[];
+}

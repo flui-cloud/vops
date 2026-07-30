@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsVnetService } from '../../vnet/vops-vnet.service';
 
 export default class VnetAttach extends Command {
@@ -19,26 +20,22 @@ export default class VnetAttach extends Command {
     provider: Flags.string({ description: 'hetzner | scaleway', required: true }),
     server: Flags.string({ description: 'Server id', required: true }),
     detach: Flags.boolean({ description: 'Detach instead of attach', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(VnetAttach);
-    try {
-      const svc = (await getVopsApp()).get(VopsVnetService);
-      if (flags.detach) await svc.detach(flags.provider, args.id, flags.server);
-      else await svc.attach(flags.provider, args.id, flags.server);
-
-      if (flags.json) {
-        this.log(JSON.stringify({ id: args.id, server: flags.server, detached: flags.detach }, null, 2));
-        return;
-      }
-      const verb = flags.detach ? 'Detached from' : 'Attached to';
-      this.log(chalk.green(`✓ ${verb} network ${args.id}.`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops vnet attach',
+      flags.json,
+      async () => {
+        await withService(VopsVnetService, (svc) =>
+          flags.detach ? svc.detach(flags.provider, args.id, flags.server) : svc.attach(flags.provider, args.id, flags.server),
+        );
+        return { data: { id: args.id, server: flags.server, detached: flags.detach } };
+      },
+      () => this.log(chalk.green(`✓ ${flags.detach ? 'Detached from' : 'Attached to'} network ${args.id}.`)),
+    );
   }
 }

@@ -1,6 +1,9 @@
 import { Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../lib/nest';
+import chalk from 'chalk';
+import { withService } from '../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../agent-api/agent-output';
 import { money, renderTable, createLabel, regionsLabel } from '../lib/output';
+import { compareErrors, compareWarnings } from '../catalog/compare-envelope';
 import { VopsCatalogService } from '../catalog/vops-catalog.service';
 
 export default class Compare extends Command {
@@ -26,50 +29,56 @@ export default class Compare extends Command {
       description: 'Also show retired (deprecated) plans/regions — hidden by default',
       default: false,
     }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Compare);
-    try {
-      const rows = await (await getVopsApp()).get(VopsCatalogService).compare({
-        cpu: flags.cpu,
-        ramGb: parseRamGb(flags.ram),
-        region: flags.region,
-        provider: flags.provider,
-        hourlyOnly: flags['hourly-only'],
-        refresh: flags.refresh,
-        includeDeprecated: flags.deprecated,
-      });
-
-      if (flags.json) {
-        this.log(JSON.stringify(rows, null, 2));
-        return;
-      }
-
-      this.log(
-        renderTable(
-          ['PROVIDER', 'PLAN', 'vCPU', 'RAM(GB)', 'REGION', 'AVAIL', '€/h', '€/mo', 'CREATE'],
-          rows.map((r) => [
-            r.provider,
-            r.plan,
-            String(r.cores),
-            String(r.memoryGb),
-            r.region,
-            regionsLabel(r.regions),
-            money(r.hourly),
-            money(r.monthly, 2),
-            createLabel(r.createAllowed, r.guided, r.deprecated),
-          ]),
-        ),
-      );
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), {
-        exit: 1,
-      });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops compare',
+      flags.json,
+      async () => {
+        const report = await withService(VopsCatalogService, (svc) =>
+          svc.compareReport({
+            cpu: flags.cpu,
+            ramGb: parseRamGb(flags.ram),
+            region: flags.region,
+            provider: flags.provider,
+            hourlyOnly: flags['hourly-only'],
+            refresh: flags.refresh,
+            includeDeprecated: flags.deprecated,
+          }),
+        );
+        return {
+          data: report.rows,
+          warnings: compareWarnings(report),
+          errors: compareErrors(report),
+        };
+      },
+      (rows, env) => {
+        this.log(
+          renderTable(
+            ['PROVIDER', 'PLAN', 'vCPU', 'RAM(GB)', 'REGION', 'AVAIL', '€/h', '€/mo', 'CREATE'],
+            rows.map((r) => [
+              r.provider,
+              r.plan,
+              String(r.cores),
+              String(r.memoryGb),
+              r.region,
+              regionsLabel(r.regions),
+              money(r.hourly),
+              money(r.monthly, 2),
+              createLabel(r.createAllowed, r.guided, r.deprecated),
+            ]),
+          ),
+        );
+        for (const w of env.warnings) this.log(chalk.dim(w.message));
+        // The first error is printed by the failure path below the render; the rest would
+        // otherwise never be shown, and a provider missing from the table must be named.
+        for (const e of env.errors.slice(1)) this.log(chalk.yellow(e.message));
+      },
+    );
   }
 }
 

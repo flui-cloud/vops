@@ -27,3 +27,5 @@ CLAUDE.md
 docs/*
 !docs/assets/
 !docs/errors.md
+# Local vops project state for this repo
+.vops/

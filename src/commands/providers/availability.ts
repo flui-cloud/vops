@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { renderTable } from '../../lib/output';
 import { VopsCatalogService } from '../../catalog/vops-catalog.service';
 
@@ -36,50 +37,38 @@ export default class ProvidersAvailability extends Command {
 
   static readonly flags = {
     family: Flags.string({ description: 'Filter by plan family prefix (e.g. cx)' }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
     refresh: Flags.boolean({ description: 'Bypass the local cache', default: false }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ProvidersAvailability);
-    try {
-      const result = await (await getVopsApp())
-        .get(VopsCatalogService)
-        .availability(args.provider, flags.family, flags.refresh);
-
-      if (flags.json) {
-        this.log(JSON.stringify(result, null, 2));
-        return;
-      }
-
-      // "We don't track this" and "nothing is available" are opposite answers;
-      // printing an empty table for the first would be a lie.
-      if (!result.live) {
+    await runAgentCommand(
+      this,
+      'vops providers availability',
+      flags.json,
+      async () => ({
+        data: await withService(VopsCatalogService, (svc) => svc.availability(args.provider, flags.family, flags.refresh)),
+      }),
+      (result) => {
+        // "We don't track this" and "nothing is available" are opposite answers;
+        // printing an empty table for the first would be a lie.
+        if (!result.live) {
+          this.log(chalk.dim(`The vops catalog does not publish per-location availability for ${args.provider}.`));
+          return;
+        }
         this.log(
-          chalk.dim(
-            `The vops catalog does not publish per-location availability for ${args.provider}.`,
+          renderTable(
+            ['PLAN', 'AVAILABLE IN'],
+            result.plans.map((r) => {
+              if (r.everywhere) return [r.name, chalk.green('all regions')];
+              const open = r.locations.filter((l) => l.available).map((l) => l.location);
+              return [r.name, open.length ? open.join(', ') : chalk.dim('none')];
+            }),
           ),
         );
-        return;
-      }
-
-      this.log(
-        renderTable(
-          ['PLAN', 'AVAILABLE IN'],
-          result.plans.map((r) => {
-            if (r.everywhere) return [r.name, chalk.green('all regions')];
-            const open = r.locations.filter((l) => l.available).map((l) => l.location);
-            return [r.name, open.length ? open.join(', ') : chalk.dim('none')];
-          }),
-        ),
-      );
-      this.log(provenance(result.ageSeconds, result.stale));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), {
-        exit: 1,
-      });
-    } finally {
-      await closeVopsApp();
-    }
+        this.log(provenance(result.ageSeconds, result.stale));
+      },
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { CloudClient } from '../../lib/cloud-client';
+import { failCommand } from '../../agent-api/agent-output';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,7 +36,7 @@ export default class WatchTelegram extends Command {
       this.log(chalk.yellow('Timed out waiting for /start.'));
       this.log(chalk.dim(`  Once you've pressed Start, use: vops watch plan add … --telegram-link ${code}`));
     } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
+      failCommand(this, err);
     }
   }
 }

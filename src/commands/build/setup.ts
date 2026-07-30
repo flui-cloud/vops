@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { closeVopsApp, getVopsApp } from '../../lib/nest';
 import { SetupResult, VopsBuildService } from '../../build/vops-build.service';
 import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { carried, flagArg } from '../../agent-api/follow-up';
 
 export default class BuildSetup extends Command {
   static readonly description =
@@ -45,7 +46,7 @@ export default class BuildSetup extends Command {
             nextActions: data.written
               ? [
                   { command: `git add ${data.workflowFile} && git commit -m "ci: build image for vops" && git push`, description: 'Commit the workflow — the user does this, not you' },
-                  { command: 'vops build run --wait --json', description: 'Trigger the build and wait for the image reference' },
+                  { command: `vops build run --wait${carried(flagArg('project', flags.project, '.'))} --json`, description: 'Trigger the build and wait for the image reference' },
                 ]
               : [],
           };

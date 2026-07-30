@@ -1,5 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { money, renderTable } from '../../lib/output';
 import { VopsCatalogService } from '../../catalog/vops-catalog.service';
 
@@ -17,43 +18,28 @@ export default class ProvidersPrices extends Command {
   };
 
   static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
     refresh: Flags.boolean({ description: 'Bypass local cache', default: false }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ProvidersPrices);
-    try {
-      const plans = (
-        await (await getVopsApp())
-          .get(VopsCatalogService)
-          .plans(args.provider, flags.refresh)
-      ).sort((a, b) => (a.hourly ?? Infinity) - (b.hourly ?? Infinity));
-
-      if (flags.json) {
-        this.log(JSON.stringify(plans, null, 2));
-        return;
-      }
-
-      this.log(
-        renderTable(
-          ['PLAN', 'vCPU', 'RAM(GB)', '€/h', '€/mo', 'CURRENCY'],
-          plans.map((p) => [
-            p.name,
-            String(p.cores),
-            String(p.memoryGb),
-            money(p.hourly),
-            money(p.monthly, 2),
-            p.currency,
-          ]),
+    await runAgentCommand(
+      this,
+      'vops providers prices',
+      flags.json,
+      async () => {
+        const plans = await withService(VopsCatalogService, (svc) => svc.plans(args.provider, flags.refresh));
+        plans.sort((a, b) => (a.hourly ?? Infinity) - (b.hourly ?? Infinity));
+        return { data: plans };
+      },
+      (plans) =>
+        this.log(
+          renderTable(
+            ['PLAN', 'vCPU', 'RAM(GB)', '€/h', '€/mo', 'CURRENCY'],
+            plans.map((p) => [p.name, String(p.cores), String(p.memoryGb), money(p.hourly), money(p.monthly, 2), p.currency]),
+          ),
         ),
-      );
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), {
-        exit: 1,
-      });
-    } finally {
-      await closeVopsApp();
-    }
+    );
   }
 }

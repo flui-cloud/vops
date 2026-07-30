@@ -1,6 +1,9 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { approvalPending } from '../../safety/approval-gate';
+import type { EnvelopeOptions } from '../../agent-api/agent-envelope';
 import { renderTable } from '../../lib/output';
 import { formatMetricsInline } from '../../bench/bench-share';
 import { readings } from '../../bench/bench-bands';
@@ -27,38 +30,59 @@ export default class BenchHost extends Command {
     install: Flags.boolean({ description: 'Best-effort install of missing tools via the package manager', default: false }),
     runs: Flags.integer({ default: 1, min: 1, max: 5, description: 'Repeat the whole battery N times; report median and spread' }),
     yes: Flags.boolean({ description: 'Run the battery (otherwise only preflight is shown)', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(BenchHost);
     const profile = flags.profile as BenchProfile;
-    try {
-      const svc = (await getVopsApp()).get(VopsBenchService);
-
-      if (!flags.yes) {
-        const pre = await svc.preflight(args.name, profile);
-        if (flags.json) this.log(JSON.stringify(pre, null, 2));
-        else this.renderPreflight(pre, flags.install);
-        this.error('Refusing to bench without confirmation. Re-run with --yes.', { exit: 1 });
-      }
-
-      const result = await svc.run(args.name, {
-        profile,
-        install: flags.install,
-        runs: flags.runs,
-        onProgress: flags.json ? undefined : (p) => this.onProgress(p),
-      });
-      if (flags.json) {
-        this.log(JSON.stringify(result, null, 2));
-        return;
-      }
-      this.renderResult(result);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand<BenchPreflight | BenchResultV1>(
+      this,
+      'vops bench host',
+      flags.json,
+      async () =>
+        withService(
+          VopsBenchService,
+          async (svc): Promise<{ data: BenchPreflight | BenchResultV1 } & EnvelopeOptions> => {
+            if (!flags.yes) {
+              return {
+                data: await svc.preflight(args.name, profile),
+                ...approvalPending({
+                  operation: 'Benchmark host',
+                  target: args.name,
+                  consequence: 'The battery saturates CPU and disk for minutes — the host will be slow while it runs.',
+                }),
+                // Carry the flags this invocation used: a follow-up that silently drops
+                // --profile or --runs runs a different benchmark than the one approved.
+                nextActions: [
+                  {
+                    command: [
+                      `vops bench host ${args.name}`,
+                      ...(profile === 'quick' ? [] : [`--profile ${profile}`]),
+                      ...(flags.runs === 1 ? [] : [`--runs ${flags.runs}`]),
+                      ...(flags.install ? ['--install'] : []),
+                      '--yes --json',
+                    ].join(' '),
+                    description: 'Run the battery once the user has approved',
+                  },
+                ],
+              };
+            }
+            return {
+              data: await svc.run(args.name, {
+                profile,
+                install: flags.install,
+                runs: flags.runs,
+                onProgress: flags.json ? undefined : (p) => this.onProgress(p),
+              }),
+            };
+          },
+        ),
+      (data) => {
+        if (isPreflight(data)) this.renderPreflight(data, flags.install);
+        else this.renderResult(data);
+      },
+    );
   }
 
   private renderPreflight(pre: BenchPreflight, install: boolean): void {
@@ -127,6 +151,10 @@ export default class BenchHost extends Command {
     for (const w of r.warnings) this.log(chalk.yellow(`! ${w}`));
     this.log(chalk.green(`saved as ${r.id}`) + chalk.dim(`  (vops bench show ${r.id} --share)`));
   }
+}
+
+function isPreflight(d: BenchPreflight | BenchResultV1): d is BenchPreflight {
+  return 'estSeconds' in d;
 }
 
 /** Inline metrics with a dim per-metric spread suffix when it is non-trivial (≥5%). */

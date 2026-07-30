@@ -4,7 +4,7 @@ import { closeVopsApp, getVopsApp } from '../../lib/nest';
 import { VopsAgentApiService } from '../../agent-api/vops-agent-api.service';
 import { DeployResult } from '../../apps/vops-apps.service';
 import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
-import { registryFromFlags } from '../../apps/cli-deploy';
+import { registryFromFlags } from '../../apps/deploy-flags';
 
 export default class DeployApply extends Command {
   static readonly description =

@@ -16,12 +16,18 @@ export class SessionGuard implements CanActivate {
 
     const expected = process.env.VOPS_SESSION;
     if (!expected) return false;
-    const provided =
-      (req.headers['x-vops-session'] as string) ||
-      (req.query.session as string) ||
-      readCookie(req.headers.cookie, SESSION_COOKIE);
-    return tokenMatches(provided, expected);
+    return tokenMatches(providedToken(req), expected);
   }
+}
+
+/** The token a request carries, in the order the dashboard supplies it: explicit
+ * header (fetch), `?session=` on the first navigation, then the minted cookie. */
+export function providedToken(req: Request): string | undefined {
+  return (
+    (req.headers['x-vops-session'] as string) ||
+    (req.query.session as string) ||
+    readCookie(req.headers.cookie, SESSION_COOKIE)
+  );
 }
 
 /**
