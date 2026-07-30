@@ -62,14 +62,9 @@ spec:
           required: true
           size: 5Gi
       env:
-        - name: MARIADB_DATABASE
-          value: wallabag
-        - name: MARIADB_USER
-          value: wallabag
-        - name: MARIADB_PASSWORD
-          valueFrom:
-            generate: secret
-            length: 32
+        # Deliberately no MARIADB_DATABASE/MARIADB_USER: wallabag's own entrypoint creates the
+        # database, its user and the schema, and it does that ONLY while the database is still
+        # absent (`DATABASE_EXISTS != 1`). Letting MariaDB pre-create it skips the install.
         - name: MARIADB_ROOT_PASSWORD
           valueFrom:
             generate: secret
@@ -135,13 +130,24 @@ spec:
         - name: SYMFONY__ENV__DATABASE_USER
           value: wallabag
         - name: SYMFONY__ENV__DATABASE_PASSWORD
-          value: "{{components.db.env.MARIADB_PASSWORD}}"
+          valueFrom:
+            generate: secret
+            length: 32
         - name: SYMFONY__ENV__DATABASE_CHARSET
           value: utf8mb4
+        # Hands wallabag's entrypoint the MariaDB root password, which is what gates its whole
+        # MySQL provisioning branch: without it the container starts, serves, and answers every
+        # request with a Symfony 500 because `wallabag:install` — the step that creates the
+        # schema and the default wallabag/wallabag login — was never reached.
+        - name: MYSQL_ROOT_PASSWORD
+          value: "{{components.db.env.MARIADB_ROOT_PASSWORD}}"
+        # Wallabag bakes this URL into stored content (downloaded article images,
+        # share and feed links), so a localhost default survives the deploy as
+        # broken links on the real domain.
         - name: SYMFONY__ENV__DOMAIN_NAME
-          value: "http://localhost"
+          value: "https://{{app.domain}}"
           userEditable: true
-          description: Public URL Wallabag builds links from — set it to your https://your-domain in production.
+          description: Public URL Wallabag builds links from — resolved to the domain this install is exposed on.
         - name: SYMFONY__ENV__SECRET
           valueFrom:
             generate: secret
@@ -196,5 +202,8 @@ spec:
     type: http
     path: /login
     expectedStatus: 200
-    timeoutSeconds: 180
+    # First boot provisions the database and the schema (`wallabag:install`) and then runs
+    # `composer install` before nginx serves anything — 180s was measured against a start that
+    # skipped the database half.
+    timeoutSeconds: 300
     retries: 30

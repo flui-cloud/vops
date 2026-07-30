@@ -63,7 +63,10 @@ spec:
       description: Composed at runtime by startCommand from MONGO_HOST/MONGO_PORT
     - name: ME_CONFIG_BASICAUTH
       value: "false"
-      description: Disable mongo-express's own basic auth — Flui's ForwardAuth proxy already gates access to the dashboard.
+      description: >-
+        mongo-express's own basic auth is off (its built-in credentials are a published
+        default), so this app has NO login of its own — see auth.mode. Put it behind
+        `--auth basic` before giving it a public domain.
     - name: ME_CONFIG_MONGODB_ENABLE_ADMIN
       value: "true"
 
@@ -123,4 +126,4 @@ spec:
     timeoutSeconds: 30
 
   auth:
-    mode: native
+    mode: none

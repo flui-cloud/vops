@@ -107,7 +107,7 @@ spec:
       open Actions > Settings > GUI and set a username and password before
       relying on the public URL.
   auth:
-    mode: native
+    mode: none
 
   smokeTest:
     type: http

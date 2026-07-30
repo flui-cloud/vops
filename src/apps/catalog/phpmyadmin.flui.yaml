@@ -110,5 +110,12 @@ spec:
     timeout: 5s
     retries: 3
 
+  # phpMyAdmin's login is conditional, and the state this manifest arranges is the one with none:
+  # with PMA_USER+PMA_PASSWORD injected (see linkedBuildingBlocks above) the image writes
+  # auth_type = 'config' and lands straight in the admin UI, no login form — verified on 5-apache.
+  # Only unlinked (PMA_ARBITRARY=0 alone) does it keep auth_type = 'cookie' and ask for credentials,
+  # and that state is deployable only by accident. Declared `none` because that fails safe: being
+  # wrong this way costs one explicit `--auth basic|none` on an app that does show a form, being
+  # wrong the other way puts an unauthenticated DB admin UI on a hostname CT logs publish.
   auth:
-    mode: native
+    mode: none

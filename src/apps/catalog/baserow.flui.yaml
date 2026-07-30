@@ -54,14 +54,19 @@ spec:
       required: true
       size: 10Gi
 
-  # Baserow's bundled Caddy routes strictly by Host, 404-ing anything that isn't
-  # BASEROW_PUBLIC_URL's host. 127.0.0.1 matches the loopback smoke; production
-  # deployments behind a domain MUST set this to their https URL or Baserow 404s.
+  # Baserow's bundled Caddy (and its Nuxt frontend) route strictly by Host: anything
+  # that is not one of these URLs' hosts is treated as a published application-builder
+  # domain and 404s. The public URL therefore MUST be the deploy hostname, and the
+  # loopback has to stay on the extra list or the 127.0.0.1 smoke test 404s too.
   env:
     - name: BASEROW_PUBLIC_URL
+      value: "https://{{app.domain}}"
+      userEditable: true
+      description: Public base URL Baserow serves links from — resolved to the domain this install is exposed on.
+    - name: BASEROW_EXTRA_PUBLIC_URLS
       value: "http://127.0.0.1"
       userEditable: true
-      description: Public base URL Baserow serves links from — set this to your https://your-domain in production.
+      description: Additional hosts Baserow answers on (comma-separated) — keeps loopback access working alongside the domain.
 
   resources:
     requests:

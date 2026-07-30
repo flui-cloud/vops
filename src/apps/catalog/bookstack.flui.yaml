@@ -135,8 +135,8 @@ spec:
           description: >-
             Public URL BookStack builds every link and redirect from — must match
             exactly how you reach it, or logins/redirects break. Resolved
-            automatically to your ingress domain; requires --domain (a bare-port
-            deploy has no stable URL to give BookStack).
+            automatically to your ingress domain with --domain, and to the
+            install's loopback origin (http://127.0.0.1:<port>) without one.
         - name: APP_KEY
           valueFrom:
             generate: secret

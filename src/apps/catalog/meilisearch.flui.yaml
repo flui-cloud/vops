@@ -5,12 +5,13 @@ metadata:
   id: meilisearch
   name: Meilisearch
   description: >
-    Fast, typo-tolerant search engine with a built-in web dashboard.
-    Used as a building block by apps that need full-text search (Outline,
-    Plane, custom SaaS). Sub-50ms queries, faceted search, geo-search.
-    Dashboard available at the root URL for index management and query
-    testing.
-  appKind: APPLICATION
+    Fast, typo-tolerant search engine, used as a building block by apps that
+    need full-text search (Outline, Plane, custom SaaS). Sub-50ms queries,
+    faceted search, geo-search. It is an HTTP API authenticated with a master
+    key, not a web app: run in production mode Meilisearch serves a status
+    response at the root URL, and its search preview only exists in
+    development mode.
+  appKind: DATABASE
   category: search
   tags:
     - search

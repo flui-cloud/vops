@@ -115,5 +115,9 @@ spec:
     timeout: 5s
     retries: 3
 
+  # Redis Commander has NO login of its own as shipped here: it authenticates only with
+  # --http-auth-username/--http-auth-password (HTTP_USER/HTTP_PASSWORD) and this manifest sets
+  # neither, so `GET /` serves the key browser to anyone — verified against 0.9.1 with exactly this
+  # env. `none` is what vops reads to refuse an ungated public domain.
   auth:
-    mode: native
+    mode: none

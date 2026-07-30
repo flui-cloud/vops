@@ -68,7 +68,10 @@ spec:
     - name: SECURITY_ENABLELOGIN
       value: "false"
       userEditable: true
-      description: Enable the built-in login (set true if you want Stirling's native auth instead of the Flui proxy)
+      description: >-
+        Built-in login, off by default — as shipped this app has NO authentication (see
+        auth.mode). Set it to true for Stirling's own login, or gate the domain with
+        `--auth basic`.
 
   # Production Deployment Guide recommends: 2GB minimum, 4GB+ recommended,
   # 2 CPU cores. See https://docs.stirlingpdf.com/Production-Deployment-Guide/
@@ -115,4 +118,4 @@ spec:
     tls: true
 
   auth:
-    mode: native
+    mode: none

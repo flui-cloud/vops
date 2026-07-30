@@ -193,12 +193,15 @@ spec:
         # Reverse-proxy + trusted-domain config, applied by the nextcloud entrypoint
         # on first boot. {{app.domain}} resolves to the ingress FQDN at deploy time,
         # so accessing the app by its real hostname works without a manual `occ` step.
+        # {{app.scheme}} follows it: https behind the TLS ingress, http when the app is
+        # only reachable on the host's loopback — hardcoding https there makes Nextcloud
+        # redirect every request to a TLS origin nothing listens on.
         - name: NEXTCLOUD_TRUSTED_DOMAINS
           value: "{{app.domain}}"
         - name: OVERWRITEHOST
           value: "{{app.domain}}"
         - name: OVERWRITEPROTOCOL
-          value: "https"
+          value: "{{app.scheme}}"
         - name: OVERWRITECLIURL
           value: "https://{{app.domain}}"
         - name: NEXTCLOUD_ADMIN_USER

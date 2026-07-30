@@ -107,7 +107,7 @@ spec:
       the URL can edit and run flows. Keep it private or enable adminAuth in
       settings.js before exposing it.
   auth:
-    mode: native
+    mode: none
 
   smokeTest:
     type: http

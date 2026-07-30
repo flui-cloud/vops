@@ -102,7 +102,7 @@ spec:
       downloads to your server — keep it private or put an auth proxy in front
       before exposing it.
   auth:
-    mode: native
+    mode: none
 
   smokeTest:
     type: http

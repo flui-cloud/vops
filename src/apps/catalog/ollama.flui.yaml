@@ -99,7 +99,7 @@ spec:
     mode: none
     note: The API is unauthenticated — keep it private (ingress basic-auth gate) or bind it only to trusted apps.
   auth:
-    mode: native
+    mode: none
 
   smokeTest:
     type: http

@@ -106,7 +106,7 @@ spec:
       Add a server.yml with auth-default-access set to deny and create users
       before exposing it as a public endpoint.
   auth:
-    mode: native
+    mode: none
 
   smokeTest:
     type: http

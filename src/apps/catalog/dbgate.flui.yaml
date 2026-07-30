@@ -70,8 +70,9 @@ spec:
       size: 1Gi
 
   env:
-    # Skips DbGate's own login (dashboard already gates access via ForwardAuth);
-    # without it the SPA fails to init. Only on the `beta` channel until stable 7.x.
+    # The `beta` SPA fails to init without this, so DbGate ships here with NO login
+    # of its own — `auth.mode: none` says so, and vops warns before it puts this on a
+    # public domain. Gate it with `--auth basic` (or keep it host-local).
     - name: SKIP_ALL_AUTH
       value: "true"
 
@@ -111,4 +112,4 @@ spec:
     retries: 3
 
   auth:
-    mode: native
+    mode: none

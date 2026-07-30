@@ -47,13 +47,18 @@ spec:
   startCommand: minio server /data --console-address ":9001"
 
   ports:
+    # The console is self-contained: the browser only ever talks to 9001, which
+    # proxies to the S3 API in-process. 9000 stays unpublished — the S3 port also
+    # carries MinIO's admin API, so publishing it is a separate decision from
+    # opening the console, and vops has no way to route it (path-prefix routing
+    # breaks S3 clients, virtual-host style needs a second hostname).
     - name: s3
       internal: 9000
       expose: false
       protocol: tcp
     - name: console
       internal: 9001
-      expose: false
+      expose: true
       protocol: http
 
   volumes:

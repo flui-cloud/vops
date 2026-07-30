@@ -126,5 +126,10 @@ spec:
     timeout: 5s
     retries: 3
 
+  # pgweb has NO login of its own as shipped here: it authenticates only with
+  # --auth-user/--auth-pass (PGWEB_AUTH_USER/PGWEB_AUTH_PASS) and this manifest sets neither, so
+  # `GET /` serves the full SQL browser and `GET /api/info` answers unauthenticated JSON — verified
+  # against 0.16.2 with exactly this env. PGWEB_LOCK_SESSION locks the *connection* form, it is not
+  # authentication. `none` is what vops reads to refuse an ungated public domain.
   auth:
-    mode: native
+    mode: none

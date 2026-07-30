@@ -56,13 +56,20 @@ spec:
       size: 1Gi
 
   env:
+    # Homepage's middleware compares the Host header against this list by EXACT string,
+    # port included, and only on /api/* — so it never affects the loopback smoke test on
+    # `/`, and "*" would leave the API answering any host (DNS-rebinding). {{app.domain}}
+    # is the deploy hostname behind an ingress and the loopback host:port a bare install
+    # actually answers on. localhost:3000, 127.0.0.1:3000 and [::1]:3000 are always
+    # allowed by the app itself.
     - name: HOMEPAGE_ALLOWED_HOSTS
-      value: "*"
+      value: "{{app.domain}}"
       userEditable: true
       description: >
-        Comma-separated hosts allowed to serve Homepage (host validation guard).
-        localhost is always allowed; "*" permits any host. For a public
-        deployment set this to your exact domain, e.g. home.example.com.
+        Comma-separated Host headers allowed to reach Homepage's API — exact match,
+        including the port. Defaults to the domain this install is deployed on (or the
+        loopback host:port of a domain-less install). Add further hosts if you reach
+        Homepage under another name; "*" turns the guard off.
 
   resources:
     requests:
@@ -109,7 +116,7 @@ spec:
       Homepage has no built-in login — keep it private or put an authenticating
       reverse proxy in front of it before exposing it publicly.
   auth:
-    mode: native
+    mode: none
 
   smokeTest:
     type: http
