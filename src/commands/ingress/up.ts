@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsIngressService } from '../../apps/vops-ingress.service';
 import { ProxyKind } from '../../apps/ingress-proxy';
 
@@ -21,25 +22,25 @@ export default class IngressUp extends Command {
   static readonly flags = {
     email: Flags.string({ description: 'ACME account email (or set VOPS_ACME_EMAIL)' }),
     proxy: Flags.string({ options: ['traefik', 'caddy'], description: 'Ingress backend (default: keep the host’s current, else caddy)' }),
-    json: Flags.boolean({ default: false, description: 'Output as JSON' }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IngressUp);
-    try {
-      const svc = (await getVopsApp()).get(VopsIngressService);
-      const r = await svc.up(args.host, { email: flags.email, proxy: flags.proxy as ProxyKind | undefined });
-      if (flags.json) {
-        this.log(JSON.stringify(r, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ ingress ${r.alreadyUp ? 'refreshed' : 'up'} on ${chalk.bold(r.host)}`) + chalk.dim(`  ${r.proxy} · ${r.image}`));
-      this.log(chalk.dim(`  health: ${r.health ? 'ok' : 'starting'} · acme email: ${r.email}`));
-      this.log(chalk.yellow(`  firewall: ${r.firewall.hint}`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops ingress up',
+      flags.json,
+      async () => ({
+        data: await withService(VopsIngressService, (svc) =>
+          svc.up(args.host, { email: flags.email, proxy: flags.proxy as ProxyKind | undefined }),
+        ),
+      }),
+      (r) => {
+        this.log(chalk.green(`✓ ingress ${r.alreadyUp ? 'refreshed' : 'up'} on ${chalk.bold(r.host)}`) + chalk.dim(`  ${r.proxy} · ${r.image}`));
+        this.log(chalk.dim(`  health: ${r.health ? 'ok' : 'starting'} · acme email: ${r.email}`));
+        this.log(chalk.yellow(`  firewall: ${r.firewall.hint}`));
+      },
+    );
   }
 }

@@ -1,12 +1,20 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { approvalRequired } from '../../safety/approval-gate';
 import { VopsAppsService } from '../../apps/vops-apps.service';
+import { installHostFlag } from '../../apps/deploy-flags';
+
+/** One wording for the bind, used by the description, the flag and the refusal: three copies of
+ * this sentence drift from the code. */
+const BIND_NOTE =
+  'A --public install goes back to 0.0.0.0; a default install stays on 127.0.0.1, reachable only from the host itself (SSH tunnel, or re-expose it with a domain).';
 
 export default class AppUnexpose extends Command {
   static readonly description =
-    'Detach an app from the ingress: drop its Traefik route + auto A-record and rebind its port to ' +
-    '0.0.0.0 (recreates the container). The app stays deployed, reachable on its direct high port.';
+    'Detach an app from the ingress: drop its Traefik route + auto A-record and rebind its port to the ' +
+    `bind it was installed with (recreates the container). The app stays deployed. ${BIND_NOTE}`;
 
   static readonly examples = ['<%= config.bin %> <%= command.id %> tools --yes'];
 
@@ -15,26 +23,33 @@ export default class AppUnexpose extends Command {
   };
 
   static readonly flags = {
-    yes: Flags.boolean({ default: false, description: 'Actually detach (recreates the container on 0.0.0.0)' }),
-    json: Flags.boolean({ default: false, description: 'Output as JSON' }),
+    ...installHostFlag,
+    yes: Flags.boolean({ default: false, description: `Actually detach (recreates the container). ${BIND_NOTE}` }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AppUnexpose);
-    try {
-      if (!flags.yes) this.error('Re-run with --yes to detach ingress (this recreates the container on 0.0.0.0).', { exit: 1 });
-      const svc = (await getVopsApp()).get(VopsAppsService);
-      const r = await svc.unexpose(args.name);
-      if (flags.json) {
-        this.log(JSON.stringify(r, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ detached ${chalk.bold(r.app)} from ingress`));
-      for (const e of r.endpoints) this.log(`  endpoint: ${chalk.cyan(e.url)} ${chalk.dim('(' + e.component + ')')}`);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops app unexpose',
+      flags.json,
+      async () => {
+        if (!flags.yes) {
+          throw approvalRequired({
+            operation: 'Detach ingress',
+            target: args.name,
+            approved: false,
+            consequence: `This drops the route + A-record and recreates the container. ${BIND_NOTE}`,
+          });
+        }
+        const data = await withService(VopsAppsService, (svc) => svc.unexpose(args.name, flags.host));
+        return { data, nextActions: [{ command: `vops app status ${data.app} --host ${data.host} --json`, description: 'Confirm the app is still up on its direct port' }] };
+      },
+      (r) => {
+        this.log(chalk.green(`✓ detached ${chalk.bold(r.app)} from ingress`));
+        for (const e of r.endpoints) this.log(`  endpoint: ${chalk.cyan(e.url)} ${chalk.dim('(' + e.component + ')')}`);
+      },
+    );
   }
 }

@@ -15,12 +15,16 @@ import {
   BACKUP_ENV_PATH,
   BACKUP_SH_PATH,
   RESTIC_REMOTE_PATH,
+  RestoreTargetState,
   parseKeepPolicy,
+  parseRestoreTargetState,
   renderBackupCron,
   renderBackupEnv,
   renderBackupScript,
   renderResticInstall,
+  renderRestoreTargetProbe,
 } from './backup-render';
+import { resticInstallFailure } from './restic-install-error';
 
 export interface BackupSetupOpts {
   paths: string[];
@@ -58,10 +62,13 @@ export interface BackupRunResult {
   ok: boolean;
   stderr?: string;
 }
-export interface BackupRestoreDryRun {
+export interface BackupRestorePlan {
   dryRun: true;
   host: string;
   command: string;
+  snapshot: string;
+  target: string;
+  targetState: RestoreTargetState;
 }
 export interface BackupRestoreResult {
   dryRun: false;
@@ -70,6 +77,7 @@ export interface BackupRestoreResult {
   target: string;
   stderr?: string;
 }
+export type BackupRestoreView = BackupRestorePlan | BackupRestoreResult;
 export interface BackupRemoveResult {
   host: string;
   removed: true;
@@ -118,10 +126,10 @@ export class VopsBackupService {
     const target = this.target(host);
     const binary = resticForArch((await this.ssh.run(target, 'uname -m')).stdout);
     if (!binary) throw new BadRequestException('Unsupported CPU arch for restic (need amd64/arm64).');
-    const install = await this.ssh.runScript(target, renderResticInstall(binary), { timeoutMs: 120_000 });
-    if (install.code !== 0) {
-      throw new BadRequestException(`restic install/verify failed: ${install.stderr.trim() || 'checksum mismatch'}`);
-    }
+    // 300s, not 120s: the script may have to install bzip2 first, and apt-get on a
+    // fresh cloud image can wait on unattended-upgrades holding the dpkg lock.
+    const install = await this.ssh.runScript(target, renderResticInstall(binary), { timeoutMs: 300_000 });
+    if (install.code !== 0) throw resticInstallFailure(install.stderr);
     await this.ssh.run(target, 'mkdir -p /etc/vops && chmod 700 /etc/vops');
     await this.ssh.putFile(target, BACKUP_ENV_PATH, env, '0600');
     await this.ssh.putFile(target, BACKUP_SH_PATH, script, '0755');
@@ -166,14 +174,26 @@ export class VopsBackupService {
     return safeJson(res.stdout) ?? [];
   }
 
+  /** Consent gate lives here, not in the command: restic unpacks a whole snapshot into `--target`
+   * whatever is already there, so without `approved` the host is only *read* (a collision probe)
+   * and the plan comes back for a human to look at. */
   async restore(
     name: string,
-    opts: { snapshot: string; target: string; dryRun?: boolean },
-  ): Promise<BackupRestoreDryRun | BackupRestoreResult> {
+    opts: { snapshot: string; target: string; dryRun?: boolean; approved?: boolean },
+  ): Promise<BackupRestoreView> {
     if (!opts.target) throw new BadRequestException('--target directory is required (restore never overwrites in place).');
     const target = this.target(this.hosts.show(name));
     const cmd = `restore '${opts.snapshot}' --target '${opts.target}'${opts.dryRun ? ' --dry-run' : ''}`;
-    if (opts.dryRun) return { dryRun: true, host: name, command: `vops-restic ${cmd}` };
+    if (opts.dryRun || !opts.approved) {
+      return {
+        dryRun: true,
+        host: name,
+        command: `vops-restic ${cmd}`,
+        snapshot: opts.snapshot,
+        target: opts.target,
+        targetState: await this.probeTarget(target, opts.target),
+      };
+    }
     const res = await this.restic(target, cmd);
     return { dryRun: false, host: name, restored: res.code === 0, target: opts.target, stderr: res.stderr.trim() || undefined };
   }
@@ -186,6 +206,15 @@ export class VopsBackupService {
     await this.ssh.run(target, `rm -f '${RESTIC_REMOTE_PATH}' '${BACKUP_ENV_PATH}' '${BACKUP_SH_PATH}'`);
     await writeCrontab(this.ssh, target, removeCronBlock(await readCrontab(this.ssh, target), BACKUP_CRON_TAG).content);
     return { host: name, removed: true, repoPurged: !!opts.purgeRepo };
+  }
+
+  private async probeTarget(ssh: SshTarget, dir: string): Promise<RestoreTargetState> {
+    try {
+      const res = await this.ssh.run(ssh, renderRestoreTargetProbe(dir));
+      return res.code === 0 ? parseRestoreTargetState(res.stdout) : 'unknown';
+    } catch {
+      return 'unknown';
+    }
   }
 
   private restic(target: SshTarget, args: string) {

@@ -12,6 +12,8 @@ import { buildIngressStatusScript } from '../src/apps/ingress-scripts';
 import { assertValidHostname, isSslip, isValidFqdn, pickZone, recordName, routedPorts, sslipHostname } from '../src/apps/ingress-hostname';
 import { ensureARecord, previewARecord } from '../src/apps/ingress-dns';
 import { DnsConflictError } from '../src/apps/ingress-dns-plan';
+import { notReadyNote, pointsElsewhere, reachBudget, repointCaveat } from '../src/apps/ingress-reach';
+import { applyIngressScheme } from '../src/apps/app-deploy-support';
 
 function facts(over: Partial<HostFacts> = {}): HostFacts {
   return {
@@ -296,16 +298,19 @@ describe('ingress-dns — idempotent A-record upsert', () => {
   it('creates the record when the zone owns the fqdn and none exists', async () => {
     const log = { created: [] as any[], updated: [] as any[], deleted: 0 };
     const f = fakeFactory([{ name: 'example.com', zoneId: 'z1' }], [], log);
-    const rec = await ensureARecord(f, 'app.example.com', '203.0.113.9');
+    const ensured = await ensureARecord(f, 'app.example.com', '203.0.113.9');
     expect(log.created[0]).toMatchObject({ zoneId: 'z1', name: 'app', value: '203.0.113.9' });
-    expect(rec).toMatchObject({ provider: 'hetzner', zoneId: 'z1', name: 'app.example.com' });
+    expect(ensured).toMatchObject({ action: 'created', record: { provider: 'hetzner', zoneId: 'z1', name: 'app.example.com' } });
   });
   it('reuses an existing record with the same value (no writes)', async () => {
     const log = { created: [] as any[], updated: [] as any[], deleted: 0 };
     const f = fakeFactory([{ name: 'example.com', zoneId: 'z1' }], [{ recordId: 'r9', type: A, name: 'app', value: '203.0.113.9' }], log);
-    await ensureARecord(f, 'app.example.com', '203.0.113.9');
+    const ensured = await ensureARecord(f, 'app.example.com', '203.0.113.9');
     expect(log.created).toHaveLength(0);
     expect(log.updated).toHaveLength(0);
+    // The caller waits on propagation only for a record it just wrote — a reused one is
+    // already live, so it must not be reported as fresh.
+    expect(ensured?.action).toBe('reused');
   });
   it('REFUSES a name pointing elsewhere, and writes nothing', async () => {
     // A name serving something real would be silently destroyed, and DNS has no undo.
@@ -318,9 +323,10 @@ describe('ingress-dns — idempotent A-record upsert', () => {
   it('replaces a stale record only when explicitly forced (delete + create)', async () => {
     const log = { created: [] as any[], updated: [] as any[], deleted: 0 };
     const f = fakeFactory([{ name: 'example.com', zoneId: 'z1' }], [{ recordId: 'r9', type: A, name: 'app', value: '9.9.9.9' }], log);
-    await ensureARecord(f, 'app.example.com', '203.0.113.9', { force: true });
+    const ensured = await ensureARecord(f, 'app.example.com', '203.0.113.9', { force: true });
     expect(log.deleted).toBe(1); // stale value removed (Hetzner encodes value in the id)
     expect(log.created[0]).toMatchObject({ name: 'app', value: '203.0.113.9' });
+    expect(ensured?.action).toBe('repointed');
   });
   it('returns null when no zone matches, so a self-managed domain still deploys', async () => {
     const log = { created: [] as any[], updated: [] as any[], deleted: 0 };
@@ -335,5 +341,86 @@ describe('ingress-dns — idempotent A-record upsert', () => {
     expect(plan?.action).toBe('conflict');
     expect(log.created).toHaveLength(0);
     expect(log.deleted).toBe(0);
+  });
+});
+
+describe('reachBudget — waiting is justified by where the record came from', () => {
+  const total = (ms: number[]) => ms.reduce((a, b) => a + b, 0);
+
+  it('gives a record vops just wrote time to converge (~2 min)', () => {
+    for (const origin of ['created', 'repointed'] as const) {
+      const b = reachBudget(origin);
+      expect(total(b.dnsSleepsMs)).toBeGreaterThanOrEqual(90_000);
+      expect(total(b.dnsSleepsMs)).toBeLessThanOrEqual(120_000);
+    }
+  });
+
+  it('keeps the short budget when nothing is propagating', () => {
+    for (const origin of ['reused', 'external'] as const) {
+      expect(total(reachBudget(origin).dnsSleepsMs)).toBeLessThanOrEqual(20_000);
+    }
+  });
+
+  it('never stretches the :80 probe — it hits the IP directly, so DNS cannot be what is missing', () => {
+    for (const origin of ['created', 'repointed', 'reused', 'external'] as const) {
+      expect(total(reachBudget(origin).httpSleepsMs)).toBeLessThanOrEqual(20_000);
+    }
+  });
+
+  it('stops at once when the name answers with someone else’s address', () => {
+    expect(pointsElsewhere({ resolved: false, addrs: ['9.9.9.9'] })).toBe(true);
+    expect(pointsElsewhere({ resolved: false, reason: 'NXDOMAIN' })).toBe(false);
+    expect(pointsElsewhere({ resolved: true, addrs: ['203.0.113.9'] })).toBe(false);
+  });
+});
+
+describe('notReadyNote — the four origins do not share one next step', () => {
+  const unresolved = { resolved: false, reason: 'ENOTFOUND' };
+  const up = { reachable: true, status: 200 };
+
+  it('tells the owner of an external zone to publish the record', () => {
+    const note = notReadyNote('app.example.com', '203.0.113.9', 'tools', 'external', unresolved, up);
+    expect(note).toContain('publish an A record app.example.com → 203.0.113.9');
+  });
+
+  it('says a record vops wrote has not converged yet, not that DNS is wrong', () => {
+    const note = notReadyNote('app.example.com', '203.0.113.9', 'tools', 'created', unresolved, up);
+    expect(note).toContain('has not converged');
+    expect(note).not.toContain('publish an A record');
+  });
+
+  it('names the address a hijacked hostname actually answers with', () => {
+    const note = notReadyNote('app.example.com', '203.0.113.9', 'tools', 'created', { resolved: false, addrs: ['9.9.9.9'] }, up);
+    expect(note).toContain('resolves to 9.9.9.9');
+  });
+
+  it('points :80 at the firewall, and keeps DNS out of it when DNS is fine', () => {
+    const note = notReadyNote('app.example.com', '203.0.113.9', 'tools', 'reused', { resolved: true, addrs: ['203.0.113.9'] }, { reachable: false, error: 'timeout' });
+    expect(note).toContain(':80 is unreachable at 203.0.113.9');
+    expect(note).not.toContain('converged');
+  });
+
+  it('warns only on a repoint that validators may still see the old address', () => {
+    expect(repointCaveat('repointed')).toContain('repointed');
+    expect(repointCaveat('created')).toBe('');
+  });
+});
+
+describe('applyIngressScheme — an endpoint must not advertise a scheme the host does not serve', () => {
+  const routed = (url: string) => ({ component: 'app', port: 20000, url, reach: 'ingress' as const });
+
+  it('downgrades to http when TLS was requested but never confirmed', () => {
+    const out = applyIngressScheme([routed('https://tools.example.com')], { tls: false } as any);
+    expect(out[0].url).toBe('http://tools.example.com');
+  });
+
+  it('upgrades to https once the certificate is in place, keeping the path', () => {
+    const out = applyIngressScheme([routed('http://app.example.com/api')], { tls: true } as any);
+    expect(out[0].url).toBe('https://app.example.com/api');
+  });
+
+  it('leaves loopback and public endpoints alone — they are not fronted by the proxy', () => {
+    const direct = { component: 'db', port: 20001, url: 'tcp://127.0.0.1:20001', reach: 'loopback' as const };
+    expect(applyIngressScheme([direct], { tls: true } as any)[0]).toEqual(direct);
   });
 });

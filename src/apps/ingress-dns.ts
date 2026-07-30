@@ -84,12 +84,21 @@ export async function previewARecord(
   return { zone: found.match, plan: planARecord(records, found.match.name, fqdn, ip) };
 }
 
+/** How the record got to point here. A name vops has just written is still propagating to
+ * its authoritative nameservers; one that already pointed here is not. */
+export type DnsEnsureAction = 'created' | 'reused' | 'repointed';
+
+export interface EnsuredRecord {
+  record: IngressDnsRecord;
+  action: DnsEnsureAction;
+}
+
 export async function ensureARecord(
   factory: DnsProviderFactory,
   fqdn: string,
   ip: string,
   opts: { force?: boolean } = {},
-): Promise<IngressDnsRecord | null> {
+): Promise<EnsuredRecord | null> {
   const found = await findZone(factory, fqdn);
   if (!found) return null;
   const { svc, match } = found;
@@ -98,14 +107,17 @@ export async function ensureARecord(
   const plan = planARecord(records, match.name, fqdn, ip);
 
   if (plan.action === 'conflict' && !opts.force) throw new DnsConflictError(fqdn, plan);
-  if (plan.action === 'reuse' && plan.existing) return record(match, fqdn, plan.existing.recordId);
+  if (plan.action === 'reuse' && plan.existing) {
+    return { record: record(match, fqdn, plan.existing.recordId), action: 'reused' };
+  }
 
   // Delete-then-create rather than updateRecord: Hetzner Cloud DNS encodes the
   // value into the record id, so an in-place "update" to a new IP adds a SECOND
   // A value (round-robin to a dead host) instead of replacing.
+  const repointed = plan.stale.length > 0;
   for (const stale of plan.stale) await svc.deleteRecord(match.zoneId, stale.recordId);
   const created = await create(svc, match, ip);
-  return record(match, fqdn, created.recordId);
+  return { record: record(match, fqdn, created.recordId), action: repointed ? 'repointed' : 'created' };
 }
 
 export async function deleteARecord(factory: DnsProviderFactory, dns: IngressDnsRecord): Promise<void> {

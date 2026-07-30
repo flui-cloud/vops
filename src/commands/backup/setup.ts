@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsBackupService } from '../../backup/vops-backup.service';
 
 export default class BackupSetup extends Command {
@@ -23,41 +24,42 @@ export default class BackupSetup extends Command {
     's3-access-key': Flags.string({ description: 'S3 access key id' }),
     's3-secret-key': Flags.string({ description: 'S3 secret access key' }),
     'dry-run': Flags.boolean({ description: 'Print files/commands, apply nothing', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(BackupSetup);
-    try {
-      const res = await (await getVopsApp()).get(VopsBackupService).setup(args.name, {
-        paths: flags.paths.split(',').map((p) => p.trim()).filter(Boolean),
-        to: flags.to,
-        schedule: flags.schedule,
-        keep: flags.keep,
-        s3AccessKey: flags['s3-access-key'],
-        s3SecretKey: flags['s3-secret-key'],
-        dryRun: flags['dry-run'],
-      });
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      if (res.dryRun === true) {
-        for (const [p, body] of Object.entries(res.files)) {
-          this.log(chalk.cyan(`[dry-run] ${p}`));
-          this.log(chalk.dim(body.split('\n').map((l) => '  ' + l).join('\n')));
+    await runAgentCommand(
+      this,
+      'vops backup setup',
+      flags.json,
+      async () => ({
+        data: await withService(VopsBackupService, (svc) =>
+          svc.setup(args.name, {
+            paths: flags.paths.split(',').map((p) => p.trim()).filter(Boolean),
+            to: flags.to,
+            schedule: flags.schedule,
+            keep: flags.keep,
+            s3AccessKey: flags['s3-access-key'],
+            s3SecretKey: flags['s3-secret-key'],
+            dryRun: flags['dry-run'],
+          }),
+        ),
+      }),
+      (res) => {
+        if (res.dryRun === true) {
+          for (const [p, body] of Object.entries(res.files)) {
+            this.log(chalk.cyan(`[dry-run] ${p}`));
+            this.log(chalk.dim(body.split('\n').map((l) => '  ' + l).join('\n')));
+          }
+          this.log(chalk.cyan('[dry-run] crontab: ') + res.cron.join(' '));
+          return;
         }
-        this.log(chalk.cyan('[dry-run] crontab: ') + res.cron.join(' '));
-        return;
-      }
-      this.log(chalk.green(`✓ Backups configured on '${res.host}' → ${res.repository}`));
-      this.log(chalk.yellow('  ⚠ Save this repository password (also stored in your vops profile):'));
-      this.log('    ' + chalk.bold(String(res.password)));
-      this.log(chalk.dim(`  sanity dry-run: ${res.sanityOk ? 'ok' : 'check credentials'}`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+        this.log(chalk.green(`✓ Backups configured on '${res.host}' → ${res.repository}`));
+        this.log(chalk.yellow('  ⚠ Save this repository password (also stored in your vops profile):'));
+        this.log('    ' + chalk.bold(String(res.password)));
+        this.log(chalk.dim(`  sanity dry-run: ${res.sanityOk ? 'ok' : 'check credentials'}`));
+      },
+    );
   }
 }

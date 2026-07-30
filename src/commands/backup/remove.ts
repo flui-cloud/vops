@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsBackupService } from '../../backup/vops-backup.service';
 
 export default class BackupRemove extends Command {
@@ -15,22 +16,19 @@ export default class BackupRemove extends Command {
 
   static readonly flags = {
     'purge-repo': Flags.boolean({ description: 'Also delete all snapshots in the repo (destructive)', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(BackupRemove);
-    try {
-      const res = await (await getVopsApp()).get(VopsBackupService).remove(args.name, { purgeRepo: flags['purge-repo'] });
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ Backup removed from '${res.host}'` + (res.repoPurged ? ' (repo purged)' : ' (repo kept)')));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops backup remove',
+      flags.json,
+      async () => ({
+        data: await withService(VopsBackupService, (svc) => svc.remove(args.name, { purgeRepo: flags['purge-repo'] })),
+      }),
+      (res) => this.log(chalk.green(`✓ Backup removed from '${res.host}'` + (res.repoPurged ? ' (repo purged)' : ' (repo kept)'))),
+    );
   }
 }

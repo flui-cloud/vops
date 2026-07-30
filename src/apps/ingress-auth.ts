@@ -3,8 +3,10 @@
  * plaintext in a remote argv); cost stays modest since bcrypt verifies on every request (self-DoS risk on 1 vCPU). */
 import * as crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { ExitCode, agentError } from '../agent-api/agent-envelope';
+import { AgentBadRequest } from '../agent-api/agent-http-errors';
 import { AUTH_USER_RE, RouteAuth } from './ingress-render';
-import type { AppAccessMode, AppIngressAuthState } from './app.model';
+import type { AppAccessMode, AppAuthMode, AppIngressAuthState } from './app.model';
 
 /** bcrypt cost — 12 is ample; 14 (caddy's default) is a per-request DoS lever on 1 vCPU. */
 const BCRYPT_COST = 12;
@@ -47,15 +49,20 @@ export function parseAuthMode(v: string | undefined): IngressAuthMode | undefine
  * guard), take `--auth-pass` or generate one, and bcrypt-hash it. Null for mode 'none'. */
 export function resolveIngressAuth(app: string, intent: IngressAuthIntent): IngressAuthResolved | null {
   if (intent.mode !== 'basic') return null;
-  const user = (intent.user ?? DEFAULT_USER).trim();
-  if (!AUTH_USER_RE.test(user)) {
-    throw new Error(`Invalid --auth-user '${user}' — allowed: letters, digits, and . _ - (max 32).`);
-  }
+  const user = checkedUser(intent.user, DEFAULT_USER);
   const provided = intent.pass ?? '';
   const generated = provided.length === 0;
   const plaintext = generated ? crypto.randomBytes(GEN_BYTES).toString('base64url') : provided;
   const hash = bcrypt.hashSync(plaintext, BCRYPT_COST);
   return { mode: 'basic', user, hash, secret: ingressAuthSecretName(app), plaintext, generated };
+}
+
+function checkedUser(user: string | undefined, fallback: string): string {
+  const u = (user ?? fallback).trim();
+  if (!AUTH_USER_RE.test(u)) {
+    throw new Error(`Invalid --auth-user '${u}' — allowed: letters, digits, and . _ - (max 32).`);
+  }
+  return u;
 }
 
 /** The render-facing view of a resolved gate (user + hash — no plaintext). */
@@ -80,45 +87,84 @@ export interface ResolveGateInput {
   hasIngress: boolean;
   /** The manifest's access mode (firstVisit apps must not be exposed naked). */
   accessMode?: AppAccessMode;
+  /** The manifest's effective auth mode — `none` means the app has no login of its own. */
+  authMode?: AppAuthMode;
   /** Explicit operator choice, if any (`--auth basic|none`). */
   intent?: IngressAuthIntent;
   /** The gate a prior install already carried (inherited when no explicit choice). */
   prevAuth?: AppIngressAuthState;
 }
 
-export interface GateDecision {
-  gate: IngressGate | null;
-  /** Advisories to surface (e.g. a firstVisit app exposed without a gate). */
-  warnings: string[];
+/** An app the manifest says has no login of its own AND hands out no credentials: nothing stands
+ * between its public URL and the internet. Declared-only — a manifest with no `auth` block makes no
+ * claim either way, and refusing all of those would block apps whose login vops cannot see. */
+function nakedByDeclaration(i: ResolveGateInput): boolean {
+  return i.authMode === 'none' && i.accessMode !== 'credentials';
 }
 
 /** Decide the effective gate: a redeploy with no `--auth` flag **preserves** an inherited gate
- * (never silently ungates). A **firstVisit** app exposed ungated is a real takeover race (CT logs
- * surface the hostname within minutes) — **warned, not blocked**, since the operator is right there. */
-export function resolveDeployGate(app: string, i: ResolveGateInput): GateDecision {
+ * (never silently ungates). Putting a public domain in front of an app that has no reachable
+ * login of its own — a **firstVisit** admin race, or a manifest declaring no authentication at
+ * all — is **refused** until the operator says which they mean (`--auth basic` to gate it,
+ * `--auth none` to accept a naked URL): certificate transparency publishes that hostname within
+ * seconds, and which risk to take is not vops's call to make silently. */
+export function resolveDeployGate(app: string, i: ResolveGateInput): IngressGate | null {
   const explicit = i.intent?.mode;
   if (explicit === 'basic') {
     if (!i.hasIngress) {
       throw new Error('--auth basic gates the ingress — add --domain (or --domain auto) so there is something to gate.');
     }
+    const kept = keptGate(i);
+    if (kept) return kept;
     const r = resolveIngressAuth(app, i.intent);
     return {
-      gate: {
-        routeAuth: routeAuthOf(r),
-        secret: { name: r.secret, plaintext: r.plaintext },
-        state: { mode: 'basic', user: r.user, secret: r.secret, hash: r.hash },
-        generated: r.generated,
-      },
-      warnings: [],
+      routeAuth: routeAuthOf(r),
+      secret: { name: r.secret, plaintext: r.plaintext },
+      state: { mode: 'basic', user: r.user, secret: r.secret, hash: r.hash },
+      generated: r.generated,
     };
   }
-  if (explicit === 'none') return { gate: null, warnings: [] }; // acknowledged naked exposure — drop any inherited gate
+  if (explicit === 'none') return null; // acknowledged naked exposure — drop any inherited gate
   if (i.prevAuth && i.hasIngress) {
-    return { gate: { routeAuth: { user: i.prevAuth.user, hash: i.prevAuth.hash }, state: i.prevAuth, generated: false }, warnings: [] };
+    return { routeAuth: { user: i.prevAuth.user, hash: i.prevAuth.hash }, state: i.prevAuth, generated: false };
   }
-  const warnings =
-    i.hasIngress && i.accessMode === 'firstVisit'
-      ? [`'${app}' hands admin to the first visitor of its public URL — open it now to claim the account, or re-run with --auth basic to put a login gate in front.`]
-      : [];
-  return { gate: null, warnings };
+  if (i.hasIngress) assertAuthChoice(app, i);
+  return null;
+}
+
+/** `--auth basic` with no password on an app that already carries a gate is a re-assertion of that
+ * gate, not a rotation: the stored hash is reused so the route keeps matching the Podman secret
+ * `app credentials --show` reads back. Generating a fresh password here would rewrite the route but
+ * leave the secret untouched, so the only password vops can show would stop authenticating.
+ * A supplied password is an explicit rotation and falls through. */
+function keptGate(i: ResolveGateInput): IngressGate | null {
+  const prev = i.prevAuth;
+  if (!prev || (i.intent?.pass ?? '').length > 0) return null;
+  const user = checkedUser(i.intent?.user, prev.user);
+  return { routeAuth: { user, hash: prev.hash }, state: { ...prev, user }, generated: false };
+}
+
+/** Why this app must not reach a public domain unattended, or null when it may. */
+function nakedReason(i: ResolveGateInput): string | null {
+  if (i.accessMode === 'firstVisit') {
+    return 'it hands admin to the first visitor of its public URL, and certificate transparency logs publish that hostname within seconds';
+  }
+  if (nakedByDeclaration(i)) {
+    return 'it has no login of its own — anyone who reaches its public URL is inside it, and certificate transparency logs publish that hostname within seconds';
+  }
+  return null;
+}
+
+const WAYS_OUT = 'Re-run with --auth basic to put a login gate in front, --auth none to expose it with no login at all, or drop --domain to keep it on the host.';
+
+function assertAuthChoice(app: string, i: ResolveGateInput): void {
+  const reason = nakedReason(i);
+  if (!reason) return;
+  throw new AgentBadRequest(
+    agentError('VOPS_APP_EXPOSURE_UNGATED', 'input', `Refusing to expose '${app}' on a public domain: ${reason}. ${WAYS_OUT}`, {
+      recoverable: true,
+      suggestedAction: `Ask the user which they want, then re-run: \`--auth basic\` gates ${app} behind a generated login, \`--auth none\` exposes it with no login at all.`,
+    }),
+    ExitCode.INVALID_INPUT,
+  );
 }

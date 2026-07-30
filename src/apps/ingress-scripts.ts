@@ -15,14 +15,16 @@ import {
   ingressRouteFile,
 } from './ingress-render';
 
-/** Create the ingress basic-auth password as a Podman secret (idempotent, never replaced/mounted).
+/** Store the ingress basic-auth password as a Podman secret (never mounted). Called only when this
+ * deploy actually set a password, and then it REPLACES any older value (podman has no `--replace`
+ * here): the route fragment carries the hash of exactly this plaintext, so a skipped write would
+ * leave `app credentials --show` reporting a password that no longer opens the gate.
  * `printf` is a bash builtin so the plaintext never lands in a process argv or command line. */
 export function buildIngressAuthSecretScript(name: string, plaintext: string): string {
   return [
     'set +e',
-    `if ! podman secret inspect ${shq(name)} >/dev/null 2>&1; then`,
-    `  printf %s ${shq(plaintext)} | podman secret create ${shq(name)} - >/dev/null 2>&1`,
-    'fi',
+    `podman secret rm ${shq(name)} >/dev/null 2>&1`,
+    `printf %s ${shq(plaintext)} | podman secret create ${shq(name)} - >/dev/null 2>&1`,
     "echo '@@auth'",
     `podman secret inspect ${shq(name)} >/dev/null 2>&1 && echo ok || echo fail`,
   ].join('\n');
@@ -119,7 +121,7 @@ export function buildRouteWriteScript(app: string, content: string): string {
     `mkdir -p ${shq(INGRESS_DYNAMIC_DIR)}`,
     heredoc(f, content),
     "echo '@@wrote'",
-    shq(f),
+    `echo ${shq(f)}`,
   ].join('\n');
 }
 

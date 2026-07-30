@@ -16,19 +16,19 @@ import { IngressGate } from './ingress-auth';
 import { buildIngressAuthSecretScript, buildIngressDownScript, buildIngressPrecheckScript, buildProxyReadScript } from './ingress-scripts';
 import { parseIngressPrecheck } from './app-parse';
 import { DEFAULT_PROXY, IngressProxy, ProxyKind, ProxyRouteRenderInput, ingressProxy, parseProxyKind } from './ingress-proxy';
+import { parseRouteWrite, routeWriteMessage } from './ingress-route-write';
 import { assertValidHostname, isSslip, routedPorts, sslipHostname } from './ingress-hostname';
-import { deleteARecord, ensureARecord, listWritableZones, previewARecord } from './ingress-dns';
+import { EnsuredRecord, deleteARecord, ensureARecord, listWritableZones, previewARecord } from './ingress-dns';
 import { DomainOption, domainOptions } from './domain-options';
 import { DnsConflictError } from './ingress-dns-plan';
 import { AuthResolve, HttpProbe, probeHttp, probeHttps, resolvesAuthoritative } from './ingress-probe';
+import { DnsOrigin, notReadyNote, pointsElsewhere, reachBudget, repointCaveat } from './ingress-reach';
 
 const PRECHECK_TIMEOUT = 30_000;
 const INSTALL_TIMEOUT = 300_000;
 const ROUTE_TIMEOUT = 30_000;
 const CERT_POLL_ATTEMPTS = 20;
 const CERT_POLL_SLEEP_MS = 3_000;
-const REACH_ATTEMPTS = 6;
-const REACH_SLEEP_MS = 3_000;
 
 export interface FirewallGuidance {
   kind: 'native' | 'host-nftables' | 'none';
@@ -166,7 +166,7 @@ export class VopsIngressService {
     }
     const detached: string[] = [];
     for (const summary of routed) {
-      const install = await this.store.getInstall(summary.name);
+      const install = await this.store.getInstall(host.name, summary.name);
       if (install) {
         await this.detachInstall(install);
         detached.push(install.name);
@@ -179,11 +179,11 @@ export class VopsIngressService {
   }
 
   /** Turn a `--domain` intent into a host binding (pure decision, no I/O). Ingress is
-   * opt-in: only `--domain` (any value, incl. `auto`) or an app that can't run without
-   * a domain (`{{app.domain}}`) triggers it — a bare `domain.auto` manifest does not. */
+   * opt-in: only `--domain` (any value, incl. `auto`) triggers it — neither a bare
+   * `domain.auto` manifest nor a `{{app.domain}}` env reference does, since a domain-less
+   * deploy resolves that token to the install's loopback origin (see `app-plan.ts`). */
   resolveBinding(plan: AppPlan, host: VopsHost, opts: BindingOptions): BindingResolution | null {
-    const wantsDomain = !!opts.domain || plan.needsAppDomain;
-    if (!wantsDomain) return null;
+    if (!opts.domain) return null;
 
     const rps = routedPorts(plan);
     if (!rps.length) throw new BadRequestException(`'${plan.name}' exposes no HTTP port to route — a domain needs an HTTP endpoint.`);
@@ -244,11 +244,26 @@ export class VopsIngressService {
     return null;
   }
 
-  /** Attach a deployed app to ingress: DNS → plain route → laptop reachability gate → TLS.
-   * When a `gate` is passed the route is **born gated**: its Podman secret is created
-   * (aborting before any route is written if that fails) and every route render — plain
-   * and TLS — carries the basic-auth block, so the app is never publicly reachable ungated. */
-  async attachRoute(host: VopsHost, install: AppInstallV1, binding: IngressBinding, staging: boolean, gate?: IngressGate, forceDns = false): Promise<AttachResult> {
+  /** Write (or adopt) the app's A record BEFORE the app is built, so propagation runs while the
+   * image is pulled instead of being paid in full afterwards. Null when there is nothing to write:
+   * an sslip.io name encodes the IP already, and a hostname in no writable zone is the user's. */
+  async ensureDnsRecord(host: VopsHost, binding: IngressBinding, forceDns = false): Promise<EnsuredRecord | null> {
+    if (isSslip(binding.hostname)) return null;
+    return ensureARecord(this.dns, binding.hostname, host.address, { force: forceDns });
+  }
+
+  /** Undo only what this run created. A reused record is the user's, and a repointed one cannot
+   * be restored — its previous values were deleted to write ours. */
+  async discardDnsRecord(dns: EnsuredRecord | null | undefined): Promise<void> {
+    if (dns?.action === 'created') await deleteARecord(this.dns, dns.record);
+  }
+
+  /** Attach a deployed app to ingress: plain route → laptop reachability gate → TLS, against the
+   * record `ensureDnsRecord` already wrote. When a `gate` is passed the route is **born gated**:
+   * its Podman secret is created (aborting before any route is written if that fails) and every
+   * route render — plain and TLS — carries the basic-auth block, so the app is never publicly
+   * reachable ungated. */
+  async attachRoute(host: VopsHost, install: AppInstallV1, binding: IngressBinding, staging: boolean, gate?: IngressGate, dns?: EnsuredRecord | null): Promise<AttachResult> {
     const target = resolveSshTarget(host, this.keys);
     const proxy = await this.proxyFor(target);
     const routes = this.resolveRoutes(install, binding);
@@ -261,11 +276,8 @@ export class VopsIngressService {
 
     if (gate?.secret) await this.ensureGateSecret(target, gate.secret);
 
-    // Before anything is written: a name already pointing elsewhere belongs to
-    // someone, and DNS has no undo. `ensureARecord` refuses rather than repoint.
-    const dnsRecord = isSslip(binding.hostname)
-      ? undefined
-      : await ensureARecord(this.dns, binding.hostname, host.address, { force: forceDns });
+    const dnsRecord = dns?.record;
+    const origin: DnsOrigin = dns?.action ?? 'external';
 
     // Plain-HTTP routes first: makes http://<host> live and serves the ACME challenge.
     await this.writeRoute(target, proxy, route(false));
@@ -279,10 +291,10 @@ export class VopsIngressService {
     if (!binding.tls) return { state: base, reachable: true, tlsConfirmed: false, note: 'plain HTTP (tls disabled)' };
 
     // Preflight the exact path LE takes (authoritative-nameserver DNS + direct :80 with a Host
-    // header, no laptop DNS involved), retried briefly to absorb A-record propagation delay.
-    const { dns: dnsCheck, http: probe } = await this.waitReachable(binding.hostname, host.address, dnsRecord?.zoneName);
+    // header, no laptop DNS involved), waiting only as long as the record's origin justifies.
+    const { dns: dnsCheck, http: probe } = await this.waitReachable(binding.hostname, host.address, origin, dnsRecord?.zoneName);
     if (!dnsCheck.resolved || !probe.reachable) {
-      return { state: base, reachable: false, tlsConfirmed: false, note: notReadyNote(binding.hostname, host.address, install.name, dnsCheck, probe) };
+      return { state: base, reachable: false, tlsConfirmed: false, note: notReadyNote(binding.hostname, host.address, install.name, origin, dnsCheck, probe) };
     }
 
     // Reachable → enable TLS + HTTP→HTTPS redirect; the proxy runs ACME in-process.
@@ -296,7 +308,7 @@ export class VopsIngressService {
       // Hard ACME failure: the TLS route redirects :80→:443, where the proxy serves its
       // untrusted default cert → the app is effectively down. Revert to plain HTTP.
       await this.writeRoute(target, proxy, route(false));
-      return { state: base, reachable: true, tlsConfirmed: false, note: `ACME failed (${cert.hardError}) — reverted to plain HTTP so ${install.name} stays reachable. Fix the cause and rerun \`vops app expose ${install.name}\`.` };
+      return { state: base, reachable: true, tlsConfirmed: false, note: `ACME failed (${cert.hardError}) — reverted to plain HTTP so ${install.name} stays reachable.${repointCaveat(origin)} Fix the cause and rerun \`vops app expose ${install.name} --yes\`.` };
     }
     // Soft timeout: still issuing — keep the TLS route, the proxy retries in-process.
     return { state: { ...base, tls: true, dns: dnsRecord }, reachable: true, tlsConfirmed: false, note: `TLS requested (${env}); certificate still issuing — check \`vops ingress status ${host.name}\`.` };
@@ -348,8 +360,14 @@ export class VopsIngressService {
     });
   }
 
+  /** A route write that cannot be shown to have reloaded the proxy is a failure: the fragment
+   * lands on disk before the reload, so an unchecked run reports success for an app that only
+   * becomes routed when something else forces the next reload. */
   private async writeRoute(target: SshTarget, proxy: IngressProxy, o: ProxyRouteRenderInput): Promise<void> {
-    await this.ssh.runScript(target, proxy.buildRouteWrite(o.app, proxy.renderRoute(o)), { timeoutMs: ROUTE_TIMEOUT, sudo: true });
+    const res = await this.ssh.runScript(target, proxy.buildRouteWrite(o.app, proxy.renderRoute(o)), { timeoutMs: ROUTE_TIMEOUT, sudo: true });
+    const outcome = parseRouteWrite(res.stdout);
+    if (outcome.ok) return;
+    throw new BadRequestException(routeWriteMessage(o.app, proxy.kind, outcome, res.stderr));
   }
 
   /** Create the gate's Podman secret before any route is written, so there is never a
@@ -361,16 +379,17 @@ export class VopsIngressService {
     }
   }
 
-  /** Probe the LE path (authoritative-NS resolution + :80 to the host IP), retrying
-   * briefly so a just-created A-record's propagation delay doesn't read as unreachable. */
-  private async waitReachable(hostname: string, ip: string, zoneHint?: string): Promise<{ dns: AuthResolve; http: HttpProbe }> {
-    let dns = await resolvesAuthoritative(hostname, ip, zoneHint);
-    let http = await probeHttp(hostname, ip);
-    for (let i = 1; i < REACH_ATTEMPTS && (!dns.resolved || !http.reachable); i += 1) {
-      await sleep(REACH_SLEEP_MS);
-      if (!dns.resolved) dns = await resolvesAuthoritative(hostname, ip, zoneHint);
-      if (!http.reachable) http = await probeHttp(hostname, ip);
-    }
+  /** Probe the LE path (authoritative-NS resolution + :80 to the host IP). The two halves get
+   * their own budget: only DNS can legitimately need minutes, and only when vops wrote the
+   * record in this run. A name that answers with the wrong address stops the poll at once. */
+  private async waitReachable(hostname: string, ip: string, origin: DnsOrigin, zoneHint?: string): Promise<{ dns: AuthResolve; http: HttpProbe }> {
+    const budget = reachBudget(origin);
+    const dns = await poll(
+      () => resolvesAuthoritative(hostname, ip, zoneHint),
+      (r) => r.resolved || pointsElsewhere(r),
+      budget.dnsSleepsMs,
+    );
+    const http = await poll(() => probeHttp(hostname, ip), (r) => r.reachable, budget.httpSleepsMs);
     return { dns, http };
   }
 
@@ -399,14 +418,15 @@ interface CertPollResult {
   hardError: string | null;
 }
 
-/** The "left on plain HTTP" note when the LE preflight (authoritative DNS + :80) fails. */
-function notReadyNote(hostname: string, ip: string, appName: string, dnsCheck: AuthResolve, probe: HttpProbe): string {
-  const why = dnsCheck.reason ? ` (${dnsCheck.reason})` : '';
-  const reasons = [
-    ...(dnsCheck.resolved ? [] : [`${hostname} does not resolve to ${ip} at its authoritative nameservers${why}`]),
-    ...(probe.reachable ? [] : [`:80 unreachable (${probe.error ?? 'no response'})`]),
-  ];
-  return `Not ready for TLS, left on plain HTTP: ${reasons.join('; ')}. Retry with \`vops app expose ${appName}\` once fixed.`;
+/** Retry `probe` on the given schedule until `done`; one attempt more than there are sleeps. */
+async function poll<T>(probe: () => Promise<T>, done: (r: T) => boolean, sleepsMs: number[]): Promise<T> {
+  let last = await probe();
+  for (const ms of sleepsMs) {
+    if (done(last)) return last;
+    await sleep(ms);
+    last = await probe();
+  }
+  return last;
 }
 
 function assertPortsFree(pre: { active: boolean; port80: string | null; port443: string | null }, host: string): void {

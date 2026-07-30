@@ -53,21 +53,33 @@ export function buildCaddyInstallScript(i: CaddyInstallInput): string {
 
 /** Write one app's fragment, then validate the whole config and hot-reload (Caddy has
  * no dir-watch). On a validation failure the fragment is removed so it can't wedge the
- * next reload — the app is simply left unrouted. */
+ * next reload — the app is simply left unrouted. Exactly one marker is emitted so the
+ * caller can tell "reloaded" from "refused" from "we never got that far", and Caddy's
+ * own complaint travels with the failing markers instead of going to /dev/null. */
 export function buildCaddyRouteWriteScript(app: string, content: string): string {
   const f = caddyRouteFile(app);
+  const caddy = (verb: string) =>
+    `podman exec ${shq(INGRESS_CONTAINER)} caddy ${verb} --config ${shq(CADDY_CONFIG_FILE)} --adapter caddyfile 2>&1`;
   return [
     'set -e',
     `mkdir -p ${shq(CADDY_DYNAMIC_DIR)}`,
     heredoc(f, content),
-    `if podman exec ${shq(INGRESS_CONTAINER)} caddy validate --config ${shq(CADDY_CONFIG_FILE)} --adapter caddyfile >/dev/null 2>&1; then`,
-    `  podman exec ${shq(INGRESS_CONTAINER)} caddy reload --config ${shq(CADDY_CONFIG_FILE)} --adapter caddyfile >/dev/null 2>&1`,
-    "  echo '@@wrote'",
-    'else',
+    'set +e',
+    `err=$(${caddy('validate')})`,
+    'if [ $? -ne 0 ]; then',
     `  rm -f ${shq(f)}`,
     "  echo '@@invalid'",
+    String.raw`  printf '%s\n' "$err" | tail -20`,
+    '  exit 0',
     'fi',
-    shq(f),
+    `err=$(${caddy('reload')})`,
+    'if [ $? -ne 0 ]; then',
+    "  echo '@@failed'",
+    String.raw`  printf '%s\n' "$err" | tail -20`,
+    '  exit 0',
+    'fi',
+    "echo '@@wrote'",
+    `echo ${shq(f)}`,
   ].join('\n');
 }
 

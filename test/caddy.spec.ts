@@ -97,6 +97,18 @@ describe('caddy-scripts', () => {
     expect(s).toContain('caddy validate');
     expect(s).toContain('caddy reload');
   });
+  it('route write ends on exactly one marker and keeps Caddy\'s own complaint', () => {
+    const s = buildCaddyRouteWriteScript('tools', 'fragment');
+    expect(s).toContain("echo '@@invalid'");
+    expect(s).toContain("echo '@@failed'");
+    expect(s).toContain("echo '@@wrote'");
+    // the validate/reload output is captured, not sent to /dev/null, so a failure can be quoted
+    expect(s).not.toContain('>/dev/null 2>&1');
+    expect(s).toContain('err=$(podman exec');
+    // the fragment path is echoed into the @@wrote section — a bare path would be EXECUTED
+    // (permission denied, non-zero exit, stderr noise on every route write)
+    expect(s).toContain("echo '/etc/vops/ingress/caddy/tools.caddy'");
+  });
   it('status newline-terminates the health code before @@routes', () => {
     expect(buildCaddyStatusScript()).toContain(String.raw`%{http_code}\n`);
   });
