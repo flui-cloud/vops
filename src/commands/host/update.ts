@@ -1,10 +1,16 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import type { INestApplicationContext } from '@nestjs/common';
+import { withApp } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { agentError } from '../../agent-api/agent-envelope';
 import { renderTable } from '../../lib/output';
 import { VopsHostUpdateService, HostUpdateResult } from '../../host-ops/vops-host-update.service';
 import { VopsHostStatusService } from '../../host-ops/vops-host-status.service';
 import { VopsHostsService } from '../../hosts/vops-hosts.service';
+
+type PendingUpdates = Awaited<ReturnType<VopsHostStatusService['pendingUpdates']>>;
+type UpdateView = HostUpdateResult[] | PendingUpdates | PendingUpdates[];
 
 export default class HostUpdate extends Command {
   static readonly description = 'Apply OS package updates over SSH (sequential across a fleet)';
@@ -26,47 +32,55 @@ export default class HostUpdate extends Command {
     'security-only': Flags.boolean({ description: 'Security updates only', default: false }),
     reboot: Flags.boolean({ description: 'Reboot if required, then wait for SSH', default: false }),
     'dry-run': Flags.boolean({ description: 'Print the update command, apply nothing', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostUpdate);
-    try {
-      const app = await getVopsApp();
-      const names = this.resolveNames(app, args.name, flags.tag);
-      if (flags.list) {
-        await this.listPending(app, names, flags.json);
-        return;
-      }
-      const results = await app.get(VopsHostUpdateService).update(names, {
-        securityOnly: flags['security-only'],
-        reboot: flags.reboot,
-        dryRun: flags['dry-run'],
-      });
-      if (flags.json) {
-        this.log(JSON.stringify(results, null, 2));
-        return;
-      }
-      if (flags['dry-run']) {
-        for (const r of results) this.log(chalk.cyan(`[dry-run] ${r.host}\n`) + chalk.dim(r.detail));
-        return;
-      }
-      this.log(
-        renderTable(
-          ['HOST', 'RESULT', 'REBOOT'],
-          results.map((r) => [
-            r.host,
-            r.applied ? chalk.green(r.summary) : chalk.red(r.summary),
-            this.rebootCell(r),
-          ]),
-        ),
-      );
-      if (results.some((r) => !r.applied)) this.exit(1);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
+    await runAgentCommand<UpdateView>(
+      this,
+      'vops host update',
+      flags.json,
+      async () =>
+        withApp(async (app) => {
+          const names = this.resolveNames(app, args.name, flags.tag);
+          if (flags.list) return { data: await this.pending(app, names) };
+
+          const data = await app.get(VopsHostUpdateService).update(names, {
+            securityOnly: flags['security-only'],
+            reboot: flags.reboot,
+            dryRun: flags['dry-run'],
+          });
+          const failed = data.filter((r) => !r.applied);
+          return {
+            data,
+            errors: failed.length
+              ? [
+                  agentError('VOPS_OPERATION_FAILED', 'operational', `Updates failed on ${failed.map((r) => r.host).join(', ')}.`, {
+                    suggestedAction: 'Read data[].summary for the host that failed, then re-run once its package manager is usable.',
+                  }),
+                ]
+              : [],
+          };
+        }),
+      (data) => {
+        if (flags.list) this.renderPending(data as PendingUpdates | PendingUpdates[]);
+        else this.renderUpdates(data as HostUpdateResult[], flags['dry-run']);
+      },
+    );
+  }
+
+  private renderUpdates(results: HostUpdateResult[], dryRun: boolean): void {
+    if (dryRun) {
+      for (const r of results) this.log(chalk.cyan(`[dry-run] ${r.host}\n`) + chalk.dim(r.detail));
+      return;
     }
+    this.log(
+      renderTable(
+        ['HOST', 'RESULT', 'REBOOT'],
+        results.map((r) => [r.host, r.applied ? chalk.green(r.summary) : chalk.red(r.summary), this.rebootCell(r)]),
+      ),
+    );
   }
 
   private rebootCell(r: HostUpdateResult): string {
@@ -74,18 +88,14 @@ export default class HostUpdate extends Command {
     return r.rebooted ? chalk.green('rebooted') : chalk.yellow('required');
   }
 
-  private async listPending(
-    app: Awaited<ReturnType<typeof getVopsApp>>,
-    names: string[],
-    json: boolean,
-  ): Promise<void> {
+  private async pending(app: INestApplicationContext, names: string[]): Promise<PendingUpdates | PendingUpdates[]> {
     const svc = app.get(VopsHostStatusService);
     const results = await Promise.all(names.map((n) => svc.pendingUpdates(n)));
-    if (json) {
-      this.log(JSON.stringify(results.length === 1 ? results[0] : results, null, 2));
-      return;
-    }
-    for (const r of results) {
+    return results.length === 1 ? results[0] : results;
+  }
+
+  private renderPending(data: PendingUpdates | PendingUpdates[]): void {
+    for (const r of Array.isArray(data) ? data : [data]) {
       const security = r.packages.filter((p) => p.security).length;
       const more = r.truncated ? chalk.yellow(`  +${r.total - r.packages.length} more`) : '';
       this.log(chalk.bold(r.host) + '  ' + chalk.dim(`${r.total} pending (${security} security)`) + more);
@@ -106,7 +116,7 @@ export default class HostUpdate extends Command {
     }
   }
 
-  private resolveNames(app: Awaited<ReturnType<typeof getVopsApp>>, name?: string, tag?: string): string[] {
+  private resolveNames(app: INestApplicationContext, name?: string, tag?: string): string[] {
     if (name) return [name];
     if (tag) {
       const names = app.get(VopsHostsService).list().filter((h) => h.tags.includes(tag)).map((h) => h.name);

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ProviderFactory, ICloudProvider, VNetDetails } from '@flui-cloud/infra';
 import { resolveProvider } from '../lib/providers';
+import { assertApprovedInService } from '../safety/approval-gate';
 import { assertVopsManaged } from '../safety/ownership';
 import { LocalStore } from '../lib/store/local-store';
 import { VopsWriteGateService } from '../safety/vops-write-gate.service';
@@ -52,7 +53,7 @@ export class VopsVnetService {
       dryRun: !!opts.dryRun,
     });
     if (opts.dryRun) return { dryRun: true, vnet: null };
-    this.assertConfirmed(opts, 'create a network');
+    this.assertConfirmed(opts, 'Create network', input.name, `It is created on the ${provider} account.`);
 
     const result = await this.require(input.provider, 'createVNet').createVNet({
       name: input.name,
@@ -78,7 +79,7 @@ export class VopsVnetService {
       dryRun: !!opts.dryRun,
     });
     if (opts.dryRun) return { dryRun: true };
-    this.assertConfirmed(opts, 'delete a network');
+    this.assertConfirmed(opts, 'Delete network', id, 'Attached servers lose their private connectivity.');
     await this.assertManaged(name, id);
     await this.require(name, 'deleteVNet').deleteVNet(id);
     return { dryRun: false };
@@ -171,12 +172,19 @@ export class VopsVnetService {
     return impl;
   }
 
-  private assertConfirmed(opts: VnetMutationOptions, action: string): void {
-    if (!opts.yes) {
-      throw new BadRequestException(
-        `Refusing to ${action} without confirmation. Re-run with --yes (or --dry-run).`,
-      );
-    }
+  private assertConfirmed(
+    opts: VnetMutationOptions,
+    operation: string,
+    target: string,
+    consequence: string,
+  ): void {
+    assertApprovedInService({
+      operation,
+      target,
+      approved: !!opts.yes,
+      consequence,
+      suggestedAction: 'Show the user what this changes, then re-run with --yes once they agree — or --dry-run to preview it.',
+    });
   }
 
   private toVnet(provider: string, v: VNetDetails): VopsVnet {

@@ -8,10 +8,11 @@ import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHostConnService } from './vops-host-conn.service';
 import { VopsHost } from '../hosts/host.model';
 import {
+  assessRevokeSafety,
   authorizesKeyData,
-  hasOtherAuthorizedKey,
   opsTag,
   removeOpsLine,
+  RevokeSafetyReason,
   upsertOpsLine,
 } from './authorized-keys';
 import { readAuthorizedKeys } from './remote-ak';
@@ -111,17 +112,16 @@ export class VopsHostKeysService {
     const host = this.hosts.show(name);
     assertHostWritable(host);
     const tag = opsTag(profileId());
-    const { writeTarget, userVerified } = await this.revokeTarget(host);
+    const { writeTarget, verifiedUserKey } = await this.revokeTarget(host);
     const state = await this.readState(writeTarget);
     const { content, removed } = removeOpsLine(state.content, tag);
-    const safe = hasOtherAuthorizedKey(content, tag) || userVerified;
-    if (!safe && !opts.force) {
-      throw new BadRequestException(
-        'Refusing to revoke: the ops key is the only working access and no user key verifies. Re-run with --force to override.',
-      );
-    }
+    const { safe, reason } = assessRevokeSafety(state.content, content, tag, verifiedUserKey);
+    // A dry run reports; it never refuses — `safe: false` is the answer it was asked for.
     if (opts.dryRun) {
       return { dryRun: true, host: name, path: state.akPath, wouldRemove: removed, safe };
+    }
+    if (!safe && !opts.force) {
+      throw new BadRequestException(revokeRefusal(reason));
     }
     if (removed > 0) await this.ssh.putFile(writeTarget, state.akPath, content, '0600');
     host.opsKeyInstalled = false;
@@ -147,15 +147,19 @@ export class VopsHostKeysService {
     };
   }
 
-  private async revokeTarget(host: VopsHost): Promise<{ writeTarget: SshTarget; userVerified: boolean }> {
-    const userKeyPath = this.keys.keyPathFor(host.userKeyName);
-    if (userKeyPath) {
-      const target: SshTarget = { host, keyPath: userKeyPath };
+  /** `verifiedUserKey` is the PUBLIC half of the key that opened the session — which key
+   * verified is what decides safety, since it may be the ops key we are about to remove. */
+  private async revokeTarget(
+    host: VopsHost,
+  ): Promise<{ writeTarget: SshTarget; verifiedUserKey: string | null }> {
+    const userKey = this.keys.resolveUserKey(host.userKeyName);
+    if (userKey?.hasPrivateKey) {
+      const target: SshTarget = { host, keyPath: userKey.privateKeyPath };
       const chk = await this.ssh.run(target, 'true');
-      if (chk.code === 0) return { writeTarget: target, userVerified: true };
+      if (chk.code === 0) return { writeTarget: target, verifiedUserKey: userKey.publicKey };
     }
     // Fall back to the ops session itself: removing our own line does not drop the live session.
-    return { writeTarget: this.opsTarget(host), userVerified: false };
+    return { writeTarget: this.opsTarget(host), verifiedUserKey: null };
   }
 
   private readTarget(host: VopsHost): SshTarget {
@@ -177,4 +181,12 @@ export class VopsHostKeysService {
   private readState(target: SshTarget) {
     return readAuthorizedKeys(this.ssh, target);
   }
+}
+
+function revokeRefusal(reason: RevokeSafetyReason): string {
+  const why =
+    reason === 'user-key-is-being-removed'
+      ? 'the only key that verified is the ops key itself, so removing its line would leave no way in. Give this host its own user key first (vops host key set <host> <key>)'
+      : 'the ops key is the only working access and no user key verifies';
+  return `Refusing to revoke: ${why}. Re-run with --force to override.`;
 }

@@ -17,7 +17,7 @@ describe('host-firewall applicability policy', () => {
 describe('VopsServersService host-firewall gate', () => {
   // plan() runs the gate before touching any dependency, so dummy deps are fine.
   const svc = () =>
-    new VopsServersService({} as any, {} as any, {} as any, {} as any, {} as any);
+    new VopsServersService({} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
   const hostFirewall = { rules: [{ description: 'web', direction: 'in' as const, protocol: 'tcp' as const, port: '80' }] };
 
   it('rejects --host-firewall on a provider WITH a native firewall (Hetzner)', async () => {

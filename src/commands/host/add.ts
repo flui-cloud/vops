@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsHostsService } from '../../hosts/vops-hosts.service';
 
 export default class HostAdd extends Command {
@@ -21,35 +22,38 @@ export default class HostAdd extends Command {
     port: Flags.integer({ description: 'SSH port', default: 22 }),
     key: Flags.string({ description: 'Local user key name for interactive ssh' }),
     tag: Flags.string({ description: 'Tag (repeatable)', multiple: true }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostAdd);
-    try {
-      const { host, probe } = await (await getVopsApp())
-        .get(VopsHostsService)
-        .add(args.name, {
-          address: flags.address,
-          user: flags.user,
-          port: flags.port,
-          userKeyName: flags.key,
-          tags: flags.tag,
-        });
-      if (flags.json) {
-        this.log(JSON.stringify({ host, probe }, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ Added host '${host.name}' (${host.user}@${host.address}:${host.port})`));
-      if (probe.reachable) {
-        this.log(chalk.dim(`  reachable · ${host.os?.pretty ?? 'unknown OS'}`));
-      } else {
-        this.log(chalk.yellow(`  warning: ${probe.message}`));
-      }
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops host add',
+      flags.json,
+      async () => {
+        const { host, probe } = await withService(VopsHostsService, (svc) =>
+          svc.add(args.name, {
+            address: flags.address,
+            user: flags.user,
+            port: flags.port,
+            userKeyName: flags.key,
+            tags: flags.tag,
+          }),
+        );
+        return {
+          data: { host, probe },
+          warnings: probe.reachable ? [] : [{ code: 'VOPS_HOST_UNREACHABLE', message: probe.message ?? 'The host did not answer over SSH.' }],
+        };
+      },
+      ({ host, probe }) => {
+        this.log(chalk.green(`✓ Added host '${host.name}' (${host.user}@${host.address}:${host.port})`));
+        if (probe.reachable) {
+          this.log(chalk.dim(`  reachable · ${host.os?.pretty ?? 'unknown OS'}`));
+        } else {
+          this.log(chalk.yellow(`  warning: ${probe.message}`));
+        }
+      },
+    );
   }
 }

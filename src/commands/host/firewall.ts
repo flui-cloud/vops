@@ -1,9 +1,14 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { approvalRequired } from '../../safety/approval-gate';
 import { renderTable } from '../../lib/output';
 import { VopsServerFirewallService, ServerFirewallView, DetectedFirewallView } from '../../firewall/vops-server-firewall.service';
 import { FirewallService, parseServiceSpec, servicesToRules } from '../../firewall/firewall-services';
+import { VopsFirewallRule } from '../../dto/firewall.dto';
+
+type FirewallOutput = VopsFirewallRule[] | ServerFirewallView;
 
 function detectedLabel(d: DetectedFirewallView): string {
   if (d.source === 'flui') return 'flui firewall';
@@ -33,32 +38,30 @@ export default class HostFirewall extends Command {
     clear: Flags.boolean({ description: 'Remove the vops firewall from this host', default: false }),
     yes: Flags.boolean({ description: 'Confirm a destructive action (required with --clear)', default: false }),
     'dry-run': Flags.boolean({ description: 'With --allow, print the compiled rules; change nothing', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostFirewall);
-    try {
-      const app = await getVopsApp();
-      const fw = app.get(VopsServerFirewallService);
-
-      if (flags.allow != null && flags['dry-run']) {
-        const rules = servicesToRules(this.parseServices(flags.allow));
-        this.log(flags.json ? JSON.stringify(rules, null, 2) : chalk.cyan('[dry-run] compiled rules\n') + JSON.stringify(rules, null, 2));
-        return;
-      }
-
-      const view = await this.act(fw, args.name, flags);
-      if (flags.json) {
-        this.log(JSON.stringify(view, null, 2));
-        return;
-      }
-      this.render(view);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand<FirewallOutput>(
+      this,
+      'vops host firewall',
+      flags.json,
+      async () => {
+        if (flags.allow != null && flags['dry-run']) {
+          return { data: servicesToRules(this.parseServices(flags.allow)) };
+        }
+        return { data: await withService(VopsServerFirewallService, (fw) => this.act(fw, args.name, flags)) };
+      },
+      (data) => {
+        if (Array.isArray(data)) {
+          this.log(chalk.cyan('[dry-run] compiled rules\n') + JSON.stringify(data, null, 2));
+          return;
+        }
+        if (flags.clear) this.log(chalk.dim(`Firewall cleared from ${args.name}.`));
+        this.render(data);
+      },
+    );
   }
 
   private async act(
@@ -67,9 +70,15 @@ export default class HostFirewall extends Command {
     flags: { allow?: string; clear: boolean; yes: boolean },
   ): Promise<ServerFirewallView> {
     if (flags.clear) {
-      if (!flags.yes) throw new Error('Refusing to clear the firewall without confirmation. Re-run with --yes.');
+      if (!flags.yes) {
+        throw approvalRequired({
+          operation: 'Clear firewall',
+          target: name,
+          approved: false,
+          consequence: 'The host is left with no vops-managed ruleset.',
+        });
+      }
       await fw.clear(name);
-      this.log(chalk.dim(`Firewall cleared from ${name}.`));
       return fw.get(name);
     }
     if (flags.allow != null) return fw.set(name, this.parseServices(flags.allow));

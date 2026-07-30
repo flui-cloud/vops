@@ -26,7 +26,8 @@ describe('deriveConnState (structural: reachable → key → authorized)', () =>
   it('no key → no-key, points at assigning one', () => {
     const r = deriveConnState({ reachable: true, hasKey: false, authorized: false, keyKind: 'none', host: HOST });
     expect(r.state).toBe('no-key');
-    expect(r.message).toMatch(/pick a local key|generate/i);
+    // Names the command: the same message is read on a terminal, where "below" means nothing.
+    expect(r.message).toMatch(/vops host key set/i);
   });
   it('has key but unreachable → unreachable (network fix, not auth)', () => {
     const r = deriveConnState({ reachable: false, hasKey: true, authorized: false, keyKind: 'user', host: HOST, reason: 'Operation timed out' });

@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsSshKeysService } from '../../ssh-keys/vops-ssh-keys.service';
 
 export default class SshKeyRegister extends Command {
@@ -17,29 +18,23 @@ export default class SshKeyRegister extends Command {
 
   static readonly flags = {
     provider: Flags.string({ description: 'hetzner | scaleway | contabo | ovh', required: true }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(SshKeyRegister);
-    try {
-      const result = await (await getVopsApp())
-        .get(VopsSshKeysService)
-        .register(flags.provider, args.name);
-      if (flags.json) {
-        this.log(JSON.stringify({ name: args.name, ...result }, null, 2));
-        return;
-      }
-      this.log(
-        chalk.green(
-          `✓ Registered '${args.name}' on ${flags.provider} → key id ${result.providerKeyId}`,
-        ),
-      );
-      this.log(chalk.dim('  Use this id as --ssh-key when creating a server.'));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops ssh-key register',
+      flags.json,
+      async () => {
+        const result = await withService(VopsSshKeysService, (svc) => svc.register(flags.provider, args.name));
+        return { data: { name: args.name, ...result } };
+      },
+      (res) => {
+        this.log(chalk.green(`✓ Registered '${res.name}' on ${flags.provider} → key id ${res.providerKeyId}`));
+        this.log(chalk.dim('  Use this id as --ssh-key when creating a server.'));
+      },
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../../lib/nest';
+import { withService } from '../../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 import { VopsHostKeysService } from '../../../host-ops/vops-host-keys.service';
 
 export default class HostKeyInstallOps extends Command {
@@ -20,31 +21,30 @@ export default class HostKeyInstallOps extends Command {
   static readonly flags = {
     from: Flags.string({ description: 'Restrict the ops key to this source CIDR (from="…")' }),
     'dry-run': Flags.boolean({ description: 'Print what would change, apply nothing', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostKeyInstallOps);
-    try {
-      const res = await (await getVopsApp())
-        .get(VopsHostKeysService)
-        .installOps(args.name, { fromCidr: flags.from, dryRun: flags['dry-run'] });
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      if (res.dryRun === true) {
-        this.log(chalk.cyan(`[dry-run] ${res.path}`));
-        this.log(`  + ${res.line}`);
-        this.log(chalk.dim(res.wouldChange ? '  (line would be added/updated)' : '  (already present, no change)'));
-        return;
-      }
-      this.log(chalk.green(`✓ Ops key installed on '${res.host}' and verified`));
-      if (res.alreadyPresent) this.log(chalk.dim('  (was already present)'));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops host key install-ops',
+      flags.json,
+      async () => ({
+        data: await withService(VopsHostKeysService, (svc) =>
+          svc.installOps(args.name, { fromCidr: flags.from, dryRun: flags['dry-run'] }),
+        ),
+      }),
+      (res) => {
+        if (res.dryRun === true) {
+          this.log(chalk.cyan(`[dry-run] ${res.path}`));
+          this.log(`  + ${res.line}`);
+          this.log(chalk.dim(res.wouldChange ? '  (line would be added/updated)' : '  (already present, no change)'));
+          return;
+        }
+        this.log(chalk.green(`✓ Ops key installed on '${res.host}' and verified`));
+        if (res.alreadyPresent) this.log(chalk.dim('  (was already present)'));
+      },
+    );
   }
 }

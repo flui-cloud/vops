@@ -11,8 +11,15 @@ import { assertVopsManaged, isVopsManaged } from '../safety/ownership';
 import { defaultImage } from '../lib/plan-io';
 import { renderCloudInit } from '../host-firewall/nftables';
 import { LocalStore } from '../lib/store/local-store';
+import { knownHostsPath } from '../lib/ssh-exec';
+import { forgetDestroyedServer } from '../hosts/host-forget';
+import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsCatalogService } from '../catalog/vops-catalog.service';
 import { VopsWriteGateService } from '../safety/vops-write-gate.service';
+import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
+import { AgentBadRequest } from '../agent-api/agent-http-errors';
+import { ExitCode, agentError } from '../agent-api/agent-envelope';
+import { assertApprovedInService } from '../safety/approval-gate';
 import { VopsHostFirewall, VopsPlanFile, VopsServer } from '../dto/plan-file.dto';
 
 export interface PlanInput {
@@ -23,6 +30,16 @@ export interface PlanInput {
   name?: string;
   sshKey?: string;
   hostFirewall?: VopsHostFirewall;
+}
+
+export interface DeleteOutcome {
+  deleted: string;
+  /** Inventory hosts forgotten because the machine they described no longer exists. */
+  forgotten: string[];
+  /** known_hosts entries dropped so a recycled IP does not fail host-key verification. */
+  knownHostsPruned: number;
+  /** Set when the server was destroyed but the local records could not be cleaned up. */
+  warning?: string;
 }
 
 export interface CreateOutcome {
@@ -42,6 +59,8 @@ export class VopsServersService {
     private readonly catalog: VopsCatalogService,
     private readonly writeGate: VopsWriteGateService,
     private readonly store: LocalStore,
+    private readonly sshKeys: VopsSshKeysService,
+    private readonly hosts: VopsHostsService,
   ) {}
 
   async plan(input: PlanInput): Promise<VopsPlanFile> {
@@ -58,14 +77,32 @@ export class VopsServersService {
       plan: node.name,
       location: input.location,
       image: input.image ?? defaultImage(provider),
-      sshKey: input.sshKey
-        ? { mode: 'existing', id: input.sshKey }
-        : { mode: 'none', id: null },
+      sshKey: await this.resolveSshKey(input.provider, input.sshKey),
       ...(input.hostFirewall ? { hostFirewall: input.hostFirewall } : {}),
       billingGate: gate,
       estimatedCost: { ...cost, currency: this.currency(provider) },
       createdAt: new Date().toISOString(),
     };
+  }
+
+  /** Resolve `--ssh-key` against the PROVIDER, at plan time. Local key names and provider key
+   * names are separate namespaces, so recording the local name as `existing` claimed a check
+   * nobody had run — and the plan only failed at `create`, after the user had approved the spend.
+   * The plan carries the provider key id it verified, or says plainly that it could not check. */
+  private async resolveSshKey(provider: string, keyName?: string): Promise<VopsPlanFile['sshKey']> {
+    if (!keyName) return { mode: 'none', id: null };
+    const found = await this.sshKeys.lookupProviderKey(provider, keyName);
+    if (found.state === 'found') return { mode: 'existing', id: found.providerKeyId };
+    if (found.state === 'unverifiable') return { mode: 'unverified', id: keyName };
+    throw new AgentBadRequest(
+      agentError(
+        'VOPS_SSH_KEY_NOT_REGISTERED',
+        'prerequisite',
+        `SSH key '${keyName}' is not registered at ${provider} — a server created with it would be unreachable.`,
+        { suggestedAction: `Register it first: \`vops ssh-key register ${keyName} --provider ${provider}\`.` },
+      ),
+      ExitCode.INVALID_INPUT,
+    );
   }
 
   async create(
@@ -95,21 +132,23 @@ export class VopsServersService {
     }
 
     this.writeGate.assert(gate);
-    if (!opts.yes) {
-      throw new BadRequestException(
-        'Refusing to create without confirmation. Re-run with --yes (or --dry-run).',
-      );
-    }
+    assertApprovedInService({
+      operation: 'Create server',
+      target: `${plan.name} (${plan.plan} in ${plan.location})`,
+      approved: opts.yes,
+      consequence: `It provisions a billable machine at ${DISPLAY_NAMES[provider] ?? provider} and charging starts immediately.`,
+      suggestedAction:
+        'Show the user the plan and its estimated cost, then re-run with --yes once they agree (--dry-run previews it again).',
+    });
 
     const config: CreateServerConfig = {
       name: plan.name,
       server_type: plan.plan,
       image: plan.image,
       location: plan.location,
-      ssh_keys:
-        plan.sshKey.mode === 'existing' && plan.sshKey.id
-          ? [plan.sshKey.id]
-          : undefined,
+      // `unverified` still passes the name through: the check could not run, which is not the
+      // same as knowing the key is absent.
+      ssh_keys: plan.sshKey.mode !== 'none' && plan.sshKey.id ? [plan.sshKey.id] : undefined,
       // Host-level firewall (nftables via cloud-init) — same on every provider.
       ...(plan.hostFirewall
         ? {
@@ -153,7 +192,7 @@ export class VopsServersService {
     return server ? this.toServer(server) : null;
   }
 
-  async delete(name: string, id: string, force = false): Promise<void> {
+  async delete(name: string, id: string, force = false): Promise<DeleteOutcome> {
     const provider = resolveProvider(name);
     const impl = this.providers.getProvider(provider);
     // Safety: only ever delete resources vops created (never a pre-existing host).
@@ -162,6 +201,15 @@ export class VopsServersService {
     assertVopsManaged('server', server);
     await impl.deleteServer({ server_id: id, provider, force, reason: 'vops delete' });
     await this.store.appendAudit('server.delete', { provider, serverId: id });
+    const local = await forgetDestroyedServer(
+      {
+        hosts: this.hosts,
+        knownHostsFile: knownHostsPath(),
+        audit: (action, detail) => this.store.appendAudit(action, detail),
+      },
+      { provider, serverId: server.id, address: server.public_ip ?? null },
+    );
+    return { deleted: id, ...local };
   }
 
   /** Guidance for non-hourly providers: vops shows how to create, never orders. */

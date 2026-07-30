@@ -1,6 +1,7 @@
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsHostsService } from '../../hosts/vops-hosts.service';
 
 export default class HostRemove extends Command {
@@ -12,23 +13,19 @@ export default class HostRemove extends Command {
     name: Args.string({ description: 'Host name', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostRemove);
-    try {
-      (await getVopsApp()).get(VopsHostsService).remove(args.name);
-      if (flags.json) {
-        this.log(JSON.stringify({ removed: args.name }, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ Forgot host '${args.name}' (the server was not touched)`));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops host remove',
+      flags.json,
+      async () => {
+        await withService(VopsHostsService, (svc) => svc.remove(args.name));
+        return { data: { removed: args.name } };
+      },
+      (r) => this.log(chalk.green(`✓ Forgot host '${r.removed}' (the server was not touched)`)),
+    );
   }
 }

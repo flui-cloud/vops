@@ -1,7 +1,9 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
-import { VopsSshLockdownService, LockdownPreflight } from '../../host-ops/vops-ssh-lockdown.service';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { preflightRefusal } from '../../host-ops/ssh-lockdown-refusal';
+import { VopsSshLockdownService, LockdownPreflight, LockdownResult } from '../../host-ops/vops-ssh-lockdown.service';
 
 export default class HostSshHarden extends Command {
   static readonly description =
@@ -21,30 +23,27 @@ export default class HostSshHarden extends Command {
   static readonly flags = {
     override: Flags.boolean({ description: 'Proceed even though other accounts logged in with a password recently', default: false }),
     yes: Flags.boolean({ description: 'Apply the change (otherwise only preflight is shown)', default: false }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostSshHarden);
-    try {
-      const app = await getVopsApp();
-      const svc = app.get(VopsSshLockdownService);
-
-      if (!flags.yes) {
-        const pre = await svc.preflight(args.name);
-        if (flags.json) { this.log(JSON.stringify(pre, null, 2)); return; }
-        this.renderPreflight(pre);
-        return;
-      }
-
-      const res = await svc.disable(args.name, { override: flags.override });
-      if (flags.json) { this.log(JSON.stringify(res, null, 2)); return; }
-      this.log(res.applied ? chalk.green(`✓ ${res.message}`) : chalk.dim(res.message));
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand<LockdownPreflight | LockdownResult>(
+      this,
+      'vops host ssh-harden',
+      flags.json,
+      async () => {
+        const data = await withService<VopsSshLockdownService, LockdownPreflight | LockdownResult>(
+          VopsSshLockdownService,
+          (svc) => (flags.yes ? svc.disable(args.name, { override: flags.override }) : svc.preflight(args.name)),
+        );
+        return { data, ...(isPreflight(data) ? preflightRefusal(data) : {}) };
+      },
+      (data) => {
+        if (isPreflight(data)) this.renderPreflight(data);
+        else this.log(data.applied ? chalk.green(`✓ ${data.message}`) : chalk.dim(data.message));
+      },
+    );
   }
 
   private renderPreflight(pre: LockdownPreflight): void {
@@ -61,4 +60,8 @@ export default class HostSshHarden extends Command {
     for (const r of pre.refusals) this.log(`  ${chalk.red('✗')} ${r.message}`);
     if (pre.overridable) this.log(chalk.dim('Add --override --yes to proceed anyway (you accept locking those accounts out).'));
   }
+}
+
+function isPreflight(d: LockdownPreflight | LockdownResult): d is LockdownPreflight {
+  return 'refusals' in d;
 }

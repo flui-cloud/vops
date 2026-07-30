@@ -8,6 +8,22 @@ import { resolveProvider, defaultSshUser } from '../lib/providers';
 import { LocalStore } from '../lib/store/local-store';
 import { profileId } from '../lib/profile';
 import { VopsWriteGateService } from '../safety/vops-write-gate.service';
+import { samePublicKey } from './public-key';
+import {
+  fingerprintOf,
+  keyFileMissing,
+  noKeyMaterial,
+  parsePublicKey,
+  publicKeyRefusal,
+  unusablePrivateKey,
+} from './public-key-material';
+
+/** Whether a local key is registered at a provider. `unverifiable` is its own state on purpose:
+ * "we could not check" must never be reported as "it is not there". */
+export type ProviderKeyLookup =
+  | { state: 'found'; providerKeyId: string; providerKeyName: string }
+  | { state: 'missing' }
+  | { state: 'unverifiable'; reason: string };
 
 export interface VopsSshKey {
   name: string;
@@ -36,6 +52,13 @@ export interface ImportKeyInput {
   publicKeyPath?: string;
   /** A public key pasted directly (ssh-ed25519 / ssh-rsa …). */
   publicKey?: string;
+}
+
+interface ImportMaterial {
+  publicKey: string;
+  /** Human-readable provenance for a refusal message: a path, or the flag it was pasted on. */
+  origin: string;
+  privateKeyPath?: string;
 }
 
 export interface SshConnectInfo {
@@ -122,22 +145,38 @@ export class VopsSshKeysService {
       throw new BadRequestException(`Provider '${provider}' does not support SSH key upload.`);
     }
     await this.store.appendAudit('sshkey.register', { provider, name });
-    const result = await impl.createSSHKey(name, key.publicKey);
+    // Provenance for whoever finds the key in the provider's console. Deliberately NOT
+    // `managed-by: flui-cloud`: that label is another product's ownership claim, and claiming
+    // it would invite that product's cleanup to delete the user's key.
+    const result = await impl.createSSHKey(name, key.publicKey, { 'managed-by': 'vops' });
     return { providerKeyId: result.id };
+  }
+
+  /** Is this local key registered at the provider, and under which id? Matching is on the public
+   * material (see `public-key.ts`), and the listing is deliberately unfiltered — a key the user
+   * created in the provider's own console authorizes a server just as well as one vops uploaded. */
+  async lookupProviderKey(providerName: string, keyName: string): Promise<ProviderKeyLookup> {
+    const provider = resolveProvider(providerName);
+    const key = this.show(keyName);
+    const impl = this.providers.getProvider(provider);
+    if (typeof impl.listSSHKeys !== 'function') {
+      return { state: 'unverifiable', reason: `${provider} does not expose its registered SSH keys` };
+    }
+    let registered: Array<{ id: string; name: string; publicKey: string }>;
+    try {
+      registered = await impl.listSSHKeys({ managedOnly: false });
+    } catch (e) {
+      return { state: 'unverifiable', reason: e instanceof Error ? e.message : String(e) };
+    }
+    const match = registered.find((k) => samePublicKey(k.publicKey, key.publicKey));
+    return match ? { state: 'found', providerKeyId: match.id, providerKeyName: match.name } : { state: 'missing' };
   }
 
   private read(name: string): VopsSshKey {
     const dir = this.keysDir();
     const pubPath = path.join(dir, `${name}.pub`);
     const publicKey = fs.readFileSync(pubPath, 'utf8').trim();
-    let fingerprint = '';
-    try {
-      fingerprint = execFileSync('ssh-keygen', ['-lf', pubPath], { encoding: 'utf8' })
-        .trim()
-        .split(/\s+/)[1] ?? '';
-    } catch {
-      fingerprint = '';
-    }
+    const fingerprint = fingerprintOf(publicKey);
     // A `.path` sidecar means the private key was imported by reference (lives elsewhere).
     const refPath = path.join(dir, `${name}.path`);
     const imported = fs.existsSync(refPath);
@@ -266,33 +305,35 @@ export class VopsSshKeysService {
     this.assertName(name);
     this.assertNotReserved(name);
     const dir = this.keysDir();
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const pubPath = path.join(dir, `${name}.pub`);
     if (fs.existsSync(pubPath)) {
       throw new BadRequestException(`SSH key '${name}' already exists.`);
     }
 
-    let publicKey: string | undefined;
-    if (input.privateKeyPath) {
-      const priv = path.resolve(untilde(input.privateKeyPath));
-      if (!fs.existsSync(priv)) {
-        throw new BadRequestException(`Private key not found: ${priv}`);
+    // Every refusal happens before the first byte is written — including the `.path` sidecar, which
+    // `--from` would otherwise create while the material is still unvalidated.
+    const material = readImportMaterial(input);
+    const parsed = parsePublicKey(material.publicKey);
+    if (parsed.ok === false) throw publicKeyRefusal(parsed, material.origin);
+    return this.storeImported(name, material);
+  }
+
+  /** Write the two files an import consists of, or neither: a failed second write takes the first
+   * one back out, so a half-imported key never survives to be listed. */
+  private storeImported(name: string, material: ImportMaterial): VopsSshKey {
+    const dir = this.keysDir();
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const pubPath = path.join(dir, `${name}.pub`);
+    const refPath = path.join(dir, `${name}.path`);
+    try {
+      fs.writeFileSync(pubPath, `${material.publicKey.trim()}\n`, { mode: 0o644 });
+      if (material.privateKeyPath) fs.writeFileSync(refPath, material.privateKeyPath, { mode: 0o600 });
+    } catch (e) {
+      for (const p of [pubPath, refPath]) {
+        if (fs.existsSync(p)) fs.rmSync(p, { force: true });
       }
-      // Derive the public key from the private one — never read/copy the secret elsewhere.
-      publicKey = execFileSync('ssh-keygen', ['-y', '-f', priv], { encoding: 'utf8' }).trim();
-      fs.writeFileSync(path.join(dir, `${name}.path`), priv, { mode: 0o600 });
-    } else if (input.publicKeyPath) {
-      publicKey = fs.readFileSync(untilde(input.publicKeyPath), 'utf8').trim();
-    } else if (input.publicKey) {
-      publicKey = input.publicKey.trim();
+      throw e;
     }
-    if (!publicKey) {
-      throw new BadRequestException(
-        'Nothing to import — provide a private key path, a public key path, or a public key string.',
-      );
-    }
-    assertPublicKey(publicKey);
-    fs.writeFileSync(pubPath, publicKey + '\n', { mode: 0o644 });
     return this.read(name);
   }
 
@@ -332,10 +373,15 @@ export class VopsSshKeysService {
     };
   }
 
+  /** Every local key that could open a human session. The ops key is excluded on purpose:
+   * it is automation-only and must never become the implicit choice. */
+  usableUserKeys(): VopsSshKey[] {
+    return this.list().filter((k) => k.hasPrivateKey && k.role === 'user');
+  }
+
   private resolveKey(keyName?: string): VopsSshKey {
     if (keyName) return this.show(keyName);
-    // The ops key is automation-only — never the implicit choice for a human session.
-    const usable = this.list().filter((k) => k.hasPrivateKey && k.role === 'user');
+    const usable = this.usableUserKeys();
     if (usable.length === 1) return usable[0];
     if (usable.length === 0) {
       throw new BadRequestException('No usable SSH key found. Create or import one first.');
@@ -379,10 +425,29 @@ function untilde(p: string): string {
   return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
 }
 
-function assertPublicKey(key: string): void {
-  if (!/^(ssh-(ed25519|rsa|dss)|ecdsa-sha2-\S+)\s+\S+/.test(key)) {
-    throw new BadRequestException(
-      'That does not look like an OpenSSH public key (expected e.g. "ssh-ed25519 AAAA...").',
-    );
+/** Where the public material came from and what it says — read-only, so a refusal below it cannot
+ * leave anything on disk. `origin` is what the refusal names; it is a path or a flag, never key
+ * material. */
+function readImportMaterial(input: ImportKeyInput): ImportMaterial {
+  if (input.privateKeyPath) {
+    const priv = path.resolve(untilde(input.privateKeyPath));
+    if (!fs.existsSync(priv)) throw keyFileMissing('private', priv);
+    return { publicKey: derivePublicKey(priv), origin: `derived from ${priv}`, privateKeyPath: priv };
+  }
+  if (input.publicKeyPath) {
+    const pub = untilde(input.publicKeyPath);
+    if (!fs.existsSync(pub)) throw keyFileMissing('public', pub);
+    return { publicKey: fs.readFileSync(pub, 'utf8'), origin: pub };
+  }
+  if (input.publicKey?.trim()) return { publicKey: input.publicKey, origin: '--public-key' };
+  throw noKeyMaterial();
+}
+
+/** Derive the public half from a private key — never read or copy the secret anywhere else. */
+function derivePublicKey(priv: string): string {
+  try {
+    return execFileSync('ssh-keygen', ['-y', '-f', priv], { encoding: 'utf8' }).trim();
+  } catch (e) {
+    throw unusablePrivateKey(priv, e instanceof Error ? e.message : String(e));
   }
 }

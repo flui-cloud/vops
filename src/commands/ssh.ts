@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { getVopsApp, closeVopsApp } from '../lib/nest';
+import { agentJsonFlag, emitEnvelope, failCommand } from '../agent-api/agent-output';
 import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 
 export default class Ssh extends Command {
@@ -22,7 +23,7 @@ export default class Ssh extends Command {
     user: Flags.string({ description: 'SSH user (default: root; ovh: ubuntu)' }),
     key: Flags.string({ description: 'Local key name to use (default: the only usable key)' }),
     print: Flags.boolean({ description: 'Print the ssh command instead of connecting', default: false }),
-    json: Flags.boolean({ description: 'Output connection info as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -33,14 +34,13 @@ export default class Ssh extends Command {
         .get(VopsSshKeysService)
         .connectInfo(args.provider, args.server, { user: flags.user, keyName: flags.key });
     } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-      return;
+      failCommand(this, err, flags.json);
     } finally {
       await closeVopsApp();
     }
 
     if (flags.json) {
-      this.log(JSON.stringify(info, null, 2));
+      emitEnvelope(this, 'vops ssh', info);
       return;
     }
     if (flags.print) {

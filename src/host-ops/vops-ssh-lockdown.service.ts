@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { SshExec, SshTarget } from '../lib/ssh-exec';
 import { assertHostWritable } from '../safety/host-write-gate';
 import { LocalStore } from '../lib/store/local-store';
@@ -6,6 +6,7 @@ import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHost } from '../hosts/host.model';
 import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { resolveSshTarget } from './ssh-target';
+import { hardenBlocked, hardenNotApplied, hardenRolledBack } from './ssh-lockdown-refusal';
 import { VopsHostConnService } from './vops-host-conn.service';
 import {
   alreadyApplied,
@@ -119,7 +120,7 @@ export class VopsSshLockdownService {
       return { host: name, applied: false, reverted: false, message: 'Already hardened — no change.' };
     }
     const blocking = pre.refusals.filter((r) => !(opts.override && r.code === 'password-logins'));
-    if (blocking.length) throw new BadRequestException(blocking.map((r) => r.message).join(' '));
+    if (blocking.length) throw hardenBlocked(name, blocking, pre.overridable);
 
     const directives = PASSWORD_LOCKDOWN;
     const target = resolveSshTarget(host, this.keys);
@@ -129,13 +130,13 @@ export class VopsSshLockdownService {
     if (applied.code !== 0 || !applied.stdout.includes('VOPS_APPLIED')) {
       await this.cancel(target, pid);
       const reason = applied.stderr.trim() || `apply exited ${applied.code}`;
-      throw new BadRequestException(`SSH hardening not applied (nothing changed): ${reason}`);
+      throw hardenNotApplied(name, reason);
     }
 
     const verify = await this.verifyApplied(host, directives);
     if (!verify.ok) {
       await this.ssh.runScript(target, revertNowScript(pid), { timeoutMs: 60_000, sudo: true }).catch(() => undefined);
-      throw new BadRequestException(`Hardening rolled back — post-apply check failed (${verify.reason}). Password login is back on; nothing changed.`);
+      throw hardenRolledBack(name, verify.reason ?? 'reason unknown');
     }
 
     await this.cancel(target, pid);

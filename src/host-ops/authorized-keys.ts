@@ -68,11 +68,52 @@ export function hasOtherAuthorizedKey(content: string, tag: string): boolean {
   return toLines(content).some((l) => isKeyLine(l) && !isOpsLine(l, tag));
 }
 
+/** The base64 field of a public key ('' when the blob is unparseable). */
+const keyBlob = (publicKey: string): string => publicKey.trim().split(/\s+/)[1] ?? '';
+
+function authorizesBlob(content: string, data: string): boolean {
+  return toLines(content).some((l) => isKeyLine(l) && l.includes(data));
+}
+
 /** Does the given public-key blob (the base64 field) appear authorized? */
 export function authorizesKeyData(content: string, publicKey: string): boolean {
-  const data = publicKey.split(/\s+/)[1];
-  if (!data) return false;
-  return toLines(content).some((l) => isKeyLine(l) && l.includes(data));
+  const data = keyBlob(publicKey);
+  return data ? authorizesBlob(content, data) : false;
+}
+
+export type RevokeSafetyReason =
+  | 'user-key-remains'
+  | 'other-key-remains'
+  | 'user-key-not-in-file'
+  | 'user-key-is-being-removed'
+  | 'no-verified-user-key';
+
+export interface RevokeSafety {
+  safe: boolean;
+  reason: RevokeSafetyReason;
+}
+
+/**
+ * Would removing this profile's ops line leave a working way in? Decided on the file
+ * as it would be AFTER the removal, because a session opened with the very key that
+ * is about to be removed proves that key works — never that access survives losing it
+ * (a host whose `userKeyName` IS the ops key would otherwise verify itself into a
+ * lockout). `verifiedUserPublicKey` is the public half of a key that just opened a
+ * session; absent from the file entirely, it is authorized from somewhere sshd reads
+ * and we do not write, so removing our line cannot revoke it.
+ */
+export function assessRevokeSafety(
+  before: string,
+  after: string,
+  tag: string,
+  verifiedUserPublicKey?: string | null,
+): RevokeSafety {
+  const blob = keyBlob(verifiedUserPublicKey ?? '');
+  if (blob && authorizesBlob(after, blob)) return { safe: true, reason: 'user-key-remains' };
+  if (hasOtherAuthorizedKey(after, tag)) return { safe: true, reason: 'other-key-remains' };
+  if (!blob) return { safe: false, reason: 'no-verified-user-key' };
+  if (!authorizesBlob(before, blob)) return { safe: true, reason: 'user-key-not-in-file' };
+  return { safe: false, reason: 'user-key-is-being-removed' };
 }
 
 const KEY_TYPE_RE = /^(ssh-|ecdsa-|sk-)/;

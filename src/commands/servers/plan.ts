@@ -1,6 +1,7 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { money } from '../../lib/output';
 import { writePlanFile } from '../../lib/plan-io';
 import { VopsServersService } from '../../servers/vops-servers.service';
@@ -38,70 +39,70 @@ export default class ServersPlan extends Command {
       default: 'drop',
     }),
     out: Flags.string({ description: 'Plan file output path', default: './vops-plan.json' }),
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(ServersPlan);
-    try {
-      const hostFirewall = flags['host-firewall']
-        ? {
-            rules: parseFwRules(flags['host-firewall']),
-            policy: flags['fw-policy'] === 'accept' ? ('accept' as const) : ('drop' as const),
-          }
-        : undefined;
-      const plan = await (await getVopsApp()).get(VopsServersService).plan({
-        provider: flags.provider,
-        plan: flags.plan,
-        location: flags.location,
-        image: flags.image,
-        name: flags.name,
-        sshKey: flags['ssh-key'],
-        hostFirewall,
-      });
-      writePlanFile(flags.out, plan);
-
-      if (flags.json) {
-        this.log(JSON.stringify(plan, null, 2));
-        return;
-      }
-
-      const row = (k: string, v: string) =>
-        this.log(`  ${chalk.dim(k.padEnd(16))} ${v}`);
-      this.log(chalk.bold(`\nPlan ${plan.name}`));
-      row('Provider', plan.provider);
-      row('Server type', plan.plan);
-      row('Location', plan.location);
-      row('Image', plan.image);
-      if (plan.hostFirewall) {
-        row(
-          'Host firewall',
-          `nftables · ${plan.hostFirewall.rules.length} rule(s) · policy ${plan.hostFirewall.policy ?? 'drop'} (via cloud-init)`,
+    await runAgentCommand(
+      this,
+      'vops servers plan',
+      flags.json,
+      async () => {
+        const hostFirewall = flags['host-firewall']
+          ? {
+              rules: parseFwRules(flags['host-firewall']),
+              policy: flags['fw-policy'] === 'accept' ? ('accept' as const) : ('drop' as const),
+            }
+          : undefined;
+        const plan = await withService(VopsServersService, (svc) =>
+          svc.plan({
+            provider: flags.provider,
+            plan: flags.plan,
+            location: flags.location,
+            image: flags.image,
+            name: flags.name,
+            sshKey: flags['ssh-key'],
+            hostFirewall,
+          }),
         );
-      }
+        writePlanFile(flags.out, plan);
+        return { data: plan };
+      },
+      (plan) => this.renderPlan(plan, flags.out),
+    );
+  }
+
+  private renderPlan(plan: Awaited<ReturnType<VopsServersService['plan']>>, out: string): void {
+    const row = (k: string, v: string) => this.log(`  ${chalk.dim(k.padEnd(16))} ${v}`);
+    this.log(chalk.bold(`\nPlan ${plan.name}`));
+    row('Provider', plan.provider);
+    row('Server type', plan.plan);
+    row('Location', plan.location);
+    row('Image', plan.image);
+    row('SSH key', sshKeyLine(plan.sshKey));
+    if (plan.hostFirewall) {
       row(
-        'Est. cost',
-        `${money(plan.estimatedCost.hourly)} ${plan.estimatedCost.currency}/h  ·  ${money(plan.estimatedCost.monthly, 2)}/mo`,
+        'Host firewall',
+        `nftables · ${plan.hostFirewall.rules.length} rule(s) · policy ${plan.hostFirewall.policy ?? 'drop'} (via cloud-init)`,
       );
-      row(
-        'Create gate',
-        plan.billingGate.allowed
-          ? chalk.green('allowed')
-          : chalk.red('blocked'),
-      );
-      if (plan.billingGate.allowed) {
-        this.log(
-          chalk.dim(
-            `\nWritten to ${flags.out}. Create with: vops servers create --from-plan ${flags.out} --yes`,
-          ),
-        );
-      } else {
-        this.log(chalk.red(`\n${plan.billingGate.reason}`));
-      }
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
+    }
+    row(
+      'Est. cost',
+      `${money(plan.estimatedCost.hourly)} ${plan.estimatedCost.currency}/h  ·  ${money(plan.estimatedCost.monthly, 2)}/mo`,
+    );
+    row('Create gate', plan.billingGate.allowed ? chalk.green('allowed') : chalk.red('blocked'));
+    if (plan.billingGate.allowed) {
+      this.log(chalk.dim(`\nWritten to ${out}. Create with: vops servers create --from-plan ${out} --yes`));
+    } else {
+      this.log(chalk.red(`\n${plan.billingGate.reason}`));
     }
   }
+}
+
+/** The plan says what it verified, so an unverified key never reads as a confirmed one. */
+function sshKeyLine(k: { mode: string; id: string | null }): string {
+  if (k.mode === 'none') return chalk.dim('none (no key will be authorized on the server)');
+  if (k.mode === 'existing') return `${k.id} ${chalk.green('(registered at the provider)')}`;
+  return `${k.id} ${chalk.yellow('(NOT verified — vops could not ask the provider)')}`;
 }

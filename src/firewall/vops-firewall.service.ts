@@ -6,6 +6,7 @@ import {
   IFirewallProvider,
 } from '@flui-cloud/infra';
 import { resolveProvider } from '../lib/providers';
+import { assertApprovedInService } from '../safety/approval-gate';
 import { assertVopsManaged } from '../safety/ownership';
 import { LocalStore } from '../lib/store/local-store';
 import { VopsWriteGateService } from '../safety/vops-write-gate.service';
@@ -58,7 +59,7 @@ export class VopsFirewallService {
       dryRun: !!opts.dryRun,
     });
     if (opts.dryRun) return { dryRun: true, firewall: null };
-    this.assertConfirmed(opts, 'create a firewall');
+    this.assertConfirmed(opts, 'Create firewall', input.name, `It is created on the ${provider} account.`);
 
     const result = await this.api(input.provider).createFirewall({
       name: input.name,
@@ -103,7 +104,7 @@ export class VopsFirewallService {
       dryRun: !!opts.dryRun,
     });
     if (opts.dryRun) return { dryRun: true };
-    this.assertConfirmed(opts, 'delete a firewall');
+    this.assertConfirmed(opts, 'Delete firewall', id, 'Every server it protects loses its rules.');
     await this.assertManaged(name, id);
     await this.api(name).deleteFirewall(id);
     return { dryRun: false };
@@ -138,12 +139,19 @@ export class VopsFirewallService {
     return this.firewalls.getFirewallProviderOrFail(provider);
   }
 
-  private assertConfirmed(opts: FirewallMutationOptions, action: string): void {
-    if (!opts.yes) {
-      throw new BadRequestException(
-        `Refusing to ${action} without confirmation. Re-run with --yes (or --dry-run).`,
-      );
-    }
+  private assertConfirmed(
+    opts: FirewallMutationOptions,
+    operation: string,
+    target: string,
+    consequence: string,
+  ): void {
+    assertApprovedInService({
+      operation,
+      target,
+      approved: !!opts.yes,
+      consequence,
+      suggestedAction: 'Show the user what this changes, then re-run with --yes once they agree — or --dry-run to preview it.',
+    });
   }
 
   private toFirewall(provider: string, f: FirewallDetails): VopsFirewall {

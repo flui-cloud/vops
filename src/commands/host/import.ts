@@ -1,6 +1,7 @@
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsHostsService } from '../../hosts/vops-hosts.service';
 
 export default class HostImport extends Command {
@@ -13,30 +14,29 @@ export default class HostImport extends Command {
     server: Args.string({ description: 'Server id or name', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostImport);
-    try {
-      const { host, probe } = await (await getVopsApp())
-        .get(VopsHostsService)
-        .import(args.provider, args.server);
-      if (flags.json) {
-        this.log(JSON.stringify({ host, probe }, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ Imported host '${host.name}' from ${host.provider} (${host.user}@${host.address})`));
-      if (probe.reachable) {
-        this.log(chalk.dim(`  reachable · ${host.os?.pretty ?? 'unknown OS'}`));
-      } else {
-        this.log(chalk.yellow(`  warning: ${probe.message}`));
-      }
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops host import',
+      flags.json,
+      async () => {
+        const data = await withService(VopsHostsService, (svc) => svc.import(args.provider, args.server));
+        return {
+          data,
+          warnings: data.probe.reachable ? [] : [{ code: 'VOPS_HOST_UNREACHABLE', message: data.probe.message ?? 'The host did not answer over SSH.' }],
+          nextActions: data.probe.reachable
+            ? []
+            : [{ command: `vops host status ${data.host.name} --json`, description: 'Re-probe the host once SSH access is sorted out' }],
+        };
+      },
+      ({ host, probe }) => {
+        this.log(chalk.green(`✓ Imported host '${host.name}' from ${host.provider} (${host.user}@${host.address})`));
+        if (probe.reachable) this.log(chalk.dim(`  reachable · ${host.os?.pretty ?? 'unknown OS'}`));
+        else this.log(chalk.yellow(`  warning: ${probe.message}`));
+      },
+    );
   }
 }

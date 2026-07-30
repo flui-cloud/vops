@@ -54,8 +54,10 @@ export function deriveConnState(i: DeriveInput): { state: SshConnState; message:
   if (!i.hasKey) {
     return {
       state: 'no-key',
+      // Read on a terminal as often as in the dashboard, so it names the command rather
+      // than pointing at something "below".
       message:
-        'No SSH key is assigned for this host. Pick a local key (or generate one) below — its public half must then be authorized on the server.',
+        'No SSH key is assigned for this host. Assign one with `vops host key set <host> <key>` (or pick one in the dashboard) — its public half must then be authorized on the server.',
     };
   }
   if (!i.reachable) {

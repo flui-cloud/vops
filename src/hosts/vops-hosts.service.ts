@@ -7,8 +7,8 @@ import { profileDir } from '../lib/profile';
 import { SshExec } from '../lib/ssh-exec';
 import { resolveProvider, defaultSshUser } from '../lib/providers';
 import { notFound } from '../agent-api/agent-http-errors';
-import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
-import { deriveConnState, sshOutcome } from '../host-ops/ssh-conn';
+import { VopsSshKey, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
+import { SshOutcome, deriveConnState, sshOutcome } from '../host-ops/ssh-conn';
 import { VopsHost, VopsHostOs, OsFamily } from './host.model';
 
 export interface HostAddInput {
@@ -75,6 +75,11 @@ export class VopsHostsService {
   /** Assign (or clear) the local user key used to reach this host. */
   setUserKey(name: string, keyName?: string): VopsHost {
     const host = this.show(name);
+    // Pinning a key that does not exist locally would leave the host unreachable with no
+    // hint why — the dashboard picks from a list, a CLI argument is free text.
+    if (keyName && !this.keys.list().some((k) => k.name === keyName)) {
+      throw notFound('VOPS_SSH_KEY_NOT_FOUND', `No local SSH key named '${keyName}'.`, 'List the local keys with `vops ssh-key list --json`.');
+    }
     host.userKeyName = keyName || undefined;
     this.update(host);
     return host;
@@ -178,31 +183,49 @@ export class VopsHostsService {
     return host;
   }
 
-  /** Connectivity + OS detection over one SSH session, caching the conn state. Best-effort. */
+  /** Connectivity + OS detection over one SSH session, caching the conn state. Best-effort.
+   * With no key pinned, `resolveUserKey` picks the only usable one — but refuses to choose
+   * among several, which would otherwise leave the host `no-key` and every later command blocked.
+   * Trying them settles it by evidence: the key that authenticates IS this host's key. */
   private async probe(host: VopsHost): Promise<HostProbe> {
-    const uk = this.keys.resolveUserKey(host.userKeyName);
-    const keyPath = uk?.hasPrivateKey ? uk.privateKeyPath : null;
-    const at = new Date().toISOString();
-    if (!keyPath) {
-      const { state, message } = deriveConnState({ reachable: false, hasKey: false, authorized: false, keyKind: 'none', host });
-      host.conn = { state, keyKind: 'none', reachable: false, hasKey: false, authorized: false, message, checkedAt: at };
-      return { reachable: false, message: 'no usable local key to probe with (added anyway)' };
+    const pinned = this.keys.resolveUserKey(host.userKeyName);
+    if (pinned?.hasPrivateKey) return (await this.probeWith(host, pinned)).probe;
+    if (!host.userKeyName) {
+      for (const candidate of this.keys.usableUserKeys()) {
+        const { probe, outcome } = await this.probeWith(host, candidate);
+        if (probe.reachable) {
+          host.userKeyName = candidate.name;
+          return probe;
+        }
+        // Only an auth refusal means "wrong key". A network failure refuses every key, so
+        // trying the rest would just pay the same timeout again.
+        if (!outcome.reachable) return probe;
+      }
     }
+    const { state, message } = deriveConnState({ reachable: false, hasKey: false, authorized: false, keyKind: 'none', host });
+    host.conn = { state, keyKind: 'none', reachable: false, hasKey: false, authorized: false, message, checkedAt: new Date().toISOString() };
+    return { reachable: false, message: `no local key opens this host — assign one with \`vops host key set ${host.name} <key>\` (added anyway)` };
+  }
+
+  /** One attempt with one key. Returns the raw outcome alongside the probe so the caller can
+   * tell "wrong key" (retry with another) from "host down" (retrying is pointless). */
+  private async probeWith(host: VopsHost, uk: VopsSshKey): Promise<{ probe: HostProbe; outcome: SshOutcome }> {
+    const at = new Date().toISOString();
     const res = await this.ssh.run(
-      { host, keyPath },
+      { host, keyPath: uk.privateKeyPath },
       'cat /etc/os-release 2>/dev/null || true',
       { timeoutMs: 12_000 },
     );
     const o = sshOutcome(res.code, res.stderr);
     const { state, message } = deriveConnState({ reachable: o.reachable, hasKey: true, authorized: o.authorized, keyKind: 'user', host, reason: o.reason });
     host.conn = {
-      state, keyKind: 'user', keyName: uk?.name, publicKey: uk?.publicKey,
+      state, keyKind: 'user', keyName: uk.name, publicKey: uk.publicKey,
       reachable: o.reachable, hasKey: true, authorized: o.authorized, message, checkedAt: at,
     };
     if (res.code !== 0) {
-      return { reachable: false, message: (res.stderr.trim() || 'unreachable') + ' (added anyway)' };
+      return { probe: { reachable: false, message: (res.stderr.trim() || 'unreachable') + ' (added anyway)' }, outcome: o };
     }
-    return { reachable: true, os: parseOsRelease(res.stdout) };
+    return { probe: { reachable: true, os: parseOsRelease(res.stdout) }, outcome: o };
   }
 
   private assertName(name: string): void {

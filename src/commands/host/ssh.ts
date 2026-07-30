@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { agentJsonFlag, emitEnvelope, failCommand } from '../../agent-api/agent-output';
 import { VopsHostShellService } from '../../host-ops/host-shell.service';
 
 export default class HostSsh extends Command {
@@ -16,7 +17,7 @@ export default class HostSsh extends Command {
 
   static readonly flags = {
     print: Flags.boolean({ description: 'Print the ssh command instead of connecting', default: false }),
-    json: Flags.boolean({ description: 'Output the resolved session as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -25,14 +26,13 @@ export default class HostSsh extends Command {
     try {
       access = (await getVopsApp()).get(VopsHostShellService).access(args.name);
     } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-      return;
+      failCommand(this, err, flags.json);
     } finally {
       await closeVopsApp();
     }
 
     if (flags.json) {
-      this.log(JSON.stringify(access, null, 2));
+      emitEnvelope(this, 'vops host ssh', access);
       return;
     }
     if (flags.print) {

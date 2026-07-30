@@ -1,6 +1,7 @@
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../../lib/nest';
+import { withService } from '../../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../../agent-api/agent-output';
 import { renderTable } from '../../../lib/output';
 import { VopsHostKeysService } from '../../../host-ops/vops-host-keys.service';
 
@@ -13,33 +14,26 @@ export default class HostKeyStatus extends Command {
     name: Args.string({ description: 'Host name', required: true }),
   };
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(HostKeyStatus);
-    try {
-      const res: any = await (await getVopsApp()).get(VopsHostKeysService).keyStatus(args.name);
-      if (flags.json) {
-        this.log(JSON.stringify(res, null, 2));
-        return;
-      }
-      this.log(chalk.dim(`${res.path} · ops tag ${res.opsTagPresent ? chalk.green('present') : chalk.dim('absent')}`));
-      this.log(
-        renderTable(
-          ['KEY', 'ROLE', 'AUTHORIZED'],
-          res.keys.map((k: any) => [
-            k.name,
-            k.role,
-            k.authorized ? chalk.green('yes') : chalk.dim('no'),
-          ]),
-        ),
-      );
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops host key status',
+      flags.json,
+      async () => ({
+        data: await withService(VopsHostKeysService, (svc) => svc.keyStatus(args.name)),
+      }),
+      (res) => {
+        this.log(chalk.dim(`${res.path} · ops tag ${res.opsTagPresent ? chalk.green('present') : chalk.dim('absent')}`));
+        this.log(
+          renderTable(
+            ['KEY', 'ROLE', 'AUTHORIZED'],
+            res.keys.map((k) => [k.name, k.role, k.authorized ? chalk.green('yes') : chalk.dim('no')]),
+          ),
+        );
+      },
+    );
   }
 }

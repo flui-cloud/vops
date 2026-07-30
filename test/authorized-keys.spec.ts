@@ -1,4 +1,5 @@
 import {
+  assessRevokeSafety,
   authorizesKeyData,
   buildOpsLine,
   classifyRotation,
@@ -57,6 +58,47 @@ describe('authorized-keys transforms', () => {
     // removing the ops line when it is the ONLY key → unsafe
     const unsafe = removeOpsLine(`${OPS_LINE}\n`, TAG).content;
     expect(hasOtherAuthorizedKey(unsafe, TAG)).toBe(false);
+  });
+
+  it('assessRevokeSafety judges the file as it would be AFTER the removal', () => {
+    const OPS_PUB = 'ssh-ed25519 AAAAOPSKEYOLD vops-ops';
+    const decide = (before: string, verified?: string) =>
+      assessRevokeSafety(before, removeOpsLine(before, TAG).content, TAG, verified);
+
+    // The lockout the guard exists for: the ops key IS this host's userKeyName, so the
+    // session that "verified" access is the very line about to be removed.
+    expect(decide(`${OPS_LINE}\n`, OPS_PUB)).toEqual({
+      safe: false,
+      reason: 'user-key-is-being-removed',
+    });
+    // Same, when the ops key is authorized twice under this profile's tag.
+    expect(decide(`${OPS_LINE}\n${OPS_LINE} \n`, OPS_PUB).safe).toBe(false);
+    // No user key verified at all, ops line is the only one → still a lockout.
+    expect(decide(`${OPS_LINE}\n`)).toEqual({ safe: false, reason: 'no-verified-user-key' });
+    expect(decide(`${OPS_LINE}\n`, null).safe).toBe(false);
+    // An unparseable public half proves nothing — it must not read as an access path.
+    expect(decide(`${OPS_LINE}\n`, 'ssh-ed25519').safe).toBe(false);
+
+    // Legitimate revokes must keep passing.
+    expect(decide(`${USER_KEY}\n${OPS_LINE}\n`, USER_KEY)).toEqual({
+      safe: true,
+      reason: 'user-key-remains',
+    });
+    // …including when the surviving user key carries options / odd whitespace, and when
+    // the verified key is not the one that survives.
+    const OPTIONED = `from="203.0.113.0/24",no-pty   ssh-ed25519 AAAAUSERKEYDATA  user@laptop`;
+    expect(decide(`${OPTIONED}\n${OPS_LINE}\n`, USER_KEY).safe).toBe(true);
+    expect(decide(`${USER_KEY}\n${OPS_LINE}\n`).reason).toBe('other-key-remains');
+    expect(decide(`  ${USER_KEY}  \n${OPS_LINE}\n`).safe).toBe(true);
+    // The ops key's own material also authorized by an untagged line: that line survives.
+    expect(decide(`ssh-ed25519 AAAAOPSKEYOLD spare\n${OPS_LINE}\n`, OPS_PUB)).toEqual({
+      safe: true,
+      reason: 'user-key-remains',
+    });
+    // A verified key absent from this file is authorized from a source we do not touch.
+    expect(decide(`${OPS_LINE}\n`, USER_KEY)).toEqual({ safe: true, reason: 'user-key-not-in-file' });
+    // Another profile's ops line counts as a remaining access path.
+    expect(decide(`x ssh-ed25519 AAAAOTHER vops-ops:ffff0000\n${OPS_LINE}\n`).safe).toBe(true);
   });
 
   it('authorizesKeyData matches by the base64 blob only', () => {
