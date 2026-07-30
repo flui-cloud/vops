@@ -29,7 +29,7 @@ export default class AppPreflight extends Command {
           warnings: pf.issues.map((message) => ({ code: 'HOST_NOT_READY', message, path: pf.host })),
           nextActions: pf.ready
             ? []
-            : [{ command: `vops app setup --host ${args.host}`, description: 'Install Podman 5 + Quadlet on this host' }],
+            : [{ command: `vops app setup ${args.host}`, description: 'Install Podman 5 + Quadlet on this host' }],
         };
       },
       (data) => {

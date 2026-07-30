@@ -1,9 +1,11 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { AppCredentialsView, VopsAppsService } from '../../apps/vops-apps.service';
 import { AppAccessPart } from '../../apps/app.model';
 import { AppAccessView } from '../../apps/app-deploy-support';
+import { installHostFlag } from '../../apps/deploy-flags';
 
 type Revealed = Record<string, string>;
 type Gate = NonNullable<AppCredentialsView['gate']>;
@@ -23,29 +25,34 @@ export default class AppCredentials extends Command {
   };
 
   static readonly flags = {
+    ...installHostFlag,
     show: Flags.boolean({ default: false, description: 'Read back and print secret values from the host' }),
-    json: Flags.boolean({ default: false, description: 'Output as JSON' }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AppCredentials);
-    try {
-      const svc = (await getVopsApp()).get(VopsAppsService);
-      const cred = await svc.credentials(args.name);
-
-      const revealed: Revealed = {};
-      if (flags.show) {
-        const secrets = [cred.access?.username?.secret, cred.access?.password?.secret, cred.gate?.secret].filter(Boolean);
-        for (const s of secrets) revealed[s] = (await svc.revealCredential(cred.app, s)).value;
-      }
-
-      if (flags.json) this.log(JSON.stringify(toJson(cred, revealed, flags.show), null, 2));
-      else this.render(cred, revealed, flags.show);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    let view: { cred: AppCredentialsView; revealed: Revealed } | undefined;
+    await runAgentCommand(
+      this,
+      'vops app credentials',
+      flags.json,
+      async () => {
+        view = await withService(VopsAppsService, async (svc) => {
+          const cred = await svc.credentials(args.name, flags.host);
+          const revealed: Revealed = {};
+          if (flags.show) {
+            const secrets = [cred.access?.username?.secret, cred.access?.password?.secret, cred.gate?.secret].filter(Boolean);
+            for (const s of secrets) revealed[s] = (await svc.revealCredential(cred.app, s, cred.host)).value;
+          }
+          return { cred, revealed };
+        });
+        return { data: toJson(view.cred, view.revealed, flags.show) };
+      },
+      () => {
+        if (view) this.render(view.cred, view.revealed, flags.show);
+      },
+    );
   }
 
   private render(cred: AppCredentialsView, revealed: Revealed, show: boolean): void {

@@ -44,41 +44,41 @@ export class AppsController {
   }
 
   @Get(':name')
-  show(@Param('name') name: string) {
-    return this.apps.show(name);
+  show(@Param('name') name: string, @Query('host') host?: string) {
+    return this.apps.show(name, host);
   }
 
   @Get(':name/status')
-  status(@Param('name') name: string) {
-    return this.apps.status(name);
+  status(@Param('name') name: string, @Query('host') host?: string) {
+    return this.apps.status(name, host);
   }
 
   @Post(':name/restart')
-  restart(@Param('name') name: string) {
-    return this.apps.restart(name);
+  restart(@Param('name') name: string, @Query('host') host?: string) {
+    return this.apps.restart(name, host);
   }
 
   @Get(':name/logs')
-  async logs(@Param('name') name: string, @Query('lines') lines?: string) {
-    return { logs: await this.apps.logs(name, lines ? Number.parseInt(lines, 10) : 200) };
+  async logs(@Param('name') name: string, @Query('lines') lines?: string, @Query('host') host?: string) {
+    return { logs: await this.apps.logs(name, lines ? Number.parseInt(lines, 10) : 200, host) };
   }
 
   /** Resolved container-shell session: the ssh command, never a session itself. */
   @Get(':name/shell')
-  shellAccess(@Param('name') name: string, @Query('component') component?: string) {
-    return this.shell.access(name, { component });
+  shellAccess(@Param('name') name: string, @Query('component') component?: string, @Query('host') host?: string) {
+    return this.shell.access(name, { component }, host);
   }
 
   /** Hand that session to the user's own terminal app (same machine — 127.0.0.1 only). */
   @Post(':name/shell')
-  shellLaunch(@Param('name') name: string, @Body() body: { component?: string }) {
-    return this.shell.launch(name, { component: body?.component });
+  shellLaunch(@Param('name') name: string, @Body() body: { component?: string; host?: string }) {
+    return this.shell.launch(name, { component: body?.component }, body?.host);
   }
 
   /** Login block for an install; with `?secret=` reads that one back from the host. */
   @Get(':name/credentials')
-  credentials(@Param('name') name: string, @Query('secret') secret?: string) {
-    return secret ? this.apps.revealCredential(name, secret) : this.apps.credentials(name);
+  credentials(@Param('name') name: string, @Query('secret') secret?: string, @Query('host') host?: string) {
+    return secret ? this.apps.revealCredential(name, secret, host) : this.apps.credentials(name, host);
   }
 
   @Post('preflight')
@@ -96,20 +96,20 @@ export class AppsController {
   }
 
   @Post(':name/expose')
-  expose(@Param('name') name: string, @Body() body: IngressBody & { yes?: boolean }) {
+  expose(@Param('name') name: string, @Body() body: IngressBody & { yes?: boolean; host?: string }) {
     if (body?.yes !== true) throw new BadRequestException('Confirmation required: pass yes=true.');
-    return this.apps.expose(name, { domain: body.domain, email: body.email, tls: body.tls, staging: body.staging, exposeDirect: body.exposeDirect, auth: body.auth });
+    return this.apps.expose(name, { domain: body.domain, email: body.email, tls: body.tls, staging: body.staging, exposeDirect: body.exposeDirect, auth: body.auth }, body.host);
   }
 
   @Post(':name/unexpose')
-  unexpose(@Param('name') name: string, @Body() body: { yes?: boolean }) {
+  unexpose(@Param('name') name: string, @Body() body: { yes?: boolean; host?: string }) {
     if (body?.yes !== true) throw new BadRequestException('Confirmation required: pass yes=true.');
-    return this.apps.unexpose(name);
+    return this.apps.unexpose(name, body.host);
   }
 
   @Post(':name/remove')
-  remove(@Param('name') name: string, @Body() body: { purge?: boolean; yes?: boolean }) {
+  remove(@Param('name') name: string, @Body() body: { purge?: boolean; yes?: boolean; host?: string }) {
     if (body?.yes !== true) throw new BadRequestException('Confirmation required: pass yes=true.');
-    return this.apps.remove(name, { purge: body.purge });
+    return this.apps.remove(name, { purge: body.purge }, body.host);
   }
 }

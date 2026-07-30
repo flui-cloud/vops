@@ -1,8 +1,13 @@
-import { AppComponentPlan, AppPlan, AppSecretPlan, PublishedPort } from './app.model';
+import { AppComponentPlan, AppHealthPlan, AppPlan, AppSecretPlan, PublishedPort } from './app.model';
+import { renderHealthUnits } from './health-timer';
 
 /** Pure Quadlet renderer (Podman 5+). Standalone apps → one `.container`; composed apps → a
  * `.pod` + one `.container` per component with `Pod=`, sharing the pod's netns (127.0.0.1, no
  * bridge/aardvark-dns/static-IP hack). Everything namespaced `vops-<app>-*` to avoid k3s collisions. */
+/** Seconds a component unit gets to signal readiness. Images are pulled BEFORE the units start
+ * (see `buildPullScript`), so this budget covers the start itself, not a download. */
+export const START_TIMEOUT_SEC = 300;
+
 export interface RenderContext {
   /** SELinux enabled on the host → add `:Z` relabeling to volume mounts. */
   selinux: boolean;
@@ -13,6 +18,8 @@ export interface RenderContext {
 export interface RenderedDeploy {
   /** Unit filename → content (all live in the app's unit dir). */
   units: Record<string, string>;
+  /** Timer + oneshot pairs that run the rendered `HealthCmd`, for `SYSTEM_UNIT_DIR`. */
+  healthUnits: Record<string, string>;
   /** Podman secrets to ensure on the host before daemon-reload. */
   secrets: AppSecretPlan[];
   /** Pod name, when the app is composed. */
@@ -21,14 +28,16 @@ export interface RenderedDeploy {
 
 export function renderDeploy(plan: AppPlan, ctx: RenderContext): RenderedDeploy {
   const units: Record<string, string> = {};
+  const healthUnits: Record<string, string> = {};
 
   if (plan.pod) units[`${plan.pod}.pod`] = renderPod(plan, ctx);
   for (const comp of plan.components) {
     for (const vol of comp.volumes) units[`${vol.volume}.volume`] = renderVolume(vol.volume);
     units[`${comp.container}.container`] = renderContainer(plan, comp, ctx);
+    if (probeCommand(comp)) Object.assign(healthUnits, renderHealthUnits(comp.container, comp.health));
   }
 
-  return { units, secrets: dedupeSecrets(plan), pod: plan.pod };
+  return { units, healthUnits, secrets: dedupeSecrets(plan), pod: plan.pod };
 }
 
 /** The pod owns the published ports (containers inside publish nothing individually). */
@@ -64,7 +73,7 @@ function renderContainer(plan: AppPlan, comp: AppComponentPlan, ctx: RenderConte
     ...podmanArgs(comp),
   ];
 
-  const service = ['Restart=always', 'RestartSec=5', 'TimeoutStartSec=300'];
+  const service = ['Restart=always', 'RestartSec=5', `TimeoutStartSec=${START_TIMEOUT_SEC}`];
   const install = ['WantedBy=default.target'];
 
   return section('Unit', unitLines)
@@ -99,18 +108,49 @@ function execLines(command: string[]): string[] {
   return [`Entrypoint=${entry}`, ...(quoted.length ? [`Exec=${quoted.join(' ')}`] : [])];
 }
 
-// Only render a container healthcheck when the manifest gives an explicit command
-// (exec type). For http/tcp the real deploy gate is the host-side smoke test —
-// a curl/wget HealthCmd would false-fail on images that ship neither tool.
+/** The probe podman would run, or '' when the component declares none vops can express. */
+export function probeCommand(comp: AppComponentPlan): string {
+  return comp.health ? healthCommand(comp.health, comp) : '';
+}
+
 function healthLines(comp: AppComponentPlan): string[] {
   const h = comp.health;
-  if (h?.type !== 'exec' || !h.command?.length) return [];
+  if (!h) return [];
+  const cmd = probeCommand(comp);
+  if (!cmd) return [];
   return [
-    `HealthCmd=${h.command.join(' ')}`,
+    `HealthCmd=${cmd}`,
+    ...(h.initialDelay ? [`HealthStartPeriod=${h.initialDelay}`] : []),
     ...(h.interval ? [`HealthInterval=${h.interval}`] : []),
     ...(h.timeout ? [`HealthTimeout=${h.timeout}`] : []),
     ...(h.retries ? [`HealthRetries=${h.retries}`] : []),
   ];
+}
+
+/** The probe runs INSIDE the container (podman `--health-cmd`, i.e. `sh -c`), so an http/tcp
+ * check has to use whatever the image happens to ship. Hence the `command -v` chain ending in
+ * `exit 0`: an image with no probe tool reports "no objection" instead of a permanent
+ * `(unhealthy)` — podman's health status is diagnostic here, the deploy gate is the host-side
+ * smoke test, so a false alarm costs more than a missing opinion. */
+function healthCommand(h: AppHealthPlan, comp: AppComponentPlan): string {
+  if (h.type === 'exec') return h.command?.length ? h.command.join(' ') : '';
+  const port = h.port ?? comp.ports.find((p) => p.expose)?.container ?? comp.ports[0]?.container;
+  if (!port) return '';
+  if (h.type === 'tcp') return `command -v nc >/dev/null && exec nc -z 127.0.0.1 ${port}; exit 0`;
+
+  const path = h.path?.startsWith('/') ? h.path : `/${h.path ?? ''}`;
+  const url = `http://127.0.0.1:${port}${path}`;
+  const headers = Object.entries(h.httpHeaders ?? {}).map(([n, v]) => headerToken(n, v));
+  const curl = ['curl', '-fsS', '-o', '/dev/null', '--max-time', '3', ...headers.map((t) => `-H ${t}`), url];
+  const wget = ['wget', '-q', '-O', '/dev/null', '-T', '3', ...headers.map((t) => `--header ${t}`), url];
+  return `command -v curl >/dev/null && exec ${curl.join(' ')}; command -v wget >/dev/null && exec ${wget.join(' ')}; exit 0`;
+}
+
+/** `Name:Value` needs no quoting and both curl and wget accept it; only a value that would
+ * break the line gets quoted (dropping a declared header is what this fix is about). */
+function headerToken(name: string, value: string): string {
+  const joined = `${name}:${value.trim()}`;
+  return /[\s'"]/.test(joined) ? `'${joined.replaceAll("'", '')}'` : joined;
 }
 
 function podmanArgs(comp: AppComponentPlan): string[] {

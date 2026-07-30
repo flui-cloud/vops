@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { SshExec, SshTarget } from '../lib/ssh-exec';
+import { SshExec } from '../lib/ssh-exec';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { VopsHostConnService } from '../host-ops/vops-host-conn.service';
@@ -11,22 +11,21 @@ import { VopsHost } from '../hosts/host.model';
 import { PODMAN_STATIC_VERSION, podmanStaticForArch, renderPodmanInstall } from './podman-bootstrap';
 import { AppEndpoint, AppIngressAuthState, AppInstallSummary, AppInstallV1, AppPlan } from './app.model';
 import { BindingOptions, BindingResolution, VopsIngressService } from './vops-ingress.service';
-import { GateDecision, IngressAuthIntent, resolveDeployGate } from './ingress-auth';
+import { IngressAuthIntent, IngressGate, resolveDeployGate } from './ingress-auth';
+import { EnsuredRecord } from './ingress-dns';
 import { getCatalogEntry } from './catalog';
 import { AppSource, AppSourceError, loadAppPlan } from './app-source';
 import { refreshAccessValues } from './spec-normalize';
-import { HostDeployPlan, planHostDeploy } from './app-plan';
-import { gatherDiag, runPostInstall, runSmoke } from './app-deploy-runner';
-import {
-  HostFacts,
-  SmokeOutcome,
-  UnitStatus,
-  parseDeployOutput,
-  parsePreflight,
-} from './app-parse';
+import { PortReservations, planHostDeploy } from './app-plan';
+import { deployTimeoutMs, pullImages, runPostInstall } from './app-deploy-runner';
+import { gateOrRollback, probeAppData } from './app-rollback';
+import { beginInstall, redeployBaseline, withLedgerRevert } from './install-ledger';
+import { UNPROBED_DATA } from './app-data-guard';
+import { HostFacts, UnitStatus, parsePreflight } from './app-parse';
 import {
   AppAccessView,
   accessView,
+  applyIngressScheme,
   applyOverrides,
   assertSecretsSatisfied,
   pruneUnsetOptional,
@@ -34,14 +33,8 @@ import {
   toInstall,
   toMaterial,
 } from './app-deploy-support';
-import {
-  appUnitDir,
-  buildDeployScript,
-  buildPreflightScript,
-  buildRemoveScript,
-  prereqServiceNames,
-} from './app-scripts';
-import { secretReuseWarnings, resolvePublishIntent, resolveRegistryLogin, planView } from './app-deploy-view';
+import { buildDeployScript, buildPreflightScript } from './app-scripts';
+import { secretReuseWarnings, internalExposureWarnings, resolvePublishIntent, resolveRegistryLogin, planView } from './app-deploy-view';
 import {
   AppOpsDeps,
   getInstall,
@@ -55,11 +48,7 @@ import {
 } from './app-lifecycle';
 
 const PREFLIGHT_TIMEOUT = 30_000;
-const DEPLOY_TIMEOUT = 900_000;
-const SMOKE_TIMEOUT = 300_000;
-const REMOVE_TIMEOUT = 240_000;
 const SETUP_TIMEOUT = 300_000;
-const SMOKE_RETRIES = 30;
 
 export type { AppSource } from './app-source';
 
@@ -103,7 +92,7 @@ export interface DeployPlanView {
   access?: AppAccessView;
   /** Ingress basic-auth gate that will front the app (preview). */
   gate?: { user: string };
-  /** Advisories (e.g. a firstVisit app that will be exposed without a gate). */
+  /** Advisories carried by the manifest or the binding (never a refusal — those throw). */
   warnings?: string[];
 }
 export interface DeployResult {
@@ -216,54 +205,77 @@ export class VopsAppsService {
     applyOverrides(plan, opts.set ?? {});
     // Validate required inputs + "at least one of" groups on the FULL plan, before
     // pruning drops the unset optional/group members (a fully-unset group must still
-    // be seen). Dry-run previews without enforcing, like the old placement.
+    // be seen). Dry-run previews without enforcing.
     if (!opts.dryRun) assertSecretsSatisfied(plan);
     pruneUnsetOptional(plan);
     refreshAccessValues(plan);
     const resolution = this.ingress.resolveBinding(plan, host, opts.ingress ?? {});
-    const prev = await this.store.getInstall(plan.name);
-    const { gate, warnings: gateWarnings } = this.resolveGate(plan, resolution, opts.ingress?.auth, prev);
+    // On the plan, not on the ingress block: a dry-run and a real deploy both carry `plan.warnings`
+    // into the envelope's `warnings[]` as VOPS_DEPLOY_ADVISORY, which is where an agent looks.
+    plan.warnings = [...(plan.warnings ?? []), ...internalExposureWarnings(plan, resolution?.binding)];
+    const prev = await this.store.getInstall(host.name, plan.name);
+    const gate = this.resolveGate(plan, resolution, opts.ingress?.auth, prev);
     const publish = resolvePublishIntent(opts.public, prev);
-    const hp = planHostDeploy(plan, pf.facts, host.address, resolution?.binding, publish.mode);
+    const hp = planHostDeploy(plan, pf.facts, host.address, resolution?.binding, publish.mode, await this.portReservations(host.name, plan.name, prev));
 
     // DNS is checked before the app is built: a hostname that is already taken must
     // stop the run while nothing has been touched, not after the container is up.
     if (resolution) await this.checkDns(host, resolution, opts);
 
-    if (opts.dryRun) return planView(plan, host, hp, resolution, gate, gateWarnings);
-
-    // Provision the ingress before the app so :80/:443 + the route target are ready.
-    if (resolution) await this.ensureIngressUp(host, opts.ingress);
-
-    const registry = resolveRegistryLogin(plan, opts.registry);
-
-    const generator = pf.facts.quadletGenerator;
-    const res = await this.ssh.runScript(
-      target,
-      buildDeployScript({
-        unitDir: hp.unitDir,
-        units: hp.units,
-        secrets: hp.secrets.map(toMaterial),
-        services: hp.services,
-        prereqServices: hp.prereqServices,
-        quadletGenerator: generator,
-        ...(registry ? { registry } : {}),
-      }),
-      { timeoutMs: DEPLOY_TIMEOUT, sudo: true },
-    );
-
-    const smoke = await this.gateOrRollback(target, plan, hp, prev, generator, res);
+    if (opts.dryRun) return planView(plan, host, hp, resolution, gate);
 
     const install = toInstall(plan, host, hp, prev);
     install.publish = publish.mode;
     if (gate) install.secrets = [...new Set([...install.secrets, gate.state.secret])];
+    // The record is claimed BEFORE the host is touched. An install that never returns — Ctrl-C on
+    // a slow pull, a dropped connection, a kill — never reaches the write below, and without a row
+    // the pod, units, volumes and secrets it created are invisible to `app list` and out of reach
+    // of `app remove`. A failure that rolls the host back takes the row with it.
+    await beginInstall(this.store, install);
+    const baseline = redeployBaseline(prev);
+    const registry = resolveRegistryLogin(plan, opts.registry);
+    const generator = pf.facts.quadletGenerator;
+
+    const { smoke, dns } = await withLedgerRevert(this.store, install, prev, async () => {
+      // The A record goes in FIRST: its propagation then runs while the ingress installs and the
+      // image is pulled, instead of being waited out in full once everything else is done.
+      const record = resolution ? await this.ingress.ensureDnsRecord(host, resolution.binding, opts.ingress?.forceDns) : null;
+      // Only a redeploy of a confirmed install cannot strand data: its rollback restores the
+      // previous units and touches no volume, so it never needs to know what was already there.
+      const preexisting = baseline ? UNPROBED_DATA : await probeAppData({ ssh: this.ssh, target }, hp);
+      const outcome = await this.withDnsCleanup(record, async () => {
+        // Provision the ingress before the app so :80/:443 + the route target are ready.
+        if (resolution) await this.ensureIngressUp(host, opts.ingress);
+        const pull = await pullImages({ ssh: this.ssh, target }, plan.components.map((c) => c.image), registry);
+        if ('error' in pull) throw new BadRequestException(pull.error);
+        const res = await this.ssh.runScript(
+          target,
+          buildDeployScript({
+            unitDir: hp.unitDir,
+            units: hp.units,
+            healthUnits: hp.healthUnits,
+            secrets: hp.secrets.map(toMaterial),
+            services: hp.services,
+            prereqServices: hp.prereqServices,
+            quadletGenerator: generator,
+            ...(registry ? { registry } : {}),
+          }),
+          { timeoutMs: deployTimeoutMs(hp.services.length), sudo: true },
+        );
+        return gateOrRollback({ ssh: this.ssh, target }, { plan, hp, prev: baseline, generator, preexisting }, res);
+      });
+      return { smoke: outcome, dns: record };
+    });
+
+    install.updatedAt = new Date().toISOString();
     await this.store.saveInstall(install);
     await this.store.appendAudit('app.deploy', { app: plan.name, host: host.name, appId: plan.appId, coexistence: hp.coexistence });
 
     let ingressOut: DeployResult['ingress'];
     if (resolution) {
-      const attach = await this.ingress.attachRoute(host, install, resolution.binding, resolution.staging, gate ?? undefined, opts.ingress?.forceDns);
+      const attach = await this.ingress.attachRoute(host, install, resolution.binding, resolution.staging, gate ?? undefined, dns);
       install.ingress = attach.state;
+      install.endpoints = applyIngressScheme(install.endpoints, attach.state);
       await this.store.saveInstall(install);
       ingressOut = { hostname: attach.state.hostname, tls: attach.state.tls, note: attach.note, warnings: resolution.warnings };
     }
@@ -278,7 +290,6 @@ export class VopsAppsService {
     );
     const warnings = [
       ...(plan.warnings ?? []),
-      ...gateWarnings,
       ...secretReuseWarnings(plan, opts.set, prev),
       ...(publish.warning ? [publish.warning] : []),
       ...post.warnings,
@@ -298,6 +309,31 @@ export class VopsAppsService {
     };
   }
 
+
+  /** Everything between writing the A record and the app answering: if any of it fails, the record
+   * this run created is removed, so a failed deploy leaves behind no name pointing at nothing. */
+  private async withDnsCleanup<T>(dns: EnsuredRecord | null, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (e) {
+      await this.ingress.discardDnsRecord(dns);
+      throw e;
+    }
+  }
+
+  /** Port ownership comes from the install ledger, not from who is listening right now: this app
+   * keeps the ports it already published, and every other install on the host keeps its own even
+   * while stopped — a stopped app answers no port scan, so the scan alone would give its port away. */
+  private async portReservations(hostName: string, appName: string, prev: AppInstallV1 | null): Promise<PortReservations> {
+    const siblings = await this.store.listInstalls(hostName);
+    return {
+      own: Object.fromEntries((prev?.components ?? []).map((c) => [c.name, c.published])),
+      others: siblings
+        .filter((i) => i.name !== appName && i.status !== 'removed')
+        .flatMap((i) => i.endpoints.map((e) => e.port)),
+    };
+  }
+
   /** A hostname that is already taken must stop the run before anything is touched,
    * not after the container is up. */
   private async checkDns(host: VopsHost, resolution: BindingResolution, opts: DeployOptions): Promise<void> {
@@ -309,17 +345,20 @@ export class VopsAppsService {
   }
 
   /** Resolve the ingress basic-auth gate for a deploy, surfacing `--auth basic` without a
-   * domain as a 400 rather than a plain error. A firstVisit app with no gate is returned
-   * as a warning (not an error) — the deploy proceeds. */
-  private resolveGate(plan: AppPlan, resolution: BindingResolution | null, intent: IngressAuthIntent | undefined, prev: AppInstallV1 | null): GateDecision {
+   * domain as a 400 rather than a plain error. A firstVisit app — or one whose manifest
+   * declares no login of its own — is refused an ungated domain; that refusal already
+   * carries its own code and exit status, so it travels untouched. */
+  private resolveGate(plan: AppPlan, resolution: BindingResolution | null, intent: IngressAuthIntent | undefined, prev: AppInstallV1 | null): IngressGate | null {
     try {
       return resolveDeployGate(plan.name, {
         hasIngress: !!resolution,
         accessMode: plan.access?.mode,
+        authMode: plan.authMode,
         intent,
         prevAuth: prev?.ingress?.auth,
       });
     } catch (e) {
+      if (e instanceof BadRequestException) throw e;
       throw new BadRequestException(e instanceof Error ? e.message : String(e));
     }
   }
@@ -339,116 +378,60 @@ export class VopsAppsService {
     return installs.map((i) => (this.hosts.get(i.host) ? i : { ...i, hostMissing: true }));
   }
 
-  async show(name: string): Promise<AppInstallV1> {
-    return getInstall(this.opsDeps(), name);
+  async show(name: string, host?: string): Promise<AppInstallV1> {
+    return getInstall(this.opsDeps(), name, host);
   }
 
   /** The resolved login block for a deployed install (URL + parts; no secret values),
    * plus the ingress basic-auth gate fronting it, if any. */
-  async credentials(name: string): Promise<AppCredentialsView> {
-    return credentialsView(this.opsDeps(), name);
+  async credentials(name: string, host?: string): Promise<AppCredentialsView> {
+    return credentialsView(this.opsDeps(), name, host);
   }
 
   /** Read back ONE access-referenced secret over SSH — gated to secrets the manifest's `access`
    * block exposes (never a DB/internal secret), only on explicit user action. */
-  async revealCredential(name: string, secret: string): Promise<{ secret: string; value: string }> {
-    return revealSecret(this.opsDeps(), name, secret);
+  async revealCredential(name: string, secret: string, host?: string): Promise<{ secret: string; value: string }> {
+    return revealSecret(this.opsDeps(), name, secret, host);
   }
 
-  async status(name: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
-    return statusView(this.opsDeps(), name);
+  async status(name: string, host?: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
+    return statusView(this.opsDeps(), name, host);
   }
 
   /** Restart the app's own containers (not prereq volumes/pod units) and report
    * back the same shape `status()` does — a quick self-recovery action, not a
    * redeploy: units/images/secrets are untouched. */
-  async restart(name: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
-    return restartApp(this.opsDeps(), name);
+  async restart(name: string, host?: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
+    return restartApp(this.opsDeps(), name, host);
   }
 
-  async logs(name: string, lines = 200): Promise<string> {
-    return logsView(this.opsDeps(), name, lines);
+  async logs(name: string, lines = 200, host?: string): Promise<string> {
+    return logsView(this.opsDeps(), name, lines, host);
   }
 
-  async remove(name: string, opts: { purge?: boolean; dryRun?: boolean } = {}): Promise<{ removed: boolean; purge: boolean; host: string; orphaned?: boolean }> {
-    return removeApp(this.opsDeps(), name, opts);
+  async remove(name: string, opts: { purge?: boolean; dryRun?: boolean } = {}, host?: string): Promise<{ removed: boolean; purge: boolean; host: string; orphaned?: boolean }> {
+    return removeApp(this.opsDeps(), name, opts, host);
   }
 
   /** Attach an already-deployed catalog app to ingress (redeploys it with a domain). */
-  async expose(name: string, opts: IngressDeployOptions): Promise<DeployPlanView | DeployResult> {
-    const install = await this.show(name);
+  async expose(name: string, opts: IngressDeployOptions, host?: string): Promise<DeployPlanView | DeployResult> {
+    const install = await this.show(name, host);
     if (!getCatalogEntry(install.appId)) {
       throw new BadRequestException(`'${name}' was not deployed from the catalog — re-run \`vops app deploy -f <flui.yaml> --host ${install.host} --domain <host> --yes\` to expose it.`);
     }
-    if (!opts.domain) throw new BadRequestException('Pass --domain <host> (or --domain auto for an sslip.io demo host).');
-    return this.deploy({ catalog: install.appId }, install.host, { name: install.name, ingress: opts });
+    // An app that was already exposed carries its hostname: asking for it again is a chance to
+    // mistype a name that is already published in DNS, and it makes the retry this command's own
+    // failure notes suggest impossible to run as written.
+    const domain = opts.domain ?? install.ingress?.hostname;
+    if (!domain) throw new BadRequestException('Pass --domain <host> (or --domain auto for an sslip.io demo host).');
+    return this.deploy({ catalog: install.appId }, install.host, { name: install.name, ingress: { ...opts, domain } });
   }
 
   /** Detach from ingress: drop the route + A-record. A `--public` install rebinds its
    * routed port to 0.0.0.0; a default (loopback) install stays on 127.0.0.1 so detaching
    * a domain never silently re-exposes the app to the internet. */
-  async unexpose(name: string): Promise<{ app: string; host: string; endpoints: AppEndpoint[] }> {
-    return unexposeApp(this.opsDeps(), name);
-  }
-
-  /** Units up + smoke green, or roll back. Both failures leave the host as it was. */
-  private async gateOrRollback(
-    target: SshTarget,
-    plan: AppPlan,
-    hp: HostDeployPlan,
-    prev: AppInstallV1 | null,
-    generator: string,
-    res: { stdout: string; stderr: string },
-  ): Promise<SmokeOutcome> {
-    const outcome = parseDeployOutput(res.stdout, hp.services);
-    if (!outcome.ok) {
-      await this.rollback(target, plan, hp, prev, generator);
-      throw new BadRequestException(`Deploy failed (${outcome.error}). ${res.stderr.trim()} Rolled back.`.trim());
-    }
-    const smoke = await runSmoke({ ssh: this.ssh, target }, plan, hp);
-    if (smoke.ok) return smoke;
-
-    const diag = await gatherDiag({ ssh: this.ssh, target }, plan);
-    // Escape hatch for debugging a failing deploy: leave it running to inspect.
-    if (process.env.VOPS_APP_NO_ROLLBACK === '1') {
-      throw new BadRequestException(`Smoke test failed (${smoke.detail}). Left running (VOPS_APP_NO_ROLLBACK).\n${diag}`);
-    }
-    await this.rollback(target, plan, hp, prev, generator);
-    throw new BadRequestException(`Smoke test failed (${smoke.detail}). Rolled back.\n${diag}`);
-  }
-
-  private async rollback(
-    target: SshTarget,
-    plan: AppPlan,
-    hp: HostDeployPlan,
-    prev: AppInstallV1 | null,
-    generator: string,
-  ): Promise<void> {
-    if (prev) {
-      // Redeploy failed → restore the previous units (pinned tags restore the image too).
-      const restore = buildDeployScript({
-        unitDir: appUnitDir(prev.name),
-        units: prev.units,
-        secrets: [],
-        services: prev.components.map((c) => `${c.container}.service`),
-        prereqServices: prereqServiceNames(prev.pod, prev.volumes),
-        quadletGenerator: generator,
-      });
-      await this.ssh.runScript(target, restore, { timeoutMs: DEPLOY_TIMEOUT, sudo: true });
-      return;
-    }
-    // First install failed → tear down units/containers but KEEP volumes + secrets.
-    const rm = buildRemoveScript({
-      unitDir: hp.unitDir,
-      services: hp.services,
-      prereqServices: hp.prereqServices,
-      containers: plan.components.map((c) => c.container),
-      pod: hp.pod,
-      secrets: hp.secrets.map((s) => s.name),
-      volumes: [],
-      purge: false,
-    });
-    await this.ssh.runScript(target, rm, { timeoutMs: REMOVE_TIMEOUT, sudo: true });
+  async unexpose(name: string, host?: string): Promise<{ app: string; host: string; endpoints: AppEndpoint[] }> {
+    return unexposeApp(this.opsDeps(), name, host);
   }
 
 }

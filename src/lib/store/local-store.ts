@@ -5,8 +5,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { BenchResultV1, BenchRunSummary, benchSummary } from '../../bench/bench.model';
 import { AppInstallSummary, AppInstallV1, installSummary } from '../../apps/app.model';
+import { createInstallsTable, migrateInstallKey } from './install-migration';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /**
  * Local operational store backed by a standard SQLite file (via libSQL) at
@@ -75,20 +76,35 @@ export class LocalStore implements OnModuleDestroy {
     return res.rows.map((row) => benchSummary(JSON.parse(String(row.result)) as BenchResultV1));
   }
 
-  /** Deployed app installs (whole record as JSON; secret VALUES never stored). */
+  /** Deployed app installs (whole record as JSON; secret VALUES never stored). Keyed by
+   * `(host, name)`: the same app on two hosts is two installs. */
   async saveInstall(i: AppInstallV1): Promise<void> {
     const db = await this.db();
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO app_installs (name, host, app_id, status, updated_at, record) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [i.name, i.host, i.appId, i.status, i.updatedAt, JSON.stringify(i)],
+      sql: 'INSERT OR REPLACE INTO app_installs (host, name, app_id, status, updated_at, record) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [i.host, i.name, i.appId, i.status, i.updatedAt, JSON.stringify(i)],
     });
   }
 
-  async getInstall(name: string): Promise<AppInstallV1 | null> {
+  async getInstall(host: string, name: string): Promise<AppInstallV1 | null> {
     const db = await this.db();
-    const res = await db.execute({ sql: 'SELECT record FROM app_installs WHERE name = ?', args: [name] });
+    const res = await db.execute({
+      sql: 'SELECT record FROM app_installs WHERE host = ? AND name = ?',
+      args: [host, name],
+    });
     const row = res.rows[0];
     return row ? (JSON.parse(String(row.record)) as AppInstallV1) : null;
+  }
+
+  /** Every host carrying an install under this name — one match is unambiguous, more than
+   * one has to be resolved by the caller rather than guessed at. */
+  async findInstalls(name: string): Promise<AppInstallV1[]> {
+    const db = await this.db();
+    const res = await db.execute({
+      sql: 'SELECT record FROM app_installs WHERE name = ? ORDER BY host',
+      args: [name],
+    });
+    return res.rows.map((row) => JSON.parse(String(row.record)) as AppInstallV1);
   }
 
   async listInstalls(host?: string): Promise<AppInstallSummary[]> {
@@ -99,9 +115,9 @@ export class LocalStore implements OnModuleDestroy {
     return res.rows.map((row) => installSummary(JSON.parse(String(row.record)) as AppInstallV1));
   }
 
-  async deleteInstall(name: string): Promise<void> {
+  async deleteInstall(host: string, name: string): Promise<void> {
     const db = await this.db();
-    await db.execute({ sql: 'DELETE FROM app_installs WHERE name = ?', args: [name] });
+    await db.execute({ sql: 'DELETE FROM app_installs WHERE host = ? AND name = ?', args: [host, name] });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -148,16 +164,8 @@ export class LocalStore implements OnModuleDestroy {
          result TEXT NOT NULL
        )`,
     );
-    await db.execute(
-      `CREATE TABLE IF NOT EXISTS app_installs (
-         name TEXT PRIMARY KEY,
-         host TEXT NOT NULL,
-         app_id TEXT NOT NULL,
-         status TEXT NOT NULL,
-         updated_at TEXT NOT NULL,
-         record TEXT NOT NULL
-       )`,
-    );
+    await db.execute(createInstallsTable('app_installs'));
+    await migrateInstallKey(db);
     await db.execute(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   }
 }

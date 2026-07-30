@@ -162,6 +162,17 @@ export function flipBind(units: Record<string, string>, hostPorts: number[]): Re
   );
 }
 
+/** Endpoint URLs are rendered from the TLS the deploy *asked* for; once the route is attached,
+ * `ingress.tls` is what the host actually serves. Advertising `https://` on an app left on plain
+ * HTTP hands every reader — user, agent, dashboard — a URL that does not answer. */
+export function applyIngressScheme(endpoints: AppEndpoint[], ingress: AppIngressState): AppEndpoint[] {
+  const served = ingress.tls ? 'https://' : 'http://';
+  const stale = ingress.tls ? 'http://' : 'https://';
+  return endpoints.map((e) =>
+    e.reach === 'ingress' && e.url.startsWith(stale) ? { ...e, url: served + e.url.slice(stale.length) } : e,
+  );
+}
+
 /** After unexpose the routed endpoints revert from `https://<fqdn>` to direct URLs —
  * on the public address when the install is `--public`, else the honest loopback URL. */
 export function rebindEndpoints(install: AppInstallV1, hostAddress: string, reach: 'public' | 'loopback'): AppEndpoint[] {

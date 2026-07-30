@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseYaml } from '@flui-cloud/spec';
-import { inputRequired } from './spec-normalize';
+import { checkInstallable, inputRequired } from './spec-normalize';
 import type {
   CatalogAccess,
   CatalogAccessValue,
@@ -73,6 +73,11 @@ export interface CatalogEntry {
   access?: CatalogAccessSummary;
   /** Rough expected install time, seconds — paces the optimistic progress bar. */
   estSeconds: number;
+  /** False when `app install` would refuse this entry at plan time (an undeclared dependency or
+   * building-block link vops cannot wire yet) — so the listing marks it instead of offering it. */
+  installable: boolean;
+  /** Why it cannot be installed as-is (present when `installable` is false). */
+  unavailableReason?: string;
   manifest: CatalogAppManifest;
 }
 
@@ -106,6 +111,7 @@ function toEntry(doc: unknown): CatalogEntry | null {
   const m = doc as CatalogAppManifest;
   if (m?.kind !== 'CatalogApp' || !m.metadata?.id) return null;
   const md = m.metadata;
+  const check = checkInstallable(m);
   return {
     id: md.id,
     name: md.name,
@@ -124,6 +130,8 @@ function toEntry(doc: unknown): CatalogEntry | null {
     inputs: extractInputs(m),
     access: accessSummary(m),
     estSeconds: estimateInstallSeconds(m),
+    installable: check.ok,
+    ...(check.reason ? { unavailableReason: check.reason } : {}),
     manifest: m,
   };
 }

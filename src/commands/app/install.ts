@@ -1,7 +1,9 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { VopsAppsService } from '../../apps/vops-apps.service';
-import { ingressDeployFlags, runDeploy } from '../../apps/cli-deploy';
+import { renderDeploy } from '../../apps/cli-deploy';
+import { deployBody, ingressDeployFlags } from '../../apps/deploy-flags';
 
 export default class AppInstall extends Command {
   static readonly description =
@@ -25,18 +27,17 @@ export default class AppInstall extends Command {
     ...ingressDeployFlags,
     yes: Flags.boolean({ default: false, description: 'Actually deploy (otherwise plan only)' }),
     'dry-run': Flags.boolean({ default: false, description: 'Render the plan and stop' }),
-    json: Flags.boolean({ default: false, description: 'Output as JSON' }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AppInstall);
-    try {
-      const svc = (await getVopsApp()).get(VopsAppsService);
-      await runDeploy(this, svc, { catalog: args.id }, flags);
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops app install',
+      flags.json,
+      () => withService(VopsAppsService, (svc) => deployBody(svc, { catalog: args.id }, flags)),
+      (view) => renderDeploy(this, view),
+    );
   }
 }

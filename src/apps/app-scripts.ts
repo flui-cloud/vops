@@ -1,5 +1,8 @@
 /** Pure shell-script builders for `vops app`, run over `ssh + sudo -n bash -s` (rootful);
  * every file/command here is exactly what `--dry-run` prints and `remove` tears down. */
+import { SYSTEM_UNIT_DIR, healthServiceUnit, healthTimerUnit } from './health-timer';
+import { START_TIMEOUT_SEC } from './quadlet-render';
+
 export const APPS_UNIT_ROOT = '/etc/containers/systemd/vops';
 
 export function appUnitDir(app: string): string {
@@ -41,6 +44,8 @@ export interface SecretMaterial {
 export interface DeployScriptInput {
   unitDir: string;
   units: Record<string, string>;
+  /** Health timer/service pairs for `SYSTEM_UNIT_DIR` — see `renderHealthUnits`. */
+  healthUnits?: Record<string, string>;
   secrets: SecretMaterial[];
   /** Container service names in dependency order (start order). */
   services: string[];
@@ -74,12 +79,18 @@ export function buildDeployScript(input: DeployScriptInput): string {
   const files = Object.entries(input.units).map(([name, content], i) =>
     heredoc(`${input.unitDir}/${name}`, content, i),
   );
+  const health = Object.entries(input.healthUnits ?? {});
+  const healthFiles = health.map(([name, content], i) =>
+    heredoc(`${SYSTEM_UNIT_DIR}/${name}`, content, files.length + i),
+  );
+  const timers = health.map(([name]) => name).filter((n) => n.endsWith('.timer'));
   const gen = shq(input.quadletGenerator);
   const dir = shq(input.unitDir);
   return [
     'set -e',
     `mkdir -p ${dir}`,
     ...files,
+    ...healthFiles,
     ...registryLogin(input.registry),
     'set +e',
     ...input.secrets.map(ensureSecret),
@@ -95,15 +106,78 @@ export function buildDeployScript(input: DeployScriptInput): string {
     // `podman network/volume create` is idempotent (--ignore), so re-running is safe.
     ...input.prereqServices.map((p) => `systemctl reset-failed ${shq(p)} 2>/dev/null; systemctl restart ${shq(p)} >/dev/null 2>&1`),
     "echo '@@started'",
+    // `restart` (not `start`) here too, and this is the one that bites: `start` on an
+    // already-active unit is a no-op, so a redeploy would keep the OLD container — old
+    // image, old published ports — while `is-active` still reported success.
+    // `reset-failed` first clears the start-limit block Restart=always can trip.
     ...input.services.map(
-      (s) => `systemctl start ${shq(s)} >/dev/null 2>&1; echo "${s}=$(systemctl is-active ${shq(s)} 2>/dev/null)"`,
+      (s) =>
+        `systemctl reset-failed ${shq(s)} 2>/dev/null; systemctl restart ${shq(s)} >/dev/null 2>&1; ` +
+        `echo "${s}=$(systemctl is-active ${shq(s)} 2>/dev/null)"`,
     ),
+    // podman-static schedules no health timer of its own, so vops's own pair is enabled here —
+    // after the container unit exists, or `enable` has nothing to hang the .wants symlink on.
+    ...timers.map((t) => `systemctl enable ${shq(t)} >/dev/null 2>&1; systemctl restart ${shq(t)} >/dev/null 2>&1`),
     "echo '@@diag'",
-    ...[...input.prereqServices, ...input.services].map(
-      (s) => `if [ "$(systemctl is-active ${shq(s)} 2>/dev/null)" != active ]; then echo "### ${s}"; journalctl -u ${shq(s)} -n 12 --no-pager 2>&1 | tail -12; fi`,
-    ),
+    ...[...input.prereqServices, ...input.services].map((s) => diagLine(s)),
     "echo '@@ok'",
   ].join('\n');
+}
+
+/** Wall-clock ceiling for the whole pull phase, so a stalled registry cannot hang a deploy
+ * indefinitely: `PULL_SECONDS_PER_IMAGE` each, capped — the script always returns inside it. */
+export const PULL_SECONDS_PER_IMAGE = 600;
+export const PULL_SECONDS_MAX = 2400;
+
+export function pullBudgetSeconds(imageCount: number): number {
+  return Math.min(PULL_SECONDS_MAX, PULL_SECONDS_PER_IMAGE * Math.max(1, imageCount));
+}
+
+export interface PullScriptInput {
+  images: string[];
+  registry?: RegistryLogin;
+}
+
+/** Pull every image BEFORE any unit starts. A Quadlet unit's `ExecStart` is `podman run`, which
+ * pulls on the spot — and that download is charged to `TimeoutStartSec`. On the first install of
+ * an image-heavy app systemd SIGTERMs the pull the moment the budget expires, `Restart=always`
+ * starts it again from zero, and the unit can never come up: a deploy that loops until the SSH
+ * call gives up, with "services not active" as its only explanation. Pulling here takes the
+ * download out of the start budget entirely and names the image when the download is what failed.
+ * `image exists` first keeps the existing `--pull=missing` semantics (no surprise upgrades) and
+ * lets a locally-built image deploy without a registry to pull it from. */
+export function buildPullScript(input: PullScriptInput): string {
+  const images = [...new Set(input.images)];
+  return [
+    'set +e',
+    ...registryLogin(input.registry),
+    `deadline=$(( $(date +%s) + ${pullBudgetSeconds(images.length)} ))`,
+    'TMO=; command -v timeout >/dev/null 2>&1 && TMO=1',
+    'vops_pull() {',
+    '  if podman image exists "$1"; then echo "local $1"; return; fi',
+    '  left=$(( deadline - $(date +%s) ))',
+    '  [ "$left" -lt 5 ] && left=5',
+    '  if [ -n "$TMO" ]; then timeout "$left" podman pull -q "$1" >/dev/null 2>&1;',
+    '  else podman pull -q "$1" >/dev/null 2>&1; fi',
+    '  if [ $? -eq 0 ]; then echo "pulled $1"; else echo "failed $1"; fi',
+    '}',
+    "echo '@@pull'",
+    ...images.map((img) => `vops_pull ${shq(img)}`),
+    "echo '@@done'",
+  ].join('\n');
+}
+
+/** Diagnostics for a unit that did not come up. `Result=timeout` is called out by name: it is the
+ * one failure whose journal says nothing useful ("start operation timed out") and whose cause —
+ * the unit never signalled readiness inside its budget — is otherwise invisible. */
+function diagLine(s: string): string {
+  const q = shq(s);
+  return (
+    `if [ "$(systemctl is-active ${q} 2>/dev/null)" != active ]; then ` +
+    `R=$(systemctl show -p Result --value ${q} 2>/dev/null); echo "### ${s} (result=\${R:-unknown})"; ` +
+    `[ "$R" = timeout ] && echo "${s} never signalled readiness within TimeoutStartSec=${START_TIMEOUT_SEC}s"; ` +
+    `journalctl -u ${q} -n 12 --no-pager 2>&1 | tail -12; fi`
+  );
 }
 
 /** `podman login` via stdin — the token never reaches the process list or a file
@@ -150,11 +224,20 @@ function boundedStop(s: string): string {
   );
 }
 
+function healthTeardown(container: string): string[] {
+  const timer = healthTimerUnit(container);
+  const paths = [timer, healthServiceUnit(container)].map((u) => shq(SYSTEM_UNIT_DIR + '/' + u));
+  return [`systemctl disable --now ${shq(timer)} >/dev/null 2>&1`, `rm -f ${paths.join(' ')}`];
+}
+
 export function buildRemoveScript(i: RemoveScriptInput): string {
   const stopAll = [...[...i.services].reverse(), ...i.prereqServices];
   const lines = [
     'set +e',
-    ...stopAll.map(boundedStop),
+    ...stopAll.map((s) => boundedStop(s)),
+    // Attempted for every container, health probe or not: `disable` is a no-op on a unit that
+    // was never written, and leaving a timer behind would keep probing a container that is gone.
+    ...i.containers.flatMap((c) => healthTeardown(c)),
     `rm -rf ${shq(i.unitDir)}`,
     'systemctl daemon-reload',
     ...(i.pod ? [`podman pod rm -f ${shq(i.pod)} >/dev/null 2>&1`] : []),
@@ -194,35 +277,41 @@ export function buildRestartScript(app: string, services: string[]): string {
   ].join('\n');
 }
 
-// `sleep` is a FIXED per-iteration wait: on connection-refused curl returns
-// instantly, so retries alone would not give a slow-booting app real wall-clock
-// time (first-run image copy + DB init can take 1–2 min).
-export function buildSmokeHttpScript(port: number, path: string, expect: number, retries: number, sleepS = 5): string {
+export function buildSmokeHttpScript(port: number, path: string, expect: number, budgetSeconds: number, sleepS = 5): string {
   const p = path.startsWith('/') ? path : `/${path}`;
   return [
     'set +e',
     "echo '@@http'",
-    `for i in $(seq 1 ${Math.max(1, retries)}); do`,
+    ...deadlineLoopHead(budgetSeconds),
     `  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:${port}${p} 2>/dev/null)`,
     // Healthy = the manifest's expected status OR any 2xx/3xx (a fresh app that
     // redirects to its installer is up); 000/4xx/5xx keep retrying then report.
     `  case "$code" in ${expect}|2??|3??) echo "$code"; exit 0;; esac`,
-    `  sleep ${sleepS}`,
-    'done',
+    ...deadlineLoopTail(sleepS),
     'echo "${code:-000}"',
   ].join('\n');
 }
 
-export function buildSmokeTcpScript(port: number, retries: number, sleepS = 5): string {
+export function buildSmokeTcpScript(port: number, budgetSeconds: number, sleepS = 5): string {
   return [
     'set +e',
     "echo '@@tcp'",
-    `for i in $(seq 1 ${Math.max(1, retries)}); do`,
+    ...deadlineLoopHead(budgetSeconds),
     `  if timeout 3 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null; then echo open; exit 0; fi`,
-    `  sleep ${sleepS}`,
-    'done',
+    ...deadlineLoopTail(sleepS),
     'echo closed',
   ].join('\n');
+}
+
+/** The first-start budget is WALL CLOCK, not an attempt count: `curl` returns instantly on
+ * connection-refused but takes seconds once the app is listening, so N attempts bought an
+ * unknown amount of time — and it is time (`smokeTest.timeoutSeconds`) that a manifest declares. */
+function deadlineLoopHead(budgetSeconds: number): string[] {
+  return [`deadline=$(( $(date +%s) + ${Math.max(1, Math.round(budgetSeconds))} ))`, 'while :; do'];
+}
+
+function deadlineLoopTail(sleepS: number): string[] {
+  return [`  [ "$(date +%s)" -ge "$deadline" ] && break`, `  sleep ${sleepS}`, 'done'];
 }
 
 // `podman logs` (not journalctl): driver-agnostic, so it works with the systemd-less

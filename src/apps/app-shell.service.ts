@@ -10,6 +10,7 @@ import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { resolveSshTarget } from '../host-ops/ssh-target';
 import { ShellComponent, buildExecCommand, pickShellComponent, shellComponents } from './app-shell';
+import { resolveInstall } from './app-resolve';
 import { launcherFileName, renderLauncherScript, resolveTerminal, terminalCandidates } from './terminal-launch';
 
 export interface ShellOptions {
@@ -49,9 +50,8 @@ export class VopsAppShellService {
     private readonly store: LocalStore,
   ) {}
 
-  async access(name: string, opts: ShellOptions = {}): Promise<ShellAccess> {
-    const install = await this.store.getInstall(name);
-    if (!install) throw new BadRequestException(`No app install named '${name}'.`);
+  async access(name: string, opts: ShellOptions = {}, onHost?: string): Promise<ShellAccess> {
+    const install = await resolveInstall(this.store, name, onHost);
     const host = this.hosts.show(install.host);
     const target = resolveSshTarget(host, this.keys);
 
@@ -78,14 +78,17 @@ export class VopsAppShellService {
       components: shellComponents(install),
       argv,
       command: displaySshCommand(argv),
-      cli: `vops app shell ${install.name}` + (comp.primary ? '' : ` --component ${comp.name}`),
+      cli:
+        `vops app shell ${install.name}` +
+        (onHost ? ` --host ${install.host}` : '') +
+        (comp.primary ? '' : ` --component ${comp.name}`),
       interactive,
     };
   }
 
   /** Open the user's terminal app on the resolved session (UI "Open shell" button). */
-  async launch(name: string, opts: ShellOptions = {}): Promise<ShellLaunch> {
-    const access = await this.access(name, { ...opts, command: undefined });
+  async launch(name: string, opts: ShellOptions = {}, onHost?: string): Promise<ShellLaunch> {
+    const access = await this.access(name, { ...opts, command: undefined }, onHost);
     const script = path.join(os.tmpdir(), launcherFileName(process.platform, crypto.randomBytes(6).toString('hex')));
     fs.writeFileSync(script, renderLauncherScript(access.argv, `${access.container} · ${access.host}`), { mode: 0o700 });
 

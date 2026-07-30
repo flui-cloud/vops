@@ -2,7 +2,9 @@ import { spawnSync } from 'node:child_process';
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { agentJsonFlag, emitEnvelope, failCommand } from '../../agent-api/agent-output';
 import { VopsAppShellService, ShellAccess } from '../../apps/app-shell.service';
+import { installHostFlag } from '../../apps/deploy-flags';
 
 export default class AppShell extends Command {
   static readonly description =
@@ -23,10 +25,11 @@ export default class AppShell extends Command {
   };
 
   static readonly flags = {
+    ...installHostFlag,
     component: Flags.string({ char: 'c', description: 'Component to enter (default: the app’s primary)' }),
     shell: Flags.string({ description: 'Shell binary inside the container (default: bash, else sh)' }),
     print: Flags.boolean({ description: 'Print the ssh command instead of connecting', default: false }),
-    json: Flags.boolean({ description: 'Output the resolved session as JSON', default: false }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
@@ -37,16 +40,15 @@ export default class AppShell extends Command {
     try {
       access = await (await getVopsApp())
         .get(VopsAppShellService)
-        .access(args.name, { component: flags.component, shell: flags.shell, command });
+        .access(args.name, { component: flags.component, shell: flags.shell, command }, flags.host);
     } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-      return;
+      failCommand(this, err, flags.json);
     } finally {
       await closeVopsApp();
     }
 
     if (flags.json) {
-      this.log(JSON.stringify(access, null, 2));
+      emitEnvelope(this, 'vops app shell', access);
       return;
     }
     if (flags.print) {

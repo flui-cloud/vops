@@ -19,6 +19,10 @@ export interface CatalogListing {
   alternativeTo: string[];
   /** Values the installer will ask for (names and labels only — never values). */
   inputs: Array<{ name: string; label: string; required: boolean; sensitive: boolean }>;
+  /** False when `app install` would refuse it at plan time — listed, not offered. */
+  installable: boolean;
+  /** Why it cannot be installed as-is (present when `installable` is false). */
+  unavailableReason?: string;
 }
 
 export function kindOf(entry: CatalogEntry): CatalogKind {
@@ -50,5 +54,7 @@ function toListing(e: CatalogEntry): CatalogListing {
     tags: e.tags,
     alternativeTo: e.alternativeTo,
     inputs: e.inputs.map((i) => ({ name: i.name, label: i.label, required: i.required, sensitive: i.sensitive })),
+    installable: e.installable,
+    ...(e.unavailableReason ? { unavailableReason: e.unavailableReason } : {}),
   };
 }

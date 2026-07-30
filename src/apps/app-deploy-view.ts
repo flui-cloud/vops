@@ -44,6 +44,21 @@ export function resolvePublishIntent(explicit: boolean | undefined, prev: AppIns
   return { mode: 'loopback' };
 }
 
+/** A manifest declaring `spec.exposure: internal` asks to stay host-local, and vops does not enforce
+ * it — the operator's `--domain` wins (refusing would stop installs that work today, a product call
+ * nobody has taken). What it must not do is stay silent: say the declaration exists, that it is not
+ * being honoured, and what that means. Structurally silent without a domain — no ingress, no warning. */
+export function internalExposureWarnings(plan: AppPlan, ingress?: { hostname: string }): string[] {
+  if (!ingress || plan.exposure !== 'internal') return [];
+  return [
+    `${plan.name}: its manifest declares \`exposure: internal\` — the app is meant to be reached only from ` +
+      `the host. vops does NOT enforce that: ${ingress.hostname} is being published anyway, so the app answers ` +
+      'from the internet and its hostname appears in public certificate transparency logs. The declaration is ' +
+      `advisory. To keep it host-local, deploy without --domain and reach it over \`ssh -L\`, or run ` +
+      `\`vops app unexpose ${plan.name}\` to drop the route.`,
+  ];
+}
+
 /** Turn `--registry-user/--registry-token` into a `podman login` for the registry the primary
  * image lives on; without both halves the pull stays anonymous, correct for a public image. */
 export function resolveRegistryLogin(plan: AppPlan, creds?: { user: string; token: string }): RegistryLogin | undefined {
@@ -63,8 +78,8 @@ export function ingressUrl(ingress?: { hostname: string; tls: boolean }): string
   return `${ingress.tls ? 'https' : 'http'}://${ingress.hostname}`;
 }
 
-export function planView(plan: AppPlan, host: VopsHost, hp: HostDeployPlan, resolution: BindingResolution | null, gate: IngressGate | null, gateWarnings: string[]): DeployPlanView {
-  const warnings = [...(plan.warnings ?? []), ...gateWarnings];
+export function planView(plan: AppPlan, host: VopsHost, hp: HostDeployPlan, resolution: BindingResolution | null, gate: IngressGate | null): DeployPlanView {
+  const warnings = plan.warnings ?? [];
   const access = accessView(
     plan.access,
     hp.endpoints,

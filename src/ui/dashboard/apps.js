@@ -65,6 +65,13 @@ function dashboardApps() {
     },
     appInstalls(id) { return this.apps.installs.filter((i) => i.appId === id); },
     appOrphanCount() { return this.apps.installs.filter((i) => i.hostMissing).length; },
+    // Installs are keyed by (host, name): the same name can live on two hosts, so every
+    // per-install call carries its host — without it the API refuses to guess.
+    appUrl(name, host, path, q) {
+      const query = [host ? 'host=' + encodeURIComponent(host) : '', q || ''].filter(Boolean).join('&');
+      return '/apps/' + encodeURIComponent(name) + path + (query ? '?' + query : '');
+    },
+    appKey(i) { return i.host + '/' + i.name; },
 
     /** Six-word-per-step summary; the detail lives in the skill the agent reads, so it isn't
      * duplicated here. `stop` marks the one moment a human is required. */
@@ -233,11 +240,11 @@ function dashboardApps() {
       return part.value || '';
     },
     /** Read back a generated/user-set secret on explicit user action (never auto-shown). */
-    async appReveal(name, secret) {
+    async appReveal(name, host, secret) {
       if (!secret) return;
       this.apps.err = '';
       try {
-        const r = await this.api('/apps/' + encodeURIComponent(name) + '/credentials?secret=' + encodeURIComponent(secret));
+        const r = await this.api(this.appUrl(name, host, '/credentials', 'secret=' + encodeURIComponent(secret)));
         this.apps.revealed = { ...this.apps.revealed, [secret]: r.value };
       } catch (e) { this.apps.err = e.message; }
     },
@@ -275,13 +282,12 @@ function dashboardApps() {
     // ── Manage an install (in-page confirm — never a native dialog) ────────
     // Browsers silently suppress repeated native confirm()/prompt() dialogs, so these actions
     // drive a real modal instead, with its own busy flag and in-place errors.
-    appAskRemove(name, orphaned) { this.apps.confirm = { kind: 'remove', name, orphaned: !!orphaned, purge: false, busy: false, err: '' }; },
-    appAskExpose(name) {
-      const install = this.apps.installs.find((i) => i.name === name);
-      this.apps.confirm = { kind: 'expose', name, email: '', busy: false, err: '' };
-      this.appPickerInit(install?.host || '', name, false);
+    appAskRemove(name, host, orphaned) { this.apps.confirm = { kind: 'remove', name, host, orphaned: !!orphaned, purge: false, busy: false, err: '' }; },
+    appAskExpose(name, host) {
+      this.apps.confirm = { kind: 'expose', name, host, email: '', busy: false, err: '' };
+      this.appPickerInit(host || '', name, false);
     },
-    appAskUnexpose(name) { this.apps.confirm = { kind: 'unexpose', name, busy: false, err: '' }; },
+    appAskUnexpose(name, host) { this.apps.confirm = { kind: 'unexpose', name, host, busy: false, err: '' }; },
     appCloseConfirm() { if (!this.apps.confirm?.busy) { this.apps.confirm = null; this.apps.picker = null; } },
     appConfirmCta() {
       const c = this.apps.confirm; if (!c) return '';
@@ -315,7 +321,7 @@ function dashboardApps() {
       } catch (e) { c.err = e.message; c.busy = false; }
     },
     async appRunRemove(c) {
-      const res = await this.api('/apps/' + encodeURIComponent(c.name) + '/remove', { method: 'POST', body: JSON.stringify({ yes: true, purge: c.orphaned ? false : c.purge }) });
+      const res = await this.api('/apps/' + encodeURIComponent(c.name) + '/remove', { method: 'POST', body: JSON.stringify({ yes: true, host: c.host, purge: c.orphaned ? false : c.purge }) });
       this.apps.inspect = null;
       this.apps.msg = this.appRemoveMsg(c, res);
       this.notify(res.orphaned ? `✓ ${c.name} forgotten` : `✓ ${c.name} removed`, 'ok');
@@ -325,45 +331,45 @@ function dashboardApps() {
       return `✓ Removed ${c.name}${c.purge ? ' (volumes + secrets deleted)' : ' (data kept)'}`;
     },
     async appRunUnexpose(c) {
-      await this.api('/apps/' + encodeURIComponent(c.name) + '/unexpose', { method: 'POST', body: JSON.stringify({ yes: true }) });
+      await this.api('/apps/' + encodeURIComponent(c.name) + '/unexpose', { method: 'POST', body: JSON.stringify({ yes: true, host: c.host }) });
       this.apps.msg = `✓ ${c.name} detached from ingress`;
       this.notify(`${c.name} detached from ingress`, 'ok');
     },
     async appRunExpose(c) {
       const res = await this.api('/apps/' + encodeURIComponent(c.name) + '/expose', {
-        method: 'POST', body: JSON.stringify({ domain: this.appPickerDomain(), email: c.email.trim() || undefined, tls: true, yes: true }),
+        method: 'POST', body: JSON.stringify({ domain: this.appPickerDomain(), email: c.email.trim() || undefined, tls: true, yes: true, host: c.host }),
       });
       this.apps.msg = `✓ Exposed ${res.app} — ${this.appResultUrl(res)}`;
       this.notify(`✓ ${res.app} exposed`, 'ok');
     },
 
-    async appStatus(name) {
-      this.apps.inspect = { name, loading: true }; this.apps.err = '';
-      try { this.apps.inspect = { name, ...(await this.api('/apps/' + encodeURIComponent(name) + '/status')) }; }
+    async appStatus(name, host) {
+      this.apps.inspect = { name, host, loading: true }; this.apps.err = '';
+      try { this.apps.inspect = { name, host, ...(await this.api(this.appUrl(name, host, '/status'))) }; }
       catch (e) { this.apps.err = e.message; this.apps.inspect = null; }
     },
     // A quick self-recovery action (not a redeploy): units/images/secrets are
     // untouched, so it skips the in-page confirm modal reserved for destructive
     // or exposure-changing actions (Remove, Expose, Unexpose).
-    async appRestart(name) {
+    async appRestart(name, host) {
       if (this.apps.restarting) return;
-      this.apps.restarting = name;
+      this.apps.restarting = host + '/' + name;
       try {
-        await this.api('/apps/' + encodeURIComponent(name) + '/restart', { method: 'POST' });
+        await this.api(this.appUrl(name, host, '/restart'), { method: 'POST' });
         this.notify(`✓ ${name} restarted`, 'ok');
-        if (this.apps.inspect?.name === name) await this.appStatus(name);
+        if (this.apps.inspect?.name === name && this.apps.inspect?.host === host) await this.appStatus(name, host);
       } catch (e) { this.notify(e.message, 'error'); }
       finally { this.apps.restarting = ''; }
     },
-    async appLogs(name) {
-      try { const r = await this.api('/apps/' + encodeURIComponent(name) + '/logs?lines=200'); this.apps.inspect = { name, logs: r.logs }; }
+    async appLogs(name, host) {
+      try { const r = await this.api(this.appUrl(name, host, '/logs', 'lines=200')); this.apps.inspect = { name, host, logs: r.logs }; }
       catch (e) { this.apps.err = e.message; }
     },
     // Export a fuller tail (not just the 200 shown) as a text file, client-side.
     async appDownloadLogs() {
       const name = this.apps.inspect?.name; if (!name) return;
       try {
-        const r = await this.api('/apps/' + encodeURIComponent(name) + '/logs?lines=2000');
+        const r = await this.api(this.appUrl(name, this.apps.inspect?.host, '/logs', 'lines=2000'));
         const url = URL.createObjectURL(new Blob([r.logs || ''], { type: 'text/plain' }));
         const a = document.createElement('a');
         a.href = url; a.download = name + '-logs.txt'; a.click();
@@ -376,10 +382,10 @@ function dashboardApps() {
     // The UI never proxies a session: it resolves the same `ssh … podman exec`
     // invocation the CLI runs, then asks vops to open it in the user's own
     // terminal (local API is 127.0.0.1 — same machine) or hands it over to copy.
-    async appShell(name, component) {
+    async appShell(name, host, component) {
       this.apps.shell = { name, loading: true }; this.apps.err = '';
-      const q = component ? '?component=' + encodeURIComponent(component) : '';
-      try { this.apps.shell = { name, busy: false, ...(await this.api('/apps/' + encodeURIComponent(name) + '/shell' + q)) }; }
+      const q = component ? 'component=' + encodeURIComponent(component) : '';
+      try { this.apps.shell = { name, busy: false, ...(await this.api(this.appUrl(name, host, '/shell', q))) }; }
       catch (e) { this.apps.err = e.message; this.apps.shell = null; }
     },
     async appShellOpen() {
@@ -388,7 +394,7 @@ function dashboardApps() {
       s.busy = true;
       try {
         const r = await this.api('/apps/' + encodeURIComponent(s.app) + '/shell', {
-          method: 'POST', body: JSON.stringify({ component: s.component }),
+          method: 'POST', body: JSON.stringify({ component: s.component, host: s.host }),
         });
         this.apps.shell = { name: s.name, busy: false, ...r };
         this.notify(r.launched ? 'Terminal opened — ' + r.terminal : (r.reason || 'No terminal app found'), r.launched ? 'ok' : 'error');

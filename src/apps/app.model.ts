@@ -67,6 +67,9 @@ export interface AppHealthPlan {
   path?: string;
   port?: number;
   command?: string[];
+  /** Extra request headers for an http probe (e.g. a Host the app trusts). */
+  httpHeaders?: Record<string, string>;
+  initialDelay?: string;
   interval?: string;
   timeout?: string;
   retries?: number;
@@ -118,6 +121,15 @@ export interface AppDomainPlan {
 /** How the user reaches the app after install — resolved from the manifest `access` block. */
 export type AppAccessMode = 'credentials' | 'firstVisit' | 'none';
 
+/** How the app authenticates its own users, as the manifest declares it and vops can honour it
+ * (see `effectiveAuthMode`). Undefined = the manifest says nothing, so vops assumes nothing. */
+export type AppAuthMode = 'oidc' | 'proxy' | 'native' | 'none';
+
+/** Where a manifest says the app belongs: `internal` = host-local, not published. On a single vops
+ * host this is **advisory** — the operator's `--domain` still wins, so an `internal` app that is
+ * given one is exposed with a warning saying exactly that (see `internalExposureWarnings`). */
+export type AppExposure = 'public' | 'internal';
+
 /** One credential part. `value` is a known non-secret literal safe to print; `userSet`/`generated`
  * carry only the Podman secret NAME — read back on explicit reveal, never stored or printed at deploy. */
 export interface AppAccessPart {
@@ -168,10 +180,15 @@ export interface AppPlan {
   smokeTest?: SmokeTestPlan;
   /** Projected `spec.domain` (undefined when the manifest declares no domain). */
   domain?: AppDomainPlan;
-  /** Some env value references `{{app.domain}}` → a resolved hostname is required. */
+  /** Some env value references `{{app.domain}}` → it resolves to the ingress hostname, or to
+   * the install's loopback origin (`127.0.0.1:<port>`) when it is deployed without a domain. */
   needsAppDomain: boolean;
   /** Resolved login/credentials block (undefined when the manifest declares no `access`). */
   access?: AppAccessPlan;
+  /** Effective `spec.auth` mode (undefined when the manifest declares no `auth`). */
+  authMode?: AppAuthMode;
+  /** Declared `spec.exposure` (undefined when the manifest declares none) — advisory, see `AppExposure`. */
+  exposure?: AppExposure;
   /** Manifest `postInstall` steps this install will actually run (see post-install.ts). */
   postInstall?: AppPostInstallStep[];
   /** Manifest fields a single host cannot honour, reported rather than dropped silently. */
@@ -268,7 +285,7 @@ export interface AppIngressRoute {
   stripPrefix: boolean;
 }
 
-/** A stored, deployed install (persisted whole as JSON in the app_installs table). */
+/** A stored install (persisted whole as JSON in the app_installs table). */
 export interface AppInstallV1 {
   version: typeof APP_INSTALL_VERSION;
   name: string;
@@ -301,7 +318,10 @@ export interface AppInstallV1 {
   /** Raw-port publish intent: `loopback` (127.0.0.1, tunnel/ingress only) or `public` (0.0.0.0).
    * Absent on legacy installs saved before this field — inferred from stored binds on redeploy. */
   publish?: 'loopback' | 'public';
-  status: 'deployed' | 'failed' | 'removed';
+  /** `installing` = the row was written before the host was touched and never confirmed: the
+   * install is either still running or was interrupted (kill, crash, lost connection), so
+   * whatever it created is on the host and `app remove` is the way to take it back off. */
+  status: 'installing' | 'deployed' | 'failed' | 'removed';
   createdAt: string;
   updatedAt: string;
 }

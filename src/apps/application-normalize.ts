@@ -22,6 +22,12 @@ import { APP_DOMAIN_TOKEN, NormalizeError, cpuToPodman, memToPodman, sanitize } 
 /** Logical component name: an Application manifest describes exactly one container. */
 const COMPONENT = 'app';
 
+/** The one wording for "no image": the loader raises it as a typed input error, this module
+ * keeps it as the last-resort invariant of the projection itself. */
+export const NO_IMAGE =
+  'An Application manifest is built from your repository, so it carries no image. ' +
+  'Pass --image <ref>, or build it first with `vops build run`.';
+
 export interface ApplicationInput {
   /** Install handle; defaults to `metadata.name`. */
   name?: string;
@@ -40,12 +46,7 @@ export function normalizeApplication(manifest: ApplicationManifest, input: Appli
   const deploy = manifest.deploy;
   const warnings: string[] = [];
 
-  if (!input.image?.trim()) {
-    throw new NormalizeError(
-      'An Application manifest is built from your repository, so it carries no image. ' +
-        'Pass --image <ref>, or build it first with `vops build run`.',
-    );
-  }
+  if (!input.image?.trim()) throw new NormalizeError(NO_IMAGE);
   const { env, secrets } = splitEnv(name, deploy.env, warnings);
   warnings.push(...unsupported(manifest));
 

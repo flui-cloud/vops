@@ -54,6 +54,17 @@ export function supportsPod(version: string | null): boolean {
   return maj >= 5;
 }
 
+/** Images the host could neither find locally nor pull. An empty `@@pull` section (the script
+ * never ran, e.g. an SSH timeout) is not "everything pulled" — the caller checks `ran`. */
+export function parsePullOutput(stdout: string): { ran: boolean; failed: string[] } {
+  const s = splitSections(stdout);
+  const lines = (s.pull ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  return {
+    ran: 'pull' in s && 'done' in s,
+    failed: lines.filter((l) => l.startsWith('failed ')).map((l) => l.slice('failed '.length)),
+  };
+}
+
 export interface DeployOutcome {
   ok: boolean;
   started: Record<string, string>;
@@ -83,17 +94,23 @@ export interface SmokeOutcome {
   detail: string;
 }
 
-export function parseHttpSmoke(stdout: string, expect: number): SmokeOutcome {
+export function parseHttpSmoke(stdout: string, expect: number, port?: number): SmokeOutcome {
   const raw = (splitSections(stdout).http ?? '').trim();
   const code = Number.parseInt(raw, 10) || 0;
   // App is serving = expected status, or any 2xx/3xx. 000 (no response) / 5xx (error) fail.
   const ok = code === expect || (code >= 200 && code < 400);
-  return { ok, detail: `HTTP ${raw || '000'} (want ${expect} or 2xx/3xx)` };
+  return { ok, detail: `HTTP ${raw || '000'}${probed(port)} (want ${expect} or 2xx/3xx)` };
 }
 
-export function parseTcpSmoke(stdout: string): SmokeOutcome {
+export function parseTcpSmoke(stdout: string, port?: number): SmokeOutcome {
   const state = (splitSections(stdout).tcp ?? '').trim();
-  return { ok: state === 'open', detail: `TCP ${state || 'closed'}` };
+  return { ok: state === 'open', detail: `TCP ${state || 'closed'}${probed(port)}` };
+}
+
+/** Name the port the probe actually used: a bare `HTTP 000` cannot be told apart from
+ * an app answering fine on a port the deploy no longer binds. */
+function probed(port?: number): string {
+  return port == null ? '' : ` on 127.0.0.1:${port}`;
 }
 
 export interface UnitStatus {

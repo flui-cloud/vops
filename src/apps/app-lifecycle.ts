@@ -5,8 +5,8 @@ import { VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { VopsHostConnService } from '../host-ops/vops-host-conn.service';
 import { resolveSshTarget } from '../host-ops/ssh-target';
 import { assertHostWritable } from '../safety/host-write-gate';
-import { notFound } from '../agent-api/agent-http-errors';
 import { LocalStore } from '../lib/store/local-store';
+import { resolveInstall } from './app-resolve';
 import { AppEndpoint, AppInstallV1 } from './app.model';
 import { VopsIngressService } from './vops-ingress.service';
 import { UnitStatus, parseStatusOutput } from './app-parse';
@@ -48,18 +48,14 @@ function targetFor(deps: AppOpsDeps, hostName: string): SshTarget {
   return resolveSshTarget(host, deps.keys);
 }
 
-export async function getInstall(deps: AppOpsDeps, name: string): Promise<AppInstallV1> {
-  const i = await deps.store.getInstall(name);
-  if (!i) {
-    throw notFound('VOPS_APP_NOT_FOUND', `No app install named '${name}'.`, 'List what is deployed with `vops app list --json`.');
-  }
-  return i;
+export async function getInstall(deps: AppOpsDeps, name: string, host?: string): Promise<AppInstallV1> {
+  return resolveInstall(deps.store, name, host);
 }
 
 /** The resolved login block for a deployed install (URL + parts; no secret values),
  * plus the ingress basic-auth gate fronting it, if any. */
-export async function credentialsView(deps: AppOpsDeps, name: string): Promise<AppCredentialsView> {
-  const install = await getInstall(deps, name);
+export async function credentialsView(deps: AppOpsDeps, name: string, host?: string): Promise<AppCredentialsView> {
+  const install = await getInstall(deps, name, host);
   const ingress = install.ingress ? { hostname: install.ingress.hostname, tls: install.ingress.tls } : undefined;
   const access = install.access ? accessView(install.access, install.endpoints, install.primary, ingress) : undefined;
   const auth = install.ingress?.auth;
@@ -70,8 +66,8 @@ export async function credentialsView(deps: AppOpsDeps, name: string): Promise<A
 
 /** Read back ONE access-referenced secret over SSH — gated to secrets the manifest's `access`
  * block exposes (never a DB/internal secret), only on explicit user action. */
-export async function revealSecret(deps: AppOpsDeps, name: string, secret: string): Promise<{ secret: string; value: string }> {
-  const install = await getInstall(deps, name);
+export async function revealSecret(deps: AppOpsDeps, name: string, secret: string, host?: string): Promise<{ secret: string; value: string }> {
+  const install = await getInstall(deps, name, host);
   const allowed = new Set(
     [install.access?.username?.secret, install.access?.password?.secret, install.ingress?.auth?.secret].filter(Boolean),
   );
@@ -90,8 +86,8 @@ export async function revealSecret(deps: AppOpsDeps, name: string, secret: strin
   return { secret, value };
 }
 
-export async function statusView(deps: AppOpsDeps, name: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
-  const install = await getInstall(deps, name);
+export async function statusView(deps: AppOpsDeps, name: string, host?: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
+  const install = await getInstall(deps, name, host);
   const target = targetFor(deps, install.host);
   const services = install.components.map((c) => `${c.container}.service`);
   const res = await deps.ssh.runScript(target, buildStatusScript(install.name, services), { timeoutMs: PREFLIGHT_TIMEOUT, sudo: true });
@@ -101,8 +97,8 @@ export async function statusView(deps: AppOpsDeps, name: string): Promise<{ inst
 /** Restart the app's own containers (not prereq volumes/pod units) and report
  * back the same shape `statusView()` does — a quick self-recovery action, not a
  * redeploy: units/images/secrets are untouched. */
-export async function restartApp(deps: AppOpsDeps, name: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
-  const install = await getInstall(deps, name);
+export async function restartApp(deps: AppOpsDeps, name: string, onHost?: string): Promise<{ install: AppInstallV1; units: UnitStatus[]; containers: string[] }> {
+  const install = await getInstall(deps, name, onHost);
   const host = deps.hosts.show(install.host);
   assertHostWritable(host);
   const target = resolveSshTarget(host, deps.keys);
@@ -112,8 +108,8 @@ export async function restartApp(deps: AppOpsDeps, name: string): Promise<{ inst
   return { install, ...parseStatusOutput(res.stdout) };
 }
 
-export async function logsView(deps: AppOpsDeps, name: string, lines = 200): Promise<string> {
-  const install = await getInstall(deps, name);
+export async function logsView(deps: AppOpsDeps, name: string, lines = 200, host?: string): Promise<string> {
+  const install = await getInstall(deps, name, host);
   const target = targetFor(deps, install.host);
   const primary = install.components.find((c) => c.name === install.primary) ?? install.components[0];
   const res = await deps.ssh.runScript(target, buildLogsScript(primary.container, lines), { timeoutMs: PREFLIGHT_TIMEOUT, sudo: true });
@@ -125,7 +121,7 @@ export async function logsView(deps: AppOpsDeps, name: string, lines = 200): Pro
  * its containers must be removed by hand. */
 async function forgetOrphan(deps: AppOpsDeps, install: AppInstallV1, dryRun: boolean): Promise<{ removed: boolean; purge: boolean; host: string; orphaned: boolean }> {
   if (dryRun) return { removed: false, purge: false, host: install.host, orphaned: true };
-  await deps.store.deleteInstall(install.name);
+  await deps.store.deleteInstall(install.host, install.name);
   await deps.store.appendAudit('app.forget', { app: install.name, host: install.host, reason: 'host-missing' });
   return { removed: true, purge: false, host: install.host, orphaned: true };
 }
@@ -134,8 +130,9 @@ export async function removeApp(
   deps: AppOpsDeps,
   name: string,
   opts: { purge?: boolean; dryRun?: boolean } = {},
+  onHost?: string,
 ): Promise<{ removed: boolean; purge: boolean; host: string; orphaned?: boolean }> {
-  const install = await getInstall(deps, name);
+  const install = await getInstall(deps, name, onHost);
   const host = deps.hosts.get(install.host);
   if (!host) return forgetOrphan(deps, install, !!opts.dryRun);
   assertHostWritable(host);
@@ -153,7 +150,7 @@ export async function removeApp(
   if (install.ingress) await deps.ingress.cleanupForRemoval(host, install);
   const target = resolveSshTarget(host, deps.keys);
   await deps.ssh.runScript(target, script, { timeoutMs: REMOVE_TIMEOUT, sudo: true });
-  await deps.store.deleteInstall(install.name);
+  await deps.store.deleteInstall(install.host, install.name);
   await deps.store.appendAudit('app.remove', { app: install.name, host: install.host, purge: !!opts.purge });
   return { removed: true, purge: !!opts.purge, host: install.host };
 }
@@ -161,8 +158,8 @@ export async function removeApp(
 /** Detach from ingress: drop the route + A-record. A `--public` install rebinds its
  * routed port to 0.0.0.0; a default (loopback) install stays on 127.0.0.1 so detaching
  * a domain never silently re-exposes the app to the internet. */
-export async function unexposeApp(deps: AppOpsDeps, name: string): Promise<{ app: string; host: string; endpoints: AppEndpoint[] }> {
-  const install = await getInstall(deps, name);
+export async function unexposeApp(deps: AppOpsDeps, name: string, onHost?: string): Promise<{ app: string; host: string; endpoints: AppEndpoint[] }> {
+  const install = await getInstall(deps, name, onHost);
   const host = deps.hosts.show(install.host);
   assertHostWritable(host);
   if (!install.ingress) throw new BadRequestException(`'${name}' is not exposed via ingress.`);

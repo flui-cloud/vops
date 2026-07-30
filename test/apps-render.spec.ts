@@ -72,6 +72,62 @@ describe('quadlet render — shell startCommand overrides the entrypoint', () =>
   });
 });
 
+// A manifest declares `healthcheck: {type: http|tcp, initialDelay, interval, timeout, retries,
+// httpHeaders}` and all of it has to reach the unit — rendering `type: exec` alone drops 75 of the
+// catalog's 83 declared healthchecks. The probe runs inside the image, so it must degrade to
+// "no objection" (exit 0) rather than a permanent (unhealthy).
+describe('quadlet render — a declared healthcheck reaches the unit', () => {
+  const health = (over: Record<string, unknown>) => ({
+    name: 'demo', appId: 'demo', displayName: 'Demo', kind: 'CatalogApp', mode: 'standalone',
+    primary: 'app', needsAppDomain: false,
+    components: [{
+      name: 'app', container: 'vops-demo-app', image: 'docker.io/demo:1', env: [], secrets: [],
+      ports: [{ name: 'http', container: 8080, expose: true, protocol: 'http' }], volumes: [],
+      dependsOn: [], health: over,
+    }],
+  });
+  const render = (over: Record<string, unknown>) =>
+    renderDeploy(health(over) as never, { selinux: false, ports: { app: [{ host: 8080, container: 8080, bind: '127.0.0.1' }] } })
+      .units['vops-demo-app.container'];
+
+  it('renders an http probe that falls back to wget and never false-fails', () => {
+    const unit = render({ type: 'http', path: '/healthz', port: 8080, initialDelay: '30s', interval: '30s', timeout: '5s', retries: 3 });
+    const cmd = unit.split('\n').find((l) => l.startsWith('HealthCmd='))!;
+    expect(cmd).toContain('command -v curl >/dev/null && exec curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:8080/healthz');
+    expect(cmd).toContain('command -v wget >/dev/null && exec wget');
+    expect(cmd.endsWith('exit 0')).toBe(true); // no probe tool in the image ⇒ no opinion
+    expect(unit).toContain('HealthStartPeriod=30s');
+    expect(unit).toContain('HealthInterval=30s');
+    expect(unit).toContain('HealthTimeout=5s');
+    expect(unit).toContain('HealthRetries=3');
+  });
+
+  it('carries the manifest httpHeaders (nextcloud 400s a Host it does not trust)', () => {
+    const cmd = render({ type: 'http', path: '/status.php', port: 80, httpHeaders: { Host: 'localhost' } })
+      .split('\n').find((l) => l.startsWith('HealthCmd='))!;
+    expect(cmd).toContain('-H Host:localhost');
+    expect(cmd).toContain('--header Host:localhost');
+  });
+
+  it('renders a tcp probe on the declared port', () => {
+    const unit = render({ type: 'tcp', port: 3306, initialDelay: '15s' });
+    expect(unit).toContain('HealthCmd=command -v nc >/dev/null && exec nc -z 127.0.0.1 3306; exit 0');
+    expect(unit).toContain('HealthStartPeriod=15s');
+  });
+
+  it('still renders an exec probe verbatim', () => {
+    expect(render({ type: 'exec', command: ['redis-cli', 'ping'], retries: 5 })).toContain('HealthCmd=redis-cli ping');
+  });
+
+  it('renders nothing when the manifest declares no healthcheck', () => {
+    const plan = normalizeManifest(getCatalogEntry('it-tools')!.manifest);
+    plan.components[0].health = undefined;
+    const unit = renderDeploy(plan, { selinux: false, ports: { app: [{ host: 8080, container: 80, bind: '0.0.0.0' }] } })
+      .units['vops-it-tools-app.container'];
+    expect(unit).not.toContain('HealthCmd=');
+  });
+});
+
 describe('preflight parse + port allocation', () => {
   const stdout = [
     '@@podman', 'podman version 5.4.2',

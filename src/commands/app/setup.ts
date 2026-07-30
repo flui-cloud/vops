@@ -1,6 +1,8 @@
 import { Args, Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
-import { getVopsApp, closeVopsApp } from '../../lib/nest';
+import { withService } from '../../agent-api/agent-nest';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
+import { approvalRequired } from '../../safety/approval-gate';
 import { VopsAppsService } from '../../apps/vops-apps.service';
 import { PODMAN_STATIC_VERSION } from '../../apps/podman-bootstrap';
 
@@ -17,33 +19,38 @@ export default class AppSetup extends Command {
 
   static readonly flags = {
     yes: Flags.boolean({ default: false, description: 'Confirm the install' }),
-    json: Flags.boolean({ default: false, description: 'Output as JSON' }),
+    ...agentJsonFlag,
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AppSetup);
-    try {
-      if (!flags.yes) {
-        this.log(
-          `Would install podman-static ${PODMAN_STATIC_VERSION} into /usr/local on ${chalk.bold(args.host)} ` +
-            `(verified SHA, Quadlet included).`,
-        );
-        this.error('Re-run with --yes to install.', { exit: 1 });
-      }
-      const svc = (await getVopsApp()).get(VopsAppsService);
-      const r = await svc.setup(args.host);
-      if (flags.json) {
-        this.log(JSON.stringify(r, null, 2));
-        return;
-      }
-      this.log(chalk.green(`✓ podman ${r.version} installed on ${r.host}`) + chalk.dim(`  quadlet: ${r.quadlet ? 'yes' : 'no'}`));
-      if (r.conflict) {
-        this.log(chalk.yellow('! a distro podman generator is also present in /usr/lib — remove the apt/dnf podman to avoid double-processed units.'));
-      }
-    } catch (err) {
-      this.error(err instanceof Error ? err.message : String(err), { exit: 1 });
-    } finally {
-      await closeVopsApp();
-    }
+    await runAgentCommand(
+      this,
+      'vops app setup',
+      flags.json,
+      async () => {
+        if (!flags.yes) {
+          throw approvalRequired({
+            operation: 'Install podman',
+            target: args.host,
+            approved: false,
+            consequence: `It installs podman-static ${PODMAN_STATIC_VERSION} into /usr/local (verified SHA, Quadlet included).`,
+          });
+        }
+        const data = await withService(VopsAppsService, (svc) => svc.setup(args.host));
+        return {
+          data,
+          warnings: data.conflict
+            ? [{ code: 'VOPS_PODMAN_GENERATOR_CONFLICT', message: 'A distro podman generator is also present in /usr/lib — remove the apt/dnf podman to avoid double-processed units.' }]
+            : [],
+        };
+      },
+      (r) => {
+        this.log(chalk.green(`✓ podman ${r.version} installed on ${r.host}`) + chalk.dim(`  quadlet: ${r.quadlet ? 'yes' : 'no'}`));
+        if (r.conflict) {
+          this.log(chalk.yellow('! a distro podman generator is also present in /usr/lib — remove the apt/dnf podman to avoid double-processed units.'));
+        }
+      },
+    );
   }
 }

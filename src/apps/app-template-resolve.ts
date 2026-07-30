@@ -10,8 +10,8 @@ import { APP_ID_TOKEN, NormalizeError, inputRequired, sanitize } from './spec-no
 /** `{{env.KEY}}` — a reference to another env var in the SAME component. */
 const ENV_SELF_TOKEN = /\{\{\s{0,8}env\.(\w{1,64})\s{0,8}\}\}/g;
 
-/** `{{app.domain}}` — resolved to the ingress hostname at deploy time, not here. */
-const APP_DOMAIN_TOKEN = /\{\{\s{0,8}app\.domain\s{0,8}\}\}/g;
+/** `{{app.domain}}` / `{{app.scheme}}` — resolved at deploy time (hostname + TLS), not here. */
+const APP_DEFERRED_TOKEN = /\{\{\s{0,8}app\.(?:domain|scheme)\s{0,8}\}\}/g;
 
 export interface RawComponent {
   logical: string;
@@ -161,10 +161,10 @@ function resolveString(
     .replaceAll(APP_ID_TOKEN, app)
     .replaceAll(TEMPLATE, (_all, comp: string, rest: string) => refValue(comp, rest, byLogical))
     .replaceAll(ENV_SELF_TOKEN, (_all, key: string) => refValue(logical, `env.${key}`, byLogical));
-  // `{{app.domain}}` is resolved later (deploy-time hostname), so it is not
-  // "unresolved" here — everything else left over is a genuine error.
-  const leftover = out.replaceAll(APP_DOMAIN_TOKEN, '');
-  APP_DOMAIN_TOKEN.lastIndex = 0;
+  // `{{app.domain}}` / `{{app.scheme}}` are resolved later (deploy-time hostname and TLS), so
+  // they are not "unresolved" here — everything else left over is a genuine error.
+  const leftover = out.replaceAll(APP_DEFERRED_TOKEN, '');
+  APP_DEFERRED_TOKEN.lastIndex = 0;
   if (/\{\{/.test(leftover)) throw new NormalizeError(`Unresolved template in value: '${value}'.`);
   return out;
 }

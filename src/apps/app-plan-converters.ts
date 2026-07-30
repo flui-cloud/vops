@@ -58,6 +58,8 @@ export function toHealth(h?: CatalogHealthcheck): AppHealthPlan | undefined {
     path: h.path,
     port: h.port,
     command: h.command,
+    httpHeaders: h.httpHeaders,
+    initialDelay: h.initialDelay,
     interval: h.interval,
     timeout: h.timeout,
     retries: h.retries,

@@ -1,9 +1,11 @@
 import * as fs from 'node:fs';
 import { parseYaml, validate } from '@flui-cloud/spec';
 import type { CatalogAppManifest, FluiManifest } from '@flui-cloud/spec';
+import { ExitCode, agentError } from '../agent-api/agent-envelope';
+import { AgentBadRequest } from '../agent-api/agent-http-errors';
 import { AppPlan } from './app.model';
 import { checkInstallable, normalizeManifest } from './spec-normalize';
-import { normalizeApplication } from './application-normalize';
+import { NO_IMAGE, normalizeApplication } from './application-normalize';
 
 /** What a deploy is made of: a bundled catalog id, or a `flui.yaml` on disk. `CatalogApp` ships a
  * published image; `Application` carries none — its `image` is a deploy-time input, since vops never builds. */
@@ -32,10 +34,29 @@ export function loadAppPlan(source: AppSource, lookup: CatalogLookup, name?: str
   if (!source.file) throw new AppSourceError('Provide a catalog id or a -f flui.yaml file.');
   const doc = readManifest(source.file);
   if (doc.kind === 'Application') {
-    return normalizeApplication(doc, { name, image: source.image ?? '' });
+    if (!source.image?.trim()) throw imageRequired();
+    return normalizeApplication(doc, { name, image: source.image });
   }
   if (doc.kind === 'CatalogApp') return { plan: fromCatalog(doc, name), warnings: [] };
   throw new AppSourceError(`vops deploys kind: Application or CatalogApp (got '${doc.kind}').`);
+}
+
+/**
+ * No `--image` on a `kind: Application` deploy is an *input* error, not an operational one: the
+ * manifest is correct — it carries no image by design — and the invocation is what is incomplete.
+ * Reported as `operational`/1 it read as "something went wrong, maybe transient", inviting a retry
+ * that can never succeed, with the two remedies stranded in the prose. Both now ride in
+ * `suggestedAction`, and it stays an `AgentBadRequest` so the local API keeps answering 400.
+ */
+export function imageRequired(): AgentBadRequest {
+  return new AgentBadRequest(
+    agentError('VOPS_IMAGE_REQUIRED', 'input', NO_IMAGE, {
+      suggestedAction:
+        'Do not retry unchanged. Re-run with --image <ref> if the image already exists, or build it ' +
+        'first — `vops build run` — and pass the reference it reports.',
+    }),
+    ExitCode.INVALID_INPUT,
+  );
 }
 
 function fromCatalog(manifest: CatalogAppManifest, name?: string): AppPlan {

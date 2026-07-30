@@ -19,10 +19,20 @@ import {
 } from './app.model';
 import { rawComponent, resolveComponent } from './app-template-resolve';
 import { toDomain, toSmokeTest } from './app-plan-converters';
-import { selectPostInstall } from './post-install';
+import { effectiveAuthMode, selectPostInstall } from './post-install';
 
 /** `{{app.domain}}` — resolved to the ingress hostname at deploy time, not here. */
 export const APP_DOMAIN_TOKEN = /\{\{\s{0,8}app\.domain\s{0,8}\}\}/g;
+/** The same token WITH the URL scheme a manifest may have written in front of it
+ * (`https://{{app.domain}}`) — every deploy resolves both together, because the scheme the app is
+ * served on is decided by `--tls`/`--no-tls` (or by having no domain at all), never by the manifest. */
+export const APP_DOMAIN_URL_TOKEN = /(https?:\/\/)?\{\{\s{0,8}app\.domain\s{0,8}\}\}/g;
+/** `{{app.scheme}}` — the scheme the app is actually reached on: `https` behind a TLS ingress,
+ * `http` for a bare (loopback-only) install. A manifest that hardcodes `https` in a
+ * protocol-only env (Nextcloud's `OVERWRITEPROTOCOL`) makes the app redirect to a TLS origin
+ * nothing listens on when no domain was asked for. Unlike `{{app.domain}}` it never implies
+ * ingress — it only follows it. */
+export const APP_SCHEME_TOKEN = /\{\{\s{0,8}app\.scheme\s{0,8}\}\}/g;
 /** `{{app.id}}` — the install name (e.g. a database name/user derived from the app). */
 export const APP_ID_TOKEN = /\{\{\s{0,8}app\.id\s{0,8}\}\}/g;
 
@@ -71,9 +81,15 @@ export function normalizeManifest(manifest: CatalogAppManifest, installName?: st
   }
 
   plan.access = resolveAccess(manifest, plan);
+  const auth = (spec as { auth?: CatalogAuth }).auth;
+  if (auth) plan.authMode = effectiveAuthMode(auth);
+  // Advisory only: vops honours the operator's --domain over the manifest's own placement, but the
+  // declaration has to reach the plan for the deploy to be able to say so.
+  const exposure = 'exposure' in spec ? spec.exposure : undefined;
+  if (exposure) plan.exposure = exposure;
   const steps = selectPostInstall((spec as { postInstall?: CatalogPostInstallStep[] }).postInstall, {
     primary: plan.primary,
-    auth: (spec as { auth?: CatalogAuth }).auth,
+    auth,
     options: (spec as { options?: CatalogOption[] }).options,
   });
   if (steps.length) plan.postInstall = steps;
@@ -131,13 +147,24 @@ export interface InstallCheck {
 }
 
 /** Whether a catalog app can be installed on a single vops host as-is. A `dependencies` block
- * (e.g. FerretDB needs PostgreSQL) is not yet auto-provisioned — a typed reason, not a crash. */
+ * (e.g. FerretDB needs PostgreSQL) is not yet auto-provisioned — a typed reason, not a crash.
+ * `linkedBuildingBlocks` is the same gap seen from the client side: nothing resolves the referenced
+ * building block, so its env mapping would stay unset and the app would start against nothing. */
 export function checkInstallable(manifest: CatalogAppManifest): InstallCheck {
   const spec = manifest.spec;
   const deps = 'dependencies' in spec ? spec.dependencies : undefined;
   if (deps?.length) {
     const refs = deps.map((d) => d.ref).join(', ');
     return { ok: false, reason: `needs a linked ${refs} — dependency auto-compose is not yet supported on vops` };
+  }
+  const linked = 'linkedBuildingBlocks' in spec ? spec.linkedBuildingBlocks : undefined;
+  if (linked?.length) {
+    const refs = linked.map((l) => l.ref).join(', ');
+    const vars = linked.flatMap((l) => l.envMapping.map((m) => m.name)).join(', ');
+    return {
+      ok: false,
+      reason: `needs a linked ${refs} to connect to (${vars} would stay unset) — wiring an app to a building block is not yet supported on vops`,
+    };
   }
   return { ok: true };
 }

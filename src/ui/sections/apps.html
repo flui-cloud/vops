@@ -24,7 +24,7 @@
                       <span x-show="!apps.revealed[apps.done.access.password.secret]" style="color:var(--text)" x-text="appCredText(apps.done.access.password)"></span>
                       <span x-show="apps.revealed[apps.done.access.password.secret]" class="font-mono" style="color:var(--accent)" x-text="apps.revealed[apps.done.access.password.secret]"></span>
                     </span>
-                    <button x-show="apps.done.access.password.secret && !apps.revealed[apps.done.access.password.secret]" class="btn-ghost px-2 text-[11px]" @click="appReveal(apps.done.app, apps.done.access.password.secret)">Reveal</button>
+                    <button x-show="apps.done.access.password.secret && !apps.revealed[apps.done.access.password.secret]" class="btn-ghost px-2 text-[11px]" @click="appReveal(apps.done.app, apps.done.host, apps.done.access.password.secret)">Reveal</button>
                   </div>
                   <div x-show="appAccessRotate(apps.done.access)" class="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold" style="color:var(--warn);background:var(--warn-soft)">🔑 Change this password right after your first login</div>
                   <div x-show="apps.done.access.note" style="color:var(--text-faint)" x-text="apps.done.access.note"></div>
@@ -63,7 +63,7 @@
             <span class="count-pill" style="margin-left:0" x-text="apps.installs.length"></span>
           </div>
           <div class="mt-2.5 grid gap-2.5" style="grid-template-columns:repeat(auto-fill,minmax(330px,1fr))">
-            <template x-for="i in apps.installs" :key="i.name">
+            <template x-for="i in apps.installs" :key="appKey(i)">
               <div class="card flex flex-col p-3.5">
                 <div class="flex items-center gap-3">
                   <div class="icon-tile h-10 w-10">
@@ -110,24 +110,24 @@
                      the "⋯" menu instead of piling on more buttons. -->
                 <template x-if="!i.hostMissing">
                   <div class="mt-auto flex items-center gap-1.5 pt-3">
-                    <button class="btn-xs btn-xs-muted" @click="appLogs(i.name)">Logs</button>
-                    <button class="btn-xs btn-xs-muted" @click="appShell(i.name)" title="Open a shell inside the container">Shell</button>
-                    <button class="btn-xs btn-xs-muted" :disabled="apps.restarting===i.name" @click="appRestart(i.name)" title="Restart the app's containers" x-text="apps.restarting===i.name ? 'Restarting…' : 'Restart'"></button>
-                    <div class="relative ml-auto" @click.stop @click.outside="apps.menu===i.name && (apps.menu='')">
-                      <button class="icon-btn h-7 w-7 text-sm" @click="apps.menu = apps.menu===i.name ? '' : i.name" aria-label="More actions" title="More actions">⋯</button>
-                      <div x-show="apps.menu===i.name" x-cloak class="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg py-1 text-[12px]" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)">
-                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" @click="appStatus(i.name); apps.menu=''">Status</button>
-                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" x-show="!i.ingress" @click="appAskExpose(i.name); apps.menu=''">Expose…</button>
-                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" x-show="i.ingress" @click="appAskUnexpose(i.name); apps.menu=''">Unexpose</button>
+                    <button class="btn-xs btn-xs-muted" @click="appLogs(i.name, i.host)">Logs</button>
+                    <button class="btn-xs btn-xs-muted" @click="appShell(i.name, i.host)" title="Open a shell inside the container">Shell</button>
+                    <button class="btn-xs btn-xs-muted" :disabled="apps.restarting===appKey(i)" @click="appRestart(i.name, i.host)" title="Restart the app's containers" x-text="apps.restarting===appKey(i) ? 'Restarting…' : 'Restart'"></button>
+                    <div class="relative ml-auto" @click.stop @click.outside="apps.menu===appKey(i) && (apps.menu='')">
+                      <button class="icon-btn h-7 w-7 text-sm" @click="apps.menu = apps.menu===appKey(i) ? '' : appKey(i)" aria-label="More actions" title="More actions">⋯</button>
+                      <div x-show="apps.menu===appKey(i)" x-cloak class="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg py-1 text-[12px]" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)">
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" @click="appStatus(i.name, i.host); apps.menu=''">Status</button>
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" x-show="!i.ingress" @click="appAskExpose(i.name, i.host); apps.menu=''">Expose…</button>
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--text-dim)" x-show="i.ingress" @click="appAskUnexpose(i.name, i.host); apps.menu=''">Unexpose</button>
                         <div class="my-1" style="border-top:1px solid var(--border)"></div>
-                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--danger)" @click="appAskRemove(i.name, false); apps.menu=''">Remove</button>
+                        <button class="block w-full px-3 py-1.5 text-left hover:underline" style="color:var(--danger)" @click="appAskRemove(i.name, i.host, false); apps.menu=''">Remove</button>
                       </div>
                     </div>
                   </div>
                 </template>
                 <template x-if="i.hostMissing">
                   <div class="mt-auto flex items-center gap-1.5 pt-3">
-                    <button class="btn-xs" style="color:var(--danger);border-color:var(--danger-soft)" @click="appAskRemove(i.name, true)">Forget</button>
+                    <button class="btn-xs" style="color:var(--danger);border-color:var(--danger-soft)" @click="appAskRemove(i.name, i.host, true)">Forget</button>
                   </div>
                 </template>
               </div>
@@ -174,7 +174,7 @@
                   <div class="mb-2 flex flex-wrap items-center gap-1.5">
                     <span class="text-[11px]" style="color:var(--text-faint)">Container</span>
                     <template x-for="c in apps.shell.components" :key="c.name">
-                      <button class="btn-xs" :class="c.name === apps.shell.component ? '' : 'btn-xs-muted'" @click="appShell(apps.shell.name, c.name)" x-text="c.name"></button>
+                      <button class="btn-xs" :class="c.name === apps.shell.component ? '' : 'btn-xs-muted'" @click="appShell(apps.shell.name, apps.shell.host, c.name)" x-text="c.name"></button>
                     </template>
                   </div>
                 </template>
@@ -506,7 +506,7 @@
               <template x-if="apps.confirm.kind==='unexpose'">
                 <div>
                   <div class="text-[15px] font-bold">Detach <span x-text="apps.confirm.name"></span> from ingress?</div>
-                  <p class="mt-2 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">Removes the domain and its A-record. The app stays deployed and reachable on its direct port.</p>
+                  <p class="mt-2 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">Removes the domain and its A-record. The app stays deployed on its direct port — reachable from the server itself, not from the internet, unless it was installed with a public bind.</p>
                 </div>
               </template>
               <template x-if="apps.confirm.kind==='expose'">
