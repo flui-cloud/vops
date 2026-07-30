@@ -19,6 +19,10 @@ export interface VaultSecrets {
   credentials?: Record<string, Record<string, string>>;
   /** Environment-style credentials imported out of a plaintext .env. */
   env?: Record<string, string>;
+  /** `--set` values behind an approved deploy plan, keyed by plan id. The plan file on disk
+   * keeps only a digest of each, so `apply` can still prove the plan is the approved one
+   * without a password sitting in a JSON file an agent may read. */
+  planSecrets?: Record<string, Record<string, string>>;
 }
 
 export interface OpenVault {

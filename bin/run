@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
 const dotenv = require('dotenv');
-const path = require('path');
-const os = require('os');
+const { vopsEnvFiles } = require('../lib/lib/env-files');
 
-// Local config dir and project root .env (tokens stay local; no telemetry).
+// Tokens stay local; no telemetry. Which .env files those are is profile-aware and
+// resolved in one place (lib/env-files) so this entrypoint and the Nest module can
+// never disagree: a named profile must not inherit the shared ~/.config/vops/.env.
 // `quiet` matters: dotenv's banner goes to STDOUT, and every `--json` command
 // promises parseable stdout to whatever is reading it.
-dotenv.config({ path: path.join(os.homedir(), '.config', 'vops', '.env'), quiet: true });
-dotenv.config({ path: path.join(process.cwd(), '.env'), quiet: true });
+for (const envFile of vopsEnvFiles({ cwd: process.cwd() })) {
+  dotenv.config({ path: envFile, quiet: true });
+}
 
 require('@oclif/core')
   .run()

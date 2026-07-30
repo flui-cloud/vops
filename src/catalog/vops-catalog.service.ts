@@ -9,16 +9,24 @@ import {
   DISPLAY_NAMES,
   COMPARE_PROVIDERS,
   isGuided,
+  needsCredentialToPrice,
   resolveProvider,
 } from '../lib/providers';
+import { credentialReach } from '../lib/credentials/provider-credentials';
+import { VaultLockedError } from '../lib/keyring/vault-session';
 import { LocalStore } from '../lib/store/local-store';
 import { CloudClient, RemoteAvailabilityReport } from '../lib/cloud-client';
 import {
   VopsAvailabilityResult,
+  VopsCompareFailure,
+  VopsCompareReport,
   VopsCompareRow,
+  VopsCompareSkip,
+  VopsCompareSkipCause,
   VopsPlan,
   VopsPlanAvailability,
 } from '../dto/plan.dto';
+import { dedupeVirtualTwins } from './virtual-twins';
 
 export interface CompareQuery {
   cpu?: number;
@@ -43,7 +51,7 @@ interface CachedAvailability {
 
 /** Add the time an entry sat in the local cache to the server-reported age. */
 function agedBy(report: RemoteAvailabilityReport, heldMs: number): RemoteAvailabilityReport {
-  if (!report.meta || report.meta.ageSeconds == null) return report;
+  if (report.meta?.ageSeconds == null) return report;
   const ageSeconds = report.meta.ageSeconds + Math.max(0, Math.round(heldMs / 1000));
   return {
     ...report,
@@ -51,65 +59,18 @@ function agedBy(report: RemoteAvailabilityReport, heldMs: number): RemoteAvailab
   };
 }
 
-/** A size's flat hourly rate (min across regions) — the twin-dedup discriminator. */
-function sizeHourly(size: NodeSizeDto): number | null {
-  const hs = size.prices
-    .map((p) => Number.parseFloat(p.priceHourly?.net ?? ''))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  return hs.length ? Math.min(...hs) : null;
-}
-/** A size's cheapest monthly — the price kept when collapsing twins. */
-function sizeMonthly(size: NodeSizeDto): number {
-  const ms = size.prices
-    .map((p) => Number.parseFloat(p.priceMonthly?.net ?? ''))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  return ms.length ? Math.min(...ms) : Number.POSITIVE_INFINITY;
-}
-const sizeRegions = (size: NodeSizeDto): Set<string> =>
-  new Set(size.prices.map((p) => p.location.toLowerCase()));
-/** Does `a` serve every region `b` does — so dropping `b` for `a` loses no coverage. */
-function sizeCovers(a: NodeSizeDto, b: NodeSizeDto): boolean {
-  const set = sizeRegions(a);
-  return [...sizeRegions(b)].every((code) => set.has(code));
-}
+const nodeSizesKey = (provider: CloudProvider): string => `nodesizes:${provider}`;
 
-/**
- * Collapse "virtual twins": one machine a provider lists under two SKUs that
- * match on cores/RAM/disk/cpuType/arch AND an identical hourly rate, differing
- * only in the monthly commitment — Cherry's B1 (Gen-1 list) and B2 (Gen-2 promo)
- * "Cloud VPS 1" lines are identical in specs and €/h, so shown side by side the
- * dearer B1 reads as a rip-off. An identical hourly is the signature of "same
- * machine, different billing tier"; a genuinely different product carries a
- * different hourly (Cherry's G1/G2/P1/C1 VDS all do). Within a group keep the
- * cheapest monthly and drop a twin ONLY when the survivor also covers every one
- * of its regions — else both stay, so a promo scoped to fewer regions can never
- * silently drop the list SKU's extra regions. Bare metal is never collapsed: two
- * physical machines at one price are two machines, not billing twins.
- */
-function dedupeVirtualTwins(sizes: NodeSizeDto[]): NodeSizeDto[] {
-  const groups = new Map<string, NodeSizeDto[]>();
-  const metal: NodeSizeDto[] = [];
-  for (const s of sizes) {
-    if (s.bareMetal) {
-      metal.push(s);
-      continue;
-    }
-    const h = sizeHourly(s);
-    const key = `${s.cores}|${s.memory}|${s.disk ?? 0}|${s.cpuType ?? '?'}|${s.architecture ?? '?'}|${h == null ? 'm' : h.toFixed(4)}`;
-    (groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
-  }
-  const kept: NodeSizeDto[] = [];
-  for (const group of groups.values()) {
-    if (group.length === 1) {
-      kept.push(group[0]);
-      continue;
-    }
-    const [best, ...rest] = [...group].sort((a, b) => sizeMonthly(a) - sizeMonthly(b));
-    kept.push(best);
-    // Keep any twin whose regions the survivor does not fully cover.
-    for (const twin of rest) if (!sizeCovers(best, twin)) kept.push(twin);
-  }
-  return [...metal, ...kept];
+/** Says which of the two unreachable states left the provider out, in the user's terms —
+ * "configure it" and "unlock the vault you already filled" are different instructions. */
+function skipReason(
+  provider: CloudProvider,
+  cause: VopsCompareSkipCause,
+): { cause: VopsCompareSkipCause; reason: string } {
+  const priced = 'its plans are priced through its authenticated API';
+  return cause === 'sealed'
+    ? { cause, reason: `the vault is sealed, so no credential for ${provider} could be read without a passphrase — ${priced}` }
+    : { cause, reason: `no credential is configured for ${provider} — ${priced}` };
 }
 
 /** Live compute research over the shared provider services (getNodeSizes). */
@@ -210,15 +171,40 @@ export class VopsCatalogService {
     }));
   }
 
+  /**
+   * Just the rows, for callers with nowhere to put a partial result (the local API).
+   * A provider that failed is re-thrown rather than dropped: silently returning the
+   * survivors would be the very omission `compareReport` exists to prevent, and this
+   * signature has no channel to name it.
+   */
   async compare(query: CompareQuery): Promise<VopsCompareRow[]> {
+    const report = await this.compareReport(query);
+    if (report.failed.length) throw report.failed[0].error;
+    return report.rows;
+  }
+
+  /** The comparison plus the providers it could not ask and the ones that failed: a
+   * fan-out that quietly drops a provider reads as "these are all the options", and one
+   * provider's outage must not cost the user the four that answered. */
+  async compareReport(query: CompareQuery): Promise<VopsCompareReport> {
     const targets = query.provider
       ? [resolveProvider(query.provider)]
       : COMPARE_PROVIDERS;
     const rows: VopsCompareRow[] = [];
+    const skipped: VopsCompareSkip[] = [];
+    const failed: VopsCompareFailure[] = [];
     for (const provider of targets) {
+      const outcome = await this.providerSizes(provider, query);
+      if ('skip' in outcome) {
+        skipped.push({ provider: DISPLAY_NAMES[provider] ?? provider, ...skipReason(provider, outcome.skip) });
+        continue;
+      }
+      if ('error' in outcome) {
+        failed.push({ provider: DISPLAY_NAMES[provider] ?? provider, error: outcome.error });
+        continue;
+      }
       const currency = this.currency(provider);
-      const sizes = await this.nodeSizes(provider, query.refresh);
-      for (const size of sizes) {
+      for (const size of outcome.sizes) {
         const row = this.toCompareRow(provider, size, currency, query);
         if (row) rows.push(row);
       }
@@ -227,7 +213,63 @@ export class VopsCatalogService {
     // by real price instead of dumping at the bottom (~730 h/month).
     const effHourly = (r: VopsCompareRow) =>
       r.hourly ?? (r.monthly == null ? Infinity : r.monthly / 730);
-    return rows.sort((a, b) => effHourly(a) - effHourly(b));
+    const sorted = [...rows].sort((a, b) => effHourly(a) - effHourly(b));
+    return { rows: sorted, skipped, failed };
+  }
+
+  /**
+   * One provider's contribution to the fan-out, isolated: a rejection is captured and
+   * reported beside the other providers' rows instead of propagating out of the loop and
+   * emptying the whole comparison. Only the fan-out is isolated — when the user names a
+   * provider it is the only thing they asked for, so its failure is the command's failure
+   * and is thrown the way it always was.
+   *
+   * A sealed vault reaching here is the very condition `comparableSizes` screens for up
+   * front, arriving by a path it does not screen (a provider that prices publicly but whose
+   * client still reads a credential). It stays a *skip*: `compare()` rethrows the first
+   * failure, so recording it as one would turn the command that must work on a fresh
+   * install back into an error.
+   */
+  private async providerSizes(
+    provider: CloudProvider,
+    query: CompareQuery,
+  ): Promise<{ sizes: NodeSizeDto[] } | { skip: VopsCompareSkipCause } | { error: unknown }> {
+    if (query.provider) return { sizes: await this.nodeSizes(provider, query.refresh) };
+    try {
+      return await this.comparableSizes(provider, query.refresh);
+    } catch (error) {
+      if (error instanceof VaultLockedError) return { skip: 'sealed' };
+      return { error };
+    }
+  }
+
+  /**
+   * One provider's sizes for the comparison fan-out. `compare` is the command that
+   * has to work on a fresh install with nothing configured, so it must never make
+   * the vault ask for a passphrase: a provider that prices only through its
+   * authenticated API, with no credential reachable without prompting, is left out
+   * of the comparison rather than dragged into the credential path. A cached
+   * catalog needs no credential at all, so it is preferred over the check.
+   *
+   * Naming a provider (`--provider hetzner`) still goes the ordinary way: there the
+   * credential is exactly what the user asked to spend.
+   *
+   * `skip` means "left out", never "has nothing" — and it carries which of the two
+   * unreachable states it was, because the remedies differ.
+   */
+  private async comparableSizes(
+    provider: CloudProvider,
+    refresh?: boolean,
+  ): Promise<{ sizes: NodeSizeDto[] } | { skip: VopsCompareSkipCause }> {
+    const cached = refresh
+      ? null
+      : await this.store.getCache<NodeSizeDto[]>(nodeSizesKey(provider));
+    if (cached) return { sizes: cached };
+    if (needsCredentialToPrice(provider)) {
+      const reach = await credentialReach(provider);
+      if (reach !== 'reachable') return { skip: reach };
+    }
+    return { sizes: await this.nodeSizes(provider, refresh) };
   }
 
   private toCompareRow(
@@ -404,7 +446,7 @@ export class VopsCatalogService {
     provider: CloudProvider,
     refresh = false,
   ): Promise<NodeSizeDto[]> {
-    const key = `nodesizes:${provider}`;
+    const key = nodeSizesKey(provider);
     if (!refresh) {
       const cached = await this.store.getCache<NodeSizeDto[]>(key);
       if (cached) return cached;

@@ -73,13 +73,13 @@ Comparing *across* providers is the exception: `vops compare` without `--provide
 # Research — no provisioning, safe to run anytime
 vops providers list                    # supported providers + billing model
 vops providers plans ovh               # live plans & prices for a provider
-vops providers regions hetzner         # regions / locations
+vops providers locations hetzner       # that provider's regions / locations
 vops providers capabilities scaleway   # what the provider supports
 vops compare                           # side-by-side comparison across providers
 
 # Servers — plan first, then create (hourly-billed only)
-vops servers plan --provider hetzner --plan cx22 --region nbg1
-vops servers create <plan-file>        # provisions; monthly-commitment providers are refused
+vops servers plan --provider hetzner --plan cx22 --location nbg1
+vops servers create --from-plan vops-plan.json --yes   # provisions; monthly-commitment providers are refused
 vops servers list
 vops servers delete <id>               # only vops-created servers
 
@@ -87,8 +87,8 @@ vops servers delete <id>               # only vops-created servers
 vops firewall create / list / show / rules / apply / delete
 
 # Host-level firewall (provider-independent, via cloud-init)
-vops host-firewall render <plan>       # emit the nftables ruleset
-vops host-firewall cloud-init <plan>   # emit #cloud-config user_data
+vops host-firewall render --rules '<json-array>'      # emit the nftables ruleset
+vops host-firewall cloud-init --rules '<json-array>'  # emit #cloud-config user_data
 
 # Private networks
 vops vnet create / list / show / subnet / route / attach / delete
@@ -148,12 +148,13 @@ vops keyring status / unlock / lock
 Credentials and local state live under `~/.config/vops/`. There are two ways to supply a provider credential — pick one:
 
 ```bash
-vops config set hetzner YOUR_HETZNER_TOKEN   # encrypted local store (recommended)
+vops config set hetzner --token YOUR_HETZNER_TOKEN   # encrypted local store (recommended)
+vops config set hetzner --token YOUR_HETZNER_TOKEN --force   # replace one you already stored
 vops config list                             # which providers are configured
 ```
 
-- `~/.config/vops/profiles/<profile>/secrets.json.enc` — where `vops config set` stores credentials, encrypted with **AES-256-GCM**. The key sits beside it in `.key`, created `0600`.
-- `~/.config/vops/.env` — the environment-variable route, read directly (a `.env` in the current directory works too). Plain text, so it's on you to protect it.
+- `~/.config/vops/profiles/<profile>/secrets.json.enc` — where `vops config set` stores credentials, encrypted with **AES-256-GCM**. The key sits beside it in `.key`, created `0600`. A write names the profile it lands in and **refuses to replace an existing credential without `--force`** — there is no previous copy to go back to.
+- `~/.config/vops/.env` — the environment-variable route, read directly (a `.env` in the current directory works too). Plain text, so it's on you to protect it. This file belongs to the **default profile**: with `VOPS_PROFILE=<name>` set, vops reads only `~/.config/vops/profiles/<name>/.env`, so a scratch profile can't reach your real tokens.
 - `~/.config/vops/profiles/<profile>/keys/` — your SSH keys (private halves stay here, never uploaded, never copied on import).
 - A local libSQL cache and a plan/audit store.
 

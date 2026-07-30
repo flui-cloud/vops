@@ -39,6 +39,24 @@ export const isGuided = (provider: CloudProvider): boolean =>
   GUIDED_PROVIDERS.has(provider);
 
 /**
+ * Providers whose plans and prices only exist behind their AUTHENTICATED API:
+ * Hetzner's `/v1/server_types` and Scaleway's product catalogue both need a token
+ * before they will name a price. OVH, Contabo and Cherry price from public
+ * sources, which is why `vops compare` works on a fresh install at all.
+ *
+ * `compare` uses this to leave a provider out of the fan-out when no credential is
+ * reachable, instead of entering the credential path (and asking for the vault
+ * passphrase) for a comparison that reads nothing.
+ */
+export const CREDENTIAL_PRICED_PROVIDERS: ReadonlySet<CloudProvider> = new Set([
+  CloudProvider.HETZNER,
+  CloudProvider.SCALEWAY,
+]);
+
+export const needsCredentialToPrice = (provider: CloudProvider): boolean =>
+  CREDENTIAL_PRICED_PROVIDERS.has(provider);
+
+/**
  * Providers whose native, network-edge firewall is a usable option. On these the
  * provider firewall (`vops firewall`) is the right tool — it filters before traffic
  * ever reaches the host — so vops does NOT layer its host-level nftables firewall on
@@ -76,12 +94,12 @@ export function resolveProvider(name: string): CloudProvider {
   // Accept the enum id ('hetzner'), the display name ('Hetzner Cloud'), or a
   // close alias ('ovhcloud') — the UI/API round-trips display names, so the
   // machine id and the label must both resolve here.
-  const n = name.toLowerCase().replace(/\s+/g, '');
+  const n = name.toLowerCase().replaceAll(/\s+/g, '');
   const provider = COMPARE_PROVIDERS.find(
     (p) =>
       n === p ||
       n.startsWith(p) ||
-      DISPLAY_NAMES[p].toLowerCase().replace(/\s+/g, '') === n,
+      DISPLAY_NAMES[p].toLowerCase().replaceAll(/\s+/g, '') === n,
   );
   if (!provider) {
     throw new BadRequestException(

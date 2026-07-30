@@ -1,4 +1,6 @@
 import * as crypto from 'node:crypto';
+import { ExitCode, agentError } from '../agent-api/agent-envelope';
+import { AgentBadRequest } from '../agent-api/agent-http-errors';
 import { LocalConfigStore } from './config/local-config-store';
 import { ensureVaultUnlocked } from './keyring/unlock';
 import { VaultLockedError } from './keyring/vault-session';
@@ -209,9 +211,19 @@ export class CloudClient {
     return this.connect(apiUrl, token);
   }
 
+  /** "You never set this up" and "the service is down" need different answers, and a bare
+   * `fetch failed` is neither: this one is a missing prerequisite (exit 4), the unreachable
+   * case below is an operational failure (exit 1) that names the endpoint it tried. */
   private require(): { apiUrl: string; token: string } {
     const cfg = this.config();
-    if (!cfg) throw new Error('Not connected. Run: vops watch login');
+    if (!cfg) {
+      throw new AgentBadRequest(
+        agentError('VOPS_RELAY_NOT_CONNECTED', 'prerequisite', 'No notification relay is connected — `vops watch` needs one.', {
+          suggestedAction: 'Connect one with `vops watch login`.',
+        }),
+        ExitCode.MISSING_PREREQUISITE,
+      );
+    }
     return cfg;
   }
 
@@ -351,15 +363,26 @@ export class CloudClient {
   private async json<T>(method: string, path: string, body?: unknown): Promise<T> {
     await ensureVaultUnlocked();
     const { apiUrl, token } = this.require();
-    const res = await fetch(`${apiUrl}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${apiUrl}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      throw new AgentBadRequest(
+        agentError('VOPS_RELAY_UNREACHABLE', 'operational', `The relay at ${apiUrl} did not answer (${reason}).`, {
+          suggestedAction: `Check that ${apiUrl} is up, or switch endpoint with \`vops watch login --api-url <url>\`.`,
+        }),
+        ExitCode.FAILURE,
+      );
+    }
     const text = await res.text();
     if (!res.ok) {
       const message = safeMessage(text) ?? `HTTP ${res.status}`;

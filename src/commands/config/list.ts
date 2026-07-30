@@ -1,31 +1,31 @@
-import { Command, Flags } from '@oclif/core';
+import { Command } from '@oclif/core';
 import chalk from 'chalk';
+import { agentJsonFlag, runAgentCommand } from '../../agent-api/agent-output';
 import { LocalConfigStore } from '../../lib/config/local-config-store';
 import { ensureVaultUnlocked } from '../../lib/keyring/unlock';
 
 export default class ConfigList extends Command {
   static readonly description = 'List providers with locally-configured credentials';
 
-  static readonly flags = {
-    json: Flags.boolean({ description: 'Output as JSON', default: false }),
-  };
+  static readonly flags = { ...agentJsonFlag };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(ConfigList);
-    await ensureVaultUnlocked();
-    const configured = new LocalConfigStore().listConfigured();
-
-    if (flags.json) {
-      this.log(JSON.stringify({ configured }, null, 2));
-      return;
-    }
-
-    if (!configured.length) {
-      this.log(chalk.dim('No credentials configured. Run: vops config set <provider>'));
-      return;
-    }
-    for (const provider of configured) {
-      this.log(`${chalk.green('✓')} ${provider}`);
-    }
+    await runAgentCommand(
+      this,
+      'vops config list',
+      flags.json,
+      async () => {
+        await ensureVaultUnlocked();
+        return { data: { configured: new LocalConfigStore().listConfigured() } };
+      },
+      ({ configured }) => {
+        if (!configured.length) {
+          this.log(chalk.dim('No credentials configured. Run: vops config set <provider>'));
+          return;
+        }
+        for (const provider of configured) this.log(`${chalk.green('✓')} ${provider}`);
+      },
+    );
   }
 }

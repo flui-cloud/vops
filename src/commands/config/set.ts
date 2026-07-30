@@ -1,8 +1,14 @@
 import { Args, Command, Flags } from '@oclif/core';
 import { CloudProvider } from '@flui-cloud/infra';
 import { LocalConfigStore } from '../../lib/config/local-config-store';
+import {
+  credentialWriteRefusal,
+  credentialWriteSummary,
+} from '../../lib/config/credential-write';
+import { activeProfile } from '../../lib/env-files';
 import { ensureVaultUnlocked } from '../../lib/keyring/unlock';
 import { resolveProvider } from '../../lib/providers';
+import { LocalStore } from '../../lib/store/local-store';
 
 export default class ConfigSet extends Command {
   static readonly description =
@@ -21,6 +27,10 @@ export default class ConfigSet extends Command {
     token: Flags.string({ description: 'API token (Hetzner)', env: 'VOPS_TOKEN' }),
     'access-key': Flags.string({ description: 'Access key (Scaleway)', env: 'VOPS_ACCESS_KEY' }),
     'secret-key': Flags.string({ description: 'Secret key (Scaleway)', env: 'VOPS_SECRET_KEY' }),
+    force: Flags.boolean({
+      description: 'Replace an existing credential for this provider (not reversible)',
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
@@ -37,6 +47,17 @@ export default class ConfigSet extends Command {
       );
     }
 
+    const profile = activeProfile();
+    const existing = store.listConfigured().includes(provider);
+    const refusal = credentialWriteRefusal({
+      provider,
+      profile,
+      profileDir: store.profileDir,
+      existing,
+      force: flags.force,
+    });
+    if (refusal) this.error(refusal, { exit: 1 });
+
     if (provider === CloudProvider.SCALEWAY) {
       if (!flags['access-key'] || !flags['secret-key']) {
         this.error('Scaleway requires --access-key and --secret-key', { exit: 1 });
@@ -52,6 +73,21 @@ export default class ConfigSet extends Command {
       store.setToken(provider, flags.token);
     }
 
-    this.log(`✓ Stored ${provider} credentials (AES-256-GCM, ~/.config/vops).`);
+    await this.audit(provider, profile, existing);
+    this.log(
+      credentialWriteSummary({ provider, profile, profileDir: store.profileDir, existing }),
+    );
+  }
+
+  /** Records that a credential changed, never what it changed to. */
+  private async audit(provider: string, profile: string, replaced: boolean): Promise<void> {
+    const store = new LocalStore();
+    try {
+      await store.appendAudit('config.credential.set', { provider, profile, replaced });
+    } catch (e) {
+      this.warn(`Credential stored, but the local audit trail could not be written: ${e.message}`);
+    } finally {
+      await store.onModuleDestroy();
+    }
   }
 }

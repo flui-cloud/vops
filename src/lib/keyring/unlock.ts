@@ -28,6 +28,10 @@ export interface UnlockOptions {
   /** Go through the keyring even with the passphrase in hand — `vops keyring unlock`
    * wants to leave a session for the next process, not just open this one. */
   useDaemon?: boolean;
+  /** `false` = open only from what is already at hand (this process, VOPS_PASSPHRASE,
+   * a keyring that is already running); a still-sealed vault answers VaultLockedError
+   * instead of a prompt. For reads whose credential is optional. */
+  interactive?: boolean;
 }
 
 const SPAWN_POLL_MS = 100;
@@ -115,13 +119,14 @@ async function resolveKey(
 ): Promise<Buffer> {
   const socket = keyringSocket(dir).socketPath;
   const cookie = keyringCookie(dir);
+  const interactive = opts.interactive !== false;
 
   if (!opts.noDaemon) {
-    const cached = await cachedKey(dir, socket, cookie, domain);
+    const cached = await cachedKey(dir, socket, cookie, domain, interactive);
     if (cached) return cached;
   }
 
-  if (!given && !promptAllowed) throw new VaultLockedError();
+  if (!given && (!promptAllowed || !interactive)) throw new VaultLockedError();
   const passphrase = given ?? (await promptSecret('vops vault passphrase: '));
   if (!opts.noDaemon) {
     const fresh = await unlockDaemon(socket, cookie, passphrase, domain);
@@ -136,10 +141,19 @@ async function resolveKey(
   return domainKeyFrom(passphrase, header, domain);
 }
 
-/** Ask a running keyring for a derived key, starting one if none is listening. */
-async function cachedKey(dir: string, socket: string, cookie: string, domain: KeyDomain): Promise<Buffer | null> {
+/** Ask a running keyring for a derived key, starting one if none is listening. A
+ * probe that will not prompt starts none: with no passphrase to follow, a fresh
+ * daemon holds nothing to answer with. */
+async function cachedKey(
+  dir: string,
+  socket: string,
+  cookie: string,
+  domain: KeyDomain,
+  allowSpawn = true,
+): Promise<Buffer | null> {
   const first = await keyOp(socket, cookie, domain);
   if (first) return first;
+  if (!allowSpawn) return null;
   if (await isListening(socket, cookie)) return null;
   if (!(await startDaemon(dir, socket, cookie))) return null;
   return keyOp(socket, cookie, domain);

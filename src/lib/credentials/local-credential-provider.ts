@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   ICredentialProvider,
   CloudProvider,
   BearerTokenDto,
+  CredentialUnavailableError,
 } from '@flui-cloud/infra';
 import { LocalConfigStore } from '../config/local-config-store';
 import { ensureVaultUnlocked } from '../keyring/unlock';
@@ -120,9 +121,12 @@ export class LocalCredentialProvider implements ICredentialProvider {
     throw new Error(`Unsupported provider: ${provider}`);
   }
 
-  private missing(name: string): NotFoundException {
-    return new NotFoundException(
+  /** Typed so the provider layer can tell "we never authenticated" from "the API
+   * answered nothing", instead of degrading a credential failure to an empty list. */
+  private missing(name: string): CredentialUnavailableError {
+    return new CredentialUnavailableError(
       `No credentials configured for ${name}. Run: vops config set ${name}`,
+      name,
     );
   }
 }

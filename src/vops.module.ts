@@ -31,7 +31,7 @@ import {
 } from '@flui-cloud/infra';
 import { LocalCredentialProvider } from './lib/credentials/local-credential-provider';
 import { LocalStore } from './lib/store/local-store';
-import { configBase } from './lib/profile';
+import { vopsEnvFiles } from './lib/env-files';
 import { VopsProvidersService } from './providers/vops-providers.service';
 import { VopsCredentialsService } from './credentials/vops-credentials.service';
 import { VopsCatalogService } from './catalog/vops-catalog.service';
@@ -73,15 +73,13 @@ import { VopsIngressService } from './apps/vops-ingress.service';
  */
 // Load creds from the vops package .env and the profile dir regardless of the
 // working directory — `vops` is symlinked globally, so cwd is rarely vops/.
-// Package .env takes precedence; cwd .env stays a dev convenience.
-// configBase() rather than a hardcoded ~/.config/vops: VOPS_CONFIG_DIR moves the
-// whole profile, and `vops keyring import-env` prunes the file this list loads —
-// the two must agree on which file that is.
-const ENV_FILES = [
-  path.resolve(__dirname, '../../../.env'),
-  path.join(configBase(), '.env'),
-  '.env',
-];
+// Package .env takes precedence; cwd .env stays a dev convenience. The list is
+// resolved by lib/env-files so `bin/run` (which populates process.env first) and
+// this module always agree on which files a profile may read.
+const ENV_FILES = vopsEnvFiles({
+  cwd: '.',
+  packageEnv: path.resolve(__dirname, '../../../.env'),
+});
 
 @Module({
   imports: [

@@ -1,4 +1,10 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { cloudPowerFinding, hungGuestFinding, metricFindings } from '../src/host-ops/cloud-plane';
+import { CloudClient } from '../src/lib/cloud-client';
+import { AgentBadRequest } from '../src/agent-api/agent-http-errors';
+import { ExitCode } from '../src/agent-api/agent-envelope';
 
 describe('cloud plane mappers', () => {
   it('maps provider power state to severities', () => {
@@ -39,5 +45,40 @@ describe('cloud plane mappers', () => {
       netBandwidthInBytes: null, netBandwidthOutBytes: null,
     });
     expect(findings).toHaveLength(0);
+  });
+});
+
+// `fetch failed` gives an agent no way to tell "you never set this up" from "the service is
+// down". The two are different exit codes, and the endpoint is named in the second.
+describe('CloudClient — a missing relay and a dead relay are different failures', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vops-relay-'));
+
+  beforeEach(() => {
+    process.env.VOPS_CONFIG_DIR = dir;
+    process.env.VOPS_PROFILE = 'relay-test';
+  });
+  afterAll(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    delete process.env.VOPS_CONFIG_DIR;
+    delete process.env.VOPS_PROFILE;
+  });
+
+  it('not configured → missing prerequisite (exit 4) naming `vops watch login`', async () => {
+    const err = await new CloudClient().listWatches().catch((e) => e);
+    expect(err).toBeInstanceOf(AgentBadRequest);
+    expect(err.agent.code).toBe('VOPS_RELAY_NOT_CONNECTED');
+    expect(err.agent.category).toBe('prerequisite');
+    expect(err.exitCode).toBe(ExitCode.MISSING_PREREQUISITE);
+    expect(err.agent.suggestedAction).toContain('vops watch login');
+  });
+
+  it('configured but unreachable → operational failure (exit 1) naming the endpoint', async () => {
+    const client = new CloudClient();
+    client.connect('http://127.0.0.1:9');
+    const err = await client.listWatches().catch((e) => e);
+    expect(err).toBeInstanceOf(AgentBadRequest);
+    expect(err.agent.code).toBe('VOPS_RELAY_UNREACHABLE');
+    expect(err.exitCode).toBe(ExitCode.FAILURE);
+    expect(err.agent.message).toContain('http://127.0.0.1:9');
   });
 });

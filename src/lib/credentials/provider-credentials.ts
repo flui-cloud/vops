@@ -1,5 +1,7 @@
 import { CloudProvider } from '@flui-cloud/infra';
 import { LocalConfigStore } from '../config/local-config-store';
+import { ensureVaultUnlocked } from '../keyring/unlock';
+import { VaultLockedError } from '../keyring/vault-session';
 
 /**
  * Providers whose credentials the UI form (and `config set`) manages today.
@@ -66,6 +68,41 @@ export function clearEnvForProvider(provider: CloudProvider): void {
   const map = ENV_CREDENTIAL_MAP[provider];
   if (!map) return;
   for (const envVar of Object.values(map)) delete process.env[envVar];
+}
+
+/**
+ * Why a credential is or is not usable without asking for anything. The two negative
+ * answers have different remedies — `unconfigured` needs `vops config set`, `sealed`
+ * needs an unlock — and a caller that leaves the provider out has to be able to say
+ * which, or the user cannot tell a gap they must fill from one they already filled.
+ */
+export type CredentialReach = 'reachable' | 'unconfigured' | 'sealed';
+
+/**
+ * Whether a credential for this provider can be had *without asking for anything*:
+ * the store holds one, and the vault is legacy, already open, or openable from
+ * VOPS_PASSPHRASE / a keyring that is already running. A still-sealed vault answers
+ * `sealed` rather than prompting, so a read whose credential is optional can leave the
+ * provider out instead of turning "nothing configured" into a passphrase prompt.
+ */
+export async function credentialReach(
+  provider: CloudProvider,
+): Promise<CredentialReach> {
+  try {
+    await ensureVaultUnlocked({ interactive: false });
+    return isProviderConfigured(new LocalConfigStore(), provider)
+      ? 'reachable'
+      : 'unconfigured';
+  } catch (e) {
+    if (e instanceof VaultLockedError) return 'sealed';
+    throw e;
+  }
+}
+
+export async function hasReachableCredential(
+  provider: CloudProvider,
+): Promise<boolean> {
+  return (await credentialReach(provider)) === 'reachable';
 }
 
 /**

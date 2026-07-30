@@ -99,6 +99,24 @@ export class LocalConfigStore {
     this.writeSecrets(secrets);
   }
 
+  /** `--set` values behind an approved deploy plan. Kept out of `listConfigured()`: they are
+   * inputs to one deployment, not a provider the user configured. */
+  getPlanSecrets(planId: string): Record<string, string> | null {
+    return this.readSecrets().planSecrets?.[planId] ?? null;
+  }
+
+  setPlanSecrets(planId: string, values: Record<string, string>): void {
+    const secrets = this.readSecrets();
+    secrets.planSecrets = { ...secrets.planSecrets, [planId]: values };
+    this.writeSecrets(secrets);
+  }
+
+  removePlanSecrets(planId: string): void {
+    const secrets = this.readSecrets();
+    delete secrets.planSecrets?.[planId];
+    this.writeSecrets(secrets);
+  }
+
   private readSecrets(): VaultSecrets {
     if (this.sealed) return readWith(this.profileDir, requireVaultKey());
     if (!fs.existsSync(this.secretsPath)) return {};
