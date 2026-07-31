@@ -1,0 +1,200 @@
+      <!-- ============ REMOTE ACCESS ============ -->
+      <!-- One page, one state at a time. Every branch below ends in exactly one
+           primary button, because the whole point is that a first-time user never
+           has to decide what "pairing" means. -->
+      <section x-show="view==='remote'" x-cloak class="space-y-5">
+
+        <!-- Vault sealed: nothing here can be read until it is open. -->
+        <template x-if="remoteStage()==='locked'">
+          <div class="card p-8 text-center">
+            <h2 class="text-base font-semibold tracking-tight">Unlock this computer first</h2>
+            <p class="mx-auto mt-2 max-w-[46ch] text-[12.5px]" style="color:var(--text-dim)">
+              Remote access is configured, but the credential vault is sealed. Unlock it and this page reconnects on its own.
+            </p>
+            <button class="btn-primary mt-4" @click="vaultOpen()">Unlock vault</button>
+          </div>
+        </template>
+
+        <!-- STATE 1 — off. -->
+        <template x-if="remoteStage()==='off'">
+          <div class="card p-8">
+            <div class="mx-auto max-w-[52ch] text-center">
+              <h2 class="text-lg font-semibold tracking-tight">Use vOps from your phone</h2>
+              <p class="mt-2 text-[13px] leading-relaxed" style="color:var(--text-dim)">
+                Securely view your infrastructure and approve actions while you are away from this computer.
+                Your provider keys and SSH keys stay here — the phone only sees what this machine sends it.
+              </p>
+              <button class="btn-primary mt-5" :disabled="remote.busy==='enable'" @click="remoteEnable()"
+                x-text="remote.busy==='enable' ? 'Turning on…' : 'Enable remote access'"></button>
+            </div>
+
+            <div class="mx-auto mt-6 max-w-[52ch] border-t pt-4" style="border-color:var(--border)">
+              <button class="text-[11.5px]" style="color:var(--text-faint)" @click="remote.advanced=!remote.advanced"
+                x-text="(remote.advanced ? '▾' : '▸') + ' Advanced settings'"></button>
+              <div x-show="remote.advanced" x-cloak class="mt-3">
+                <label class="text-[11.5px]" style="color:var(--text-faint)" for="remote-relay">Relay address</label>
+                <input id="remote-relay" class="field mt-1 w-full" x-model="remote.relayUrl" placeholder="https://vops-api.flui.cloud" />
+                <p class="mt-2 text-[11.5px] leading-relaxed" style="color:var(--text-faint)">
+                  The relay only forwards sealed envelopes between this computer and your phone. It cannot read them and cannot authorise anything. Leave it as it is unless you run your own.
+                </p>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- STATE 2 — on, no device yet. -->
+        <template x-if="remoteStage()==='ready'">
+          <div class="card p-8 text-center">
+            <div class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11.5px] font-semibold"
+              :style="remoteOnline() ? 'color:var(--ok);background:var(--ok-soft)' : 'color:var(--warn);background:var(--warn-soft)'">
+              <span class="h-1.5 w-1.5 rounded-full" :style="'background:' + (remoteOnline() ? 'var(--ok)' : 'var(--warn)')"></span>
+              <span x-text="remoteStateLabel()"></span>
+            </div>
+            <h2 class="mt-4 text-base font-semibold tracking-tight">No device is paired yet</h2>
+            <p class="mx-auto mt-2 max-w-[46ch] text-[12.5px]" style="color:var(--text-dim)">
+              Pair your phone once. You will scan a code here, then confirm the phone on this screen before it can do anything.
+            </p>
+            <button class="btn-primary mt-4" :disabled="!remoteOnline() || remote.busy==='pair'" @click="remoteCreatePairing()"
+              x-text="remote.busy==='pair' ? 'Creating…' : 'Pair a device'"></button>
+            <p x-show="!remoteOnline()" class="mt-3 text-[11.5px]" style="color:var(--warn)">
+              Waiting for the relay connection — pairing needs it. This retries by itself.
+            </p>
+          </div>
+        </template>
+
+        <!-- STATE 3a — waiting for the phone to scan. -->
+        <template x-if="remoteStage()==='waiting'">
+          <div class="card p-8">
+            <template x-if="!remotePairExpired()">
+              <div class="text-center">
+                <h2 class="text-base font-semibold tracking-tight">Scan this with your phone</h2>
+                <p class="mx-auto mt-2 max-w-[46ch] text-[12.5px]" style="color:var(--text-dim)">
+                  Open the camera on your phone and point it at the code. The vOps app opens on the phone; you then come back here to confirm it.
+                </p>
+                <div class="mx-auto mt-5 w-[232px] rounded-xl bg-white p-3">
+                  <img :src="remote.pair.qrDataUrl" alt="Pairing code" width="208" height="208" class="block w-full" />
+                </div>
+                <div class="mt-3 font-mono text-[12px]" style="color:var(--text-faint)">
+                  expires in <span :style="remote.pairLeft < 60000 ? 'color:var(--warn)' : ''" x-text="remotePairCountdown()"></span>
+                </div>
+                <div class="mt-4 flex items-center justify-center gap-2">
+                  <button class="btn-xs" @click="remoteCopyPairingLink()">Copy link</button>
+                  <a class="btn-xs" :href="remote.pair.activationUrl" target="_blank" rel="noopener">Open pairing link</a>
+                  <button class="btn-xs btn-xs-muted" @click="remoteCancelPairing()">Cancel</button>
+                </div>
+              </div>
+            </template>
+            <template x-if="remotePairExpired()">
+              <div class="text-center">
+                <h2 class="text-base font-semibold tracking-tight">This code expired</h2>
+                <p class="mx-auto mt-2 max-w-[44ch] text-[12.5px]" style="color:var(--text-dim)">
+                  A pairing code is good for ten minutes so a photo of your screen cannot be reused later.
+                </p>
+                <button class="btn-primary mt-4" :disabled="remote.busy==='pair'" @click="remoteCreatePairing()">Generate a new code</button>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- STATE 3b — the phone proved its key; the grant is decided here. -->
+        <template x-if="remoteStage()==='confirm'">
+          <div class="card p-7">
+            <div class="mx-auto max-w-[46ch]">
+              <div class="text-center">
+                <div class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11.5px] font-semibold" style="color:var(--ok);background:var(--ok-soft)">
+                  <span class="h-1.5 w-1.5 rounded-full" style="background:var(--ok)"></span> Phone found
+                </div>
+                <h2 class="mt-4 text-base font-semibold tracking-tight">Confirm this device</h2>
+                <p class="mt-2 text-[12.5px]" style="color:var(--text-dim)">
+                  It has nothing until you say so. Give it a name and decide what it may do.
+                </p>
+              </div>
+
+              <label class="mt-5 block text-[11.5px]" style="color:var(--text-faint)" for="remote-device-name">Name</label>
+              <input id="remote-device-name" class="field mt-1 w-full" x-model="remote.confirm.label" maxlength="80" placeholder="My phone" />
+
+              <div class="mt-4 text-[11.5px]" style="color:var(--text-faint)">What it may do</div>
+              <div class="mt-1.5 space-y-1.5">
+                <template x-for="role in remoteRoles" :key="role.id">
+                  <button class="w-full rounded-lg border p-3 text-left"
+                    :style="remote.confirm.role===role.id ? 'border-color:var(--accent-border);background:var(--accent-soft)' : 'border-color:var(--border)'"
+                    @click="remote.confirm.role=role.id">
+                    <div class="flex items-center gap-2">
+                      <span class="h-3 w-3 shrink-0 rounded-full border-[3px]"
+                        :style="remote.confirm.role===role.id ? 'border-color:var(--accent)' : 'border-color:var(--border)'"></span>
+                      <span class="text-[13px] font-semibold" x-text="role.label"></span>
+                      <span x-show="role.id==='viewer'" class="count-pill">recommended</span>
+                    </div>
+                    <div class="mt-1 pl-5 text-[11.5px] leading-relaxed" style="color:var(--text-dim)" x-text="role.hint"></div>
+                  </button>
+                </template>
+              </div>
+
+              <button class="btn-primary mt-5 w-full" :disabled="remote.busy==='confirm'" @click="remoteConfirmPairing()"
+                x-text="remote.busy==='confirm' ? 'Confirming…' : 'Confirm this device'"></button>
+              <button class="mt-3 w-full text-[11.5px]" style="color:var(--text-faint)" @click="remoteCancelPairing()">Not my phone — cancel</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- STATE 4 — paired devices. -->
+        <template x-if="remoteStage()==='devices'">
+          <div class="space-y-4">
+            <div class="card flex flex-wrap items-center gap-3 p-4">
+              <div class="flex items-center gap-2">
+                <span class="h-2 w-2 rounded-full" :style="'background:' + (remoteOnline() ? 'var(--ok)' : 'var(--warn)')"></span>
+                <span class="text-[13px] font-semibold" x-text="'Remote access ' + remoteStateLabel().toLowerCase()"></span>
+              </div>
+              <div class="ml-auto flex items-center gap-2">
+                <button class="btn-xs" :disabled="!remoteOnline() || remote.busy==='pair'" @click="remoteCreatePairing()">Pair another device</button>
+                <button class="btn-xs btn-xs-muted" :disabled="remote.busy==='disable'" @click="remoteDisable()">Turn off</button>
+              </div>
+            </div>
+
+            <template x-for="device in remoteDevices()" :key="device.id">
+              <div class="card p-5">
+                <div class="flex flex-wrap items-start gap-3">
+                  <div class="min-w-0">
+                    <div class="text-[14.5px] font-bold tracking-tight" x-text="device.label"></div>
+                    <div class="mt-1 text-[12px]" style="color:var(--text-faint)"
+                      x-text="remoteRoleLabel(device.role) + ' · ' + remoteSeen(device)"></div>
+                  </div>
+                  <span class="count-pill ml-auto shrink-0"
+                    :style="device.status==='active' ? 'color:var(--ok)' : 'color:var(--warn)'" x-text="device.status"></span>
+                </div>
+
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                  <select class="field w-auto py-1.5 text-[12px]" aria-label="Device role" :disabled="device.status!=='active'"
+                    @change="remoteSetRole(device, $event.target.value)">
+                    <template x-for="role in remoteRoles" :key="role.id">
+                      <option :value="role.id" :selected="device.role===role.id" x-text="role.label"></option>
+                    </template>
+                  </select>
+                  <button class="btn-xs" :disabled="device.status!=='active' || remote.busy===device.id+':notify'"
+                    @click="remoteDeviceAction(device, 'notify')">Send test notification</button>
+                  <template x-if="device.status==='active'">
+                    <button class="btn-xs btn-xs-muted" @click="remoteDeviceAction(device, 'suspend')">Pause</button>
+                  </template>
+                  <template x-if="device.status==='suspended'">
+                    <button class="btn-xs" @click="remoteDeviceAction(device, 'resume')">Resume</button>
+                  </template>
+                  <button class="btn-xs btn-xs-muted ml-auto" style="color:var(--danger)" @click="remoteRevoke(device)">Revoke</button>
+                </div>
+
+                <button class="mt-4 text-[11.5px]" style="color:var(--text-faint)"
+                  @click="remote.details = remote.details===device.id ? '' : device.id"
+                  x-text="(remote.details===device.id ? '▾' : '▸') + ' Security details'"></button>
+                <div x-show="remote.details===device.id" x-cloak class="mt-2 space-y-1 font-mono text-[11px]" style="color:var(--text-faint)">
+                  <div x-text="'key ' + remoteFingerprint(device.keyId)"></div>
+                  <div x-text="'paired ' + new Date(device.pairedAt).toLocaleString()"></div>
+                  <div x-text="'max risk ' + device.restrictions.maxRisk + ' · ' + device.restrictions.environments.join(', ')"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <p class="text-[11.5px] leading-relaxed" style="color:var(--text-faint)">
+          Advanced: pair from the terminal with <code class="font-mono">vops remote pair</code>, then confirm with <code class="font-mono">vops remote confirm</code>.
+        </p>
+      </section>

@@ -2,6 +2,7 @@
  * the vendored Alpine runtime, and the HTML shell. All inlined at serve time so
  * the UI stays a single self-contained, offline document. */
 const { execSync } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -27,9 +28,22 @@ for (const f of fs.readdirSync(src)) {
 // PWA files for the installed dashboard. The worker's cache key is stamped with
 // the package version so upgrading the CLI retires the previous shell instead of
 // serving it forever.
-fs.copyFileSync(
-  path.join(src, 'manifest.webmanifest'),
+//
+// Brand icons carry a content hash in their URL. Without it a changed icon is
+// invisible twice over: /assets/* is served with a day of max-age, and the
+// service worker holds it cache-first in a cache that only rotates on a version
+// bump — so new bytes at an unchanged URL never reach an installed app.
+const stamp = (rel) => {
+  const file = path.join(src, rel.replace(/^\//, ''));
+  if (!fs.existsSync(file)) return rel;
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0, 8);
+  return `${rel}?v=${hash}`;
+};
+const stampIconUrls = (text) => text.replace(/\/assets\/icon[\w-]*\.png/g, (m) => stamp(m));
+
+fs.writeFileSync(
   path.join(out, 'manifest.webmanifest'),
+  stampIconUrls(fs.readFileSync(path.join(src, 'manifest.webmanifest'), 'utf8')),
 );
 const { version } = require('../package.json');
 fs.writeFileSync(
@@ -61,7 +75,7 @@ const resolveIncludes = (html, depth = 0) => {
 };
 fs.writeFileSync(
   path.join(out, 'app.html'),
-  resolveIncludes(fs.readFileSync(path.join(src, 'app.html'), 'utf8')),
+  stampIconUrls(resolveIncludes(fs.readFileSync(path.join(src, 'app.html'), 'utf8'))),
 );
 
 // Brand icons (logo + favicon) — served same-origin at /assets/*, never inlined.
@@ -96,11 +110,28 @@ for (const f of fs.readdirSync(libSrc)) {
 
 // Canonical coding-agent skill (copied to a user's agent directory by
 // `vops agent skill install`, so it has to ship inside the package).
-const skillSrc = path.join(__dirname, '..', 'src', 'agent-api', 'skill');
-const skillOut = path.join(__dirname, '..', 'lib', 'agent-api', 'skill');
-if (fs.existsSync(skillSrc)) {
-  fs.rmSync(skillOut, { recursive: true, force: true });
-  fs.cpSync(skillSrc, skillOut, { recursive: true });
+const kitSrc = path.join(__dirname, '..', 'src', 'agent-kit');
+const kitOut = path.join(__dirname, '..', 'lib', 'agent-kit');
+if (fs.existsSync(kitSrc)) {
+  // Keep the .js files just emitted by tsc in lib/agent-kit. Only static kit
+  // assets are replaced here.
+  fs.rmSync(path.join(kitOut, 'skills'), { recursive: true, force: true });
+  for (const file of ['manifest.json', 'AGENTS.bootstrap.md']) {
+    fs.rmSync(path.join(kitOut, file), { force: true });
+  }
+  fs.mkdirSync(kitOut, { recursive: true });
+  fs.cpSync(kitSrc, kitOut, {
+    recursive: true,
+    filter: source => !source.endsWith('.ts'),
+  });
+}
+
+// JSON registry read at runtime by CapabilityRegistry.
+const capabilitySrc = path.join(__dirname, '..', 'src', 'agent-control', 'capabilities.json');
+const capabilityOut = path.join(__dirname, '..', 'lib', 'agent-control', 'capabilities.json');
+if (fs.existsSync(capabilitySrc)) {
+  fs.mkdirSync(path.dirname(capabilityOut), { recursive: true });
+  fs.copyFileSync(capabilitySrc, capabilityOut);
 }
 
 // Bundled flui.yaml catalog (read via fs at runtime by the apps subsystem).

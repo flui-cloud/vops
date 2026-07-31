@@ -1,0 +1,53 @@
+<!-- Connection state is a fact, not a task: who is wired, what is live, what needs
+     you, and the stop control — one row instead of a card per client. -->
+<div class="card px-4 py-3" :style="agentControl.emergencyStop?.active ? 'border-color:var(--danger)' : ''">
+  <div class="agent-strip">
+    <template x-if="connectedAgentClients() > 0">
+      <div class="agent-stack">
+        <template x-for="entry in orderedAgentClients().filter(e => agentClientInstalled(e.user) || agentClientInstalled(e.project))" :key="entry.client">
+          <span class="agent-mark" :title="agentClientLabel(entry.client)">
+            <img :src="agentClientIcon(entry.client)" :alt="agentClientLabel(entry.client)" />
+          </span>
+        </template>
+      </div>
+    </template>
+
+    <div class="agent-stat">
+      <span class="n" x-text="connectedAgentClients()"></span>
+      <span class="l" x-text="connectedAgentClients()===1 ? 'agent wired' : 'agents wired'"></span>
+    </div>
+    <div class="agent-sep"></div>
+    <div class="agent-stat">
+      <span class="n" x-text="activeAgentSessions().length"></span>
+      <span class="l" x-text="activeAgentSessions().length===1 ? 'live session' : 'live sessions'"></span>
+    </div>
+    <div class="agent-sep"></div>
+    <div class="agent-stat">
+      <span class="n" :style="pendingAgentApprovals().length ? 'color:var(--warn)' : ''"
+        x-text="pendingAgentApprovals().length"></span>
+      <span class="l">need you</span>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="btn-secondary" @click="openAgentConnect()">Connect an agent</button>
+      <button x-show="!agentControl.emergencyStop?.active" class="btn-danger" @click="stopAllAgentSessions()">Stop everything</button>
+      <button x-show="agentControl.emergencyStop?.active" class="btn-primary" @click="clearAgentEmergencyStop()">Release the stop</button>
+    </div>
+  </div>
+
+  <!-- The stop is the one state worth spending prose on: it survives a restart and
+       refuses every non-read capability until released. -->
+  <div x-show="agentControl.emergencyStop?.active" class="mt-3 text-xs" style="color:var(--text-faint)">
+    <span class="font-semibold" style="color:var(--danger)">Agent mutations are blocked.</span>
+    <span x-text="'Stopped ' + agentEmergencySince() + ' by ' + (agentControl.emergencyStop?.activatedBy || 'you') + '.'"></span>
+    <span x-text="agentControl.emergencyStop?.reason || ''"></span>
+    Every non-read capability is refused until you release it. This survives a restart.
+  </div>
+  <div x-show="!agentControl.emergencyStop?.active && activeAgentSessions().length > 0" class="mt-2 text-xs" style="color:var(--text-faint)">
+    Advisory only: an agent also has its own shell and may act outside vops.
+    <button class="font-semibold" style="color:var(--accent)" @click="revokeAllAgentSessions()"
+      x-text="'Revoke ' + activeAgentSessions().length + ' session(s)'"></button>
+  </div>
+</div>

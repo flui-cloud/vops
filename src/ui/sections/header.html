@@ -16,6 +16,18 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
             </a>
           </div>
+          <!-- Vault chip. Absent for an unsealed profile: there is nothing to lock. -->
+          <button x-show="vault.state==='locked'" class="flex items-center gap-1.5 rounded-[9px] px-2.5 py-2 text-[12.5px]"
+            style="color:var(--warn);background:var(--warn-soft);border:1px solid var(--accent-border)"
+            title="Your credentials are sealed — click to unlock" @click="vaultOpen()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>Locked
+          </button>
+          <button x-show="vault.state==='unlocked'" class="flex items-center gap-1.5 rounded-[9px] px-2.5 py-2 text-[12.5px]"
+            style="color:var(--text-faint);background:var(--panel);border:1px solid var(--border)"
+            :title="'Vault open' + (vaultExpiresLabel() ? ' — ' + vaultExpiresLabel() : '') + '. Click to lock it now.'" @click="vaultLock()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 7.9-.6"/></svg>Unlocked
+          </button>
+
           <div class="flex items-center gap-1.5 rounded-[9px] px-3 py-2 text-[12.5px]" x-show="view==='overview'"
             style="color:var(--text-faint);background:var(--panel);border:1px solid var(--border)">
             <span class="h-1.5 w-1.5 rounded-full" style="background:var(--ok)"></span>synced <span x-text="syncedLabel"></span>

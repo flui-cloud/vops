@@ -1,0 +1,67 @@
+      <!-- ============ SETTINGS ============ -->
+      <section x-show="view==='settings'" x-cloak>
+        <div x-show="set.err" class="mb-4 rounded-[10px] px-4 py-3 text-sm" style="color:var(--danger);background:var(--danger-soft);border:1px solid var(--accent-border)" x-text="set.err"></div>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <!-- Always-on service -->
+          <div class="card p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-[14.5px] font-bold tracking-tight">Always-on service</div>
+                <p class="mt-1 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">
+                  Keeps the dashboard reachable and checks your hosts in the background — that is what lets vops notice a server going down while nothing is open.
+                </p>
+              </div>
+              <span class="shrink-0 font-mono text-[11.5px]" :style="'color:' + setServiceColor()" x-text="setServiceLabel()"></span>
+            </div>
+
+            <template x-if="set.info?.service?.installed">
+              <div class="mt-3 space-y-1 font-mono text-[11px]" style="color:var(--text-faint)">
+                <div x-text="'port ' + set.info.port + ' · profile ' + set.info.profile"></div>
+                <div class="truncate" x-text="set.info.service.unitPath"></div>
+                <div x-show="!set.info.service.bootStart" style="color:var(--warn)">starts only while you are logged in</div>
+              </div>
+            </template>
+
+            <template x-if="!set.info?.service?.installed">
+              <div class="mt-3 flex items-center gap-1.5">
+                <code class="flex-1 rounded-md px-2 py-1 font-mono text-[11px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">vops service install</code>
+                <button class="btn-xs" @click="copy('vops service install')">Copy</button>
+              </div>
+            </template>
+
+            <template x-for="w in (set.info?.service?.warnings || [])" :key="w">
+              <div class="mt-2 rounded-lg px-3 py-2 text-[11.5px]" style="background:var(--warn-soft);color:var(--warn)" x-text="w"></div>
+            </template>
+          </div>
+
+          <!-- Vault -->
+          <div class="card p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-[14.5px] font-bold tracking-tight">Credential vault</div>
+                <p class="mt-1 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">
+                  Your provider tokens, sealed with a passphrase. The key is derived in memory and never written to disk; it stays open for 12 hours of use.
+                </p>
+              </div>
+              <span class="shrink-0 font-mono text-[11.5px]"
+                :style="'color:' + (vault.state==='unlocked' ? 'var(--ok)' : vault.state==='locked' ? 'var(--warn)' : 'var(--text-faint)')"
+                x-text="vault.state==='legacy' ? 'not sealed' : vault.state"></span>
+            </div>
+            <div class="mt-3 flex items-center gap-2">
+              <button x-show="vault.state==='locked'" class="btn-xs" @click="vaultOpen()">Unlock…</button>
+              <button x-show="vault.state==='unlocked'" class="btn-xs" @click="vaultLock()">Lock now</button>
+              <span x-show="vault.state==='unlocked' && vaultExpiresLabel()" class="text-[11.5px]" style="color:var(--text-faint)" x-text="vaultExpiresLabel()"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Removing vops -->
+        <div class="card mt-4 p-5">
+          <div class="text-[14.5px] font-bold tracking-tight">Remove vops from this computer</div>
+          <p class="mt-1 text-[12.5px] leading-relaxed" style="color:var(--text-dim)">
+            vops is three separate things on your machine: this <strong style="color:var(--text-dim)">background service</strong>, the <strong style="color:var(--text-dim)">app icon</strong> your browser installed, and your <strong style="color:var(--text-dim)">data</strong>. Removing one leaves the others — so here they are together.
+          </p>
+          <button class="btn-danger mt-3.5" @click="openRemove()">Uninstall…</button>
+        </div>
+      </section>

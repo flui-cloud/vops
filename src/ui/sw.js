@@ -22,7 +22,7 @@ self.addEventListener('install', (event) => {
     caches
       .open(CACHE)
       .then((cache) => cache.add(SHELL))
-      .then(() => self.skipWaiting()),
+      .then(() => globalThis.skipWaiting()),
   );
 });
 
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
       )
-      .then(() => self.clients.claim()),
+      .then(() => globalThis.clients.claim()),
   );
 });
 
@@ -127,8 +127,10 @@ function notRunningPage() {
 <body>
   <div class="box">
     <h1>vops isn't running</h1>
-    <p>The dashboard is served by the CLI on this machine. Start it in a terminal, then reload.</p>
+    <p>This app is served by vops on your own machine. Start it in a terminal, then reload — or install the background service so it is always there.</p>
     <code>vops ui</code>
+    <code style="margin-top:.5rem">vops service install</code>
+    <p style="margin:1rem 0 0;font-size:12.5px">Removed vops on purpose? This icon is the last piece — uninstall it from your browser's app list.</p>
     <button onclick="location.reload()">Reload</button>
   </div>
   <script>setInterval(function(){fetch('/',{method:'HEAD',cache:'no-store'}).then(function(r){if(r.ok)location.reload()}).catch(function(){})},2000);</script>

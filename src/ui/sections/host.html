@@ -61,8 +61,24 @@
               <button class="btn-xs" :disabled="modal.mg.busy" @click="setSshManaged(true)">Manage over SSH…</button>
             </div>
 
+            <!-- Destroyed at the provider. Stated before anything else on the page:
+                 every other panel below is advice about a machine that is gone. -->
+            <div x-show="hostGone()" class="mt-5 flex flex-wrap items-center justify-between gap-3.5 rounded-2xl px-[18px] py-4"
+              style="border:1px solid var(--danger-soft);background:var(--danger-soft)">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2.5 text-[14px] font-bold" style="color:var(--danger)">
+                  <span class="h-2 w-2 rounded-full" style="background:var(--danger)"></span>
+                  This server no longer exists at <span class="capitalize" x-text="modal.mg.host?.provider || 'the provider'"></span>
+                </div>
+                <p class="mt-1 text-[12px] leading-relaxed" style="color:var(--text-dim)">
+                  It was destroyed somewhere else — the provider's console, or another tool. vops kept the local record so you could decide; forgetting it also drops its stored host key and metrics history.
+                </p>
+              </div>
+              <button class="btn-danger shrink-0" @click="forgetHost()">Forget host</button>
+            </div>
+
             <!-- Summary before detail -->
-            <div x-show="mgReady() && monIssues(modal.mg.name) > 0" class="mt-5 flex flex-wrap items-center gap-3.5 rounded-2xl px-[18px] py-3.5"
+            <div x-show="mgReady() && !hostGone() && monIssues(modal.mg.name) > 0" class="mt-5 flex flex-wrap items-center gap-3.5 rounded-2xl px-[18px] py-3.5"
               style="border:1px solid var(--warn-soft);background:var(--warn-soft)">
               <div class="flex items-center gap-2.5 text-[14px] font-bold" style="color:var(--warn)">
                 <span class="h-2 w-2 rounded-full" style="background:var(--warn)"></span><span x-text="monIssues(modal.mg.name) + ' check(s) need attention'"></span>
@@ -83,12 +99,42 @@
                 <div class="flex items-center justify-between px-[18px] pb-0 pt-4">
                   <div class="text-[14.5px] font-bold tracking-tight">Live status</div>
                   <div class="flex items-center gap-2.5">
-                    <span class="text-[11px]" style="color:var(--text-faint)" x-text="hvLive().latencyMs != null ? 'probe ' + (hvLive().latencyMs/1000).toFixed(1) + 's' : ''"></span>
-                    <button class="btn-xs" :disabled="hvLive().loading || !mgReady()" @click="hostRefresh()" x-text="hvLive().loading ? '…' : 'Refresh'"></button>
+                    <span class="text-[11px]" style="color:var(--text-faint)" x-text="monAgeLabel(modal.mg?.name)"></span>
+                    <!-- Same control, same state as Monitoring: changing it here
+                         changes it there, so the two pages never disagree about
+                         which window you are looking at. -->
+                    <div class="seg" x-show="mgReady()">
+                      <template x-for="r in mon.ranges" :key="r">
+                        <button class="seg-btn" :class="mon.range===r && 'seg-btn-active'" @click="monSetRange(r)" x-text="r"></button>
+                      </template>
+                    </div>
+                    <button class="btn-xs" :disabled="hvLive().loading || !mgReady()" @click="hostRefresh()" x-text="hvLive().loading ? '…' : 'Check now'"></button>
                   </div>
                 </div>
 
-                <div x-show="!mgReady()" class="px-[18px] py-8 text-center text-sm" style="color:var(--text-faint)">Live metrics appear once SSH is ready — set up the connection on the right.</div>
+                <!-- Why there is nothing to show. Three different reasons, three
+                     different things to do about them — one message for all three
+                     sent people to check a firewall for a server that was deleted. -->
+                <div x-show="!mgReady()" class="px-[18px] py-10 text-center">
+                  <template x-if="hostGone()">
+                    <div>
+                      <div class="text-sm font-semibold" style="color:var(--text-dim)">Nothing left to measure</div>
+                      <p class="mx-auto mt-1.5 max-w-sm text-[12.5px] leading-relaxed" style="color:var(--text-faint)">The machine is gone at the provider. The last readings vops took are kept for 7 days, then discarded.</p>
+                    </div>
+                  </template>
+                  <template x-if="!hostGone() && modal.mg.host?.conn?.reachable === false">
+                    <div>
+                      <div class="text-sm font-semibold" style="color:var(--text-dim)">Can't reach this server</div>
+                      <p class="mx-auto mt-1.5 max-w-sm text-[12.5px] leading-relaxed" style="color:var(--text-faint)">It answers neither ping nor SSH from here. Open the port to your IP, or run vops from a machine that can reach it — the Connection panel walks through it.</p>
+                    </div>
+                  </template>
+                  <template x-if="!hostGone() && modal.mg.host?.conn?.reachable !== false">
+                    <div>
+                      <div class="text-sm font-semibold" style="color:var(--text-dim)">SSH isn't set up yet</div>
+                      <p class="mx-auto mt-1.5 max-w-sm text-[12.5px] leading-relaxed" style="color:var(--text-faint)">Metrics and status checks start as soon as vops can log in. Finish the connection on the right and they appear on their own.</p>
+                    </div>
+                  </template>
+                </div>
 
                 <template x-if="mgReady()">
                   <div>
@@ -103,9 +149,11 @@
                           <div class="mt-2 h-1.5 overflow-hidden rounded-full" style="background:var(--panel-3)">
                             <div class="h-full rounded-full transition-all" :style="'width:' + monBarPct(sig) + '%;background:' + monColor(sig)"></div>
                           </div>
-                          <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="mt-2 h-7 w-full">
-                            <polyline :points="monSpark(monSeries(modal.mg.name, sig.key))" fill="none" :stroke="monColor(sig)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" />
+                          <div x-show="monCollecting(modal.mg.name)" class="mt-2 flex h-7 items-center text-[10.5px]" style="color:var(--text-faint)">collecting…</div>
+                          <svg x-show="!monCollecting(modal.mg.name)" viewBox="0 0 100 40" preserveAspectRatio="none" class="mt-2 h-9 w-full overflow-visible">
+                            <g x-html="monSparkSvg(monSeries(modal.mg.name, sig.key), sig)"></g>
                           </svg>
+                          <div class="mt-1 text-right font-mono text-[9px]" style="color:var(--text-faint)" x-text="monScaleLabel(sig, monSeries(modal.mg.name, sig.key))"></div>
                         </div>
                       </template>
                       <div x-show="!(hvLive().signals || []).length && !hvLive().loading" class="col-span-2 py-2 text-[12px] sm:col-span-3" style="color:var(--text-faint)">No metrics reported.</div>
@@ -114,7 +162,7 @@
                     <!-- checks -->
                     <div class="px-[18px] pb-1 pt-4"><span class="text-[10.5px] font-semibold uppercase" style="letter-spacing:.09em;color:var(--text-faint)">Checks <span x-show="(hvLive().findings||[]).length" x-text="'· ' + hvLive().findings.length"></span></span></div>
                     <div class="grid grid-cols-1 gap-2 px-[18px] pb-[18px] sm:grid-cols-2">
-                      <div x-show="hvLive().loading && !(hvLive().findings||[]).length" class="col-span-2 text-[12px]" style="color:var(--text-faint)">Probing over SSH…</div>
+                      <div x-show="!(hvLive().findings||[]).length" class="col-span-2 text-[12px]" style="color:var(--text-faint)" x-text="hvLive().loading ? 'Checking over SSH…' : 'The security and package checks run every half hour — press Check now for them straight away.'"></div>
                       <template x-for="f in (hvLive().findings || [])" :key="f.id">
                         <div class="flex items-start gap-2.5 rounded-xl px-3 py-2.5" style="background:var(--panel-2)" :title="monHelp(f.id) + (f.detail ? '\n\n' + f.detail : '')">
                           <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" :style="'background:' + sevColor(f.severity)"></span>
@@ -169,7 +217,9 @@
                     <span class="mt-0.5 w-4 shrink-0 text-center font-bold" :style="'color:' + (modal.mg.host?.conn?.reachable ? 'var(--ok)' : 'var(--danger)')" x-text="modal.mg.host?.conn?.reachable ? '✓' : '✗'"></span>
                     <div class="min-w-0 flex-1">
                       <div style="color:var(--text)">Reachable</div>
-                      <div x-show="modal.mg.host?.conn && !modal.mg.host?.conn?.reachable" class="mt-0.5 text-[11px]" style="color:var(--text-dim)">Open the port/firewall to your IP, or run vops from a machine that can reach it.</div>
+                      <!-- Firewall advice is the wrong answer when there is no machine. -->
+                      <div x-show="hostGone()" class="mt-0.5 text-[11px]" style="color:var(--danger)">The provider has no server with this id — it was destroyed elsewhere.</div>
+                      <div x-show="!hostGone() && modal.mg.host?.conn && !modal.mg.host?.conn?.reachable" class="mt-0.5 text-[11px]" style="color:var(--text-dim)">Open the port/firewall to your IP, or run vops from a machine that can reach it.</div>
                     </div>
                   </div>
 

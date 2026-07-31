@@ -365,16 +365,156 @@
     </div>
     </template>
 
+    <!-- ============ UNINSTALL (what can be removed from here, and what cannot) ============ -->
+    <template x-if="set.removeOpen">
+    <div class="fixed inset-0 z-[80] flex items-center justify-center px-4">
+      <div class="absolute inset-0" style="background:rgba(8,10,16,.55)" @click="closeRemove()"></div>
+      <div class="card relative w-full max-w-[520px] p-6">
+        <h3 class="text-[15px] font-bold tracking-tight">Uninstall vops</h3>
+
+        <!-- Step 1: what to remove -->
+        <template x-if="!set.done">
+          <div class="mt-4 space-y-2.5">
+            <label class="flex cursor-pointer items-start gap-2.5 rounded-xl px-3.5 py-3" style="background:var(--panel-2);border:1px solid var(--border)">
+              <input type="radio" name="rm" class="mt-1" value="service" x-model="set.choice" />
+              <span>
+                <span class="text-[13px] font-semibold" style="color:var(--text)">Just vops</span>
+                <span class="mt-0.5 block text-[12px] leading-relaxed" style="color:var(--text-dim)">Stops the background service and removes it from login. Your servers, credentials and history stay exactly as they are — reinstall any time.</span>
+              </span>
+            </label>
+
+            <label class="flex cursor-pointer items-start gap-2.5 rounded-xl px-3.5 py-3" style="background:var(--panel-2);border:1px solid var(--danger-soft)">
+              <input type="radio" name="rm" class="mt-1" value="all" x-model="set.choice" />
+              <span>
+                <span class="text-[13px] font-semibold" style="color:var(--danger)">vops and my data</span>
+                <span class="mt-0.5 block text-[12px] leading-relaxed" style="color:var(--text-dim)">Everything above, plus this profile's data. There is no copy anywhere else — that is the point of a local-first tool.</span>
+              </span>
+            </label>
+
+            <template x-if="set.choice==='all'">
+              <div class="rounded-xl px-3.5 py-3" style="background:var(--danger-soft)">
+                <div class="text-[11.5px] font-semibold" style="color:var(--danger)">This deletes, permanently:</div>
+                <ul class="mt-1.5 space-y-0.5">
+                  <template x-for="d in (set.info?.data || [])" :key="d.path">
+                    <li class="text-[11.5px]" style="color:var(--text-dim)">
+                      <span x-text="d.label"></span><span x-show="d.irreplaceable" style="color:var(--danger)"> · unrecoverable</span>
+                    </li>
+                  </template>
+                </ul>
+                <label class="label mt-3" for="rm-confirm">Type the profile name (<span class="font-mono" x-text="set.info?.profile"></span>) to confirm</label>
+                <input id="rm-confirm" class="field" x-model="set.confirm" :placeholder="set.info?.profile" autocomplete="off" />
+              </div>
+            </template>
+
+            <!-- The part vops cannot do -->
+            <div class="rounded-xl px-3.5 py-3" style="background:var(--panel-3)">
+              <div class="text-[11.5px] font-semibold" style="color:var(--text-dim)" x-text="set.info?.appRemoval?.title || 'Remove the app icon'"></div>
+              <p class="mt-0.5 text-[11.5px] leading-relaxed" style="color:var(--text-faint)">Browsers give no way for a page to uninstall an installed app, so this last step is yours:</p>
+              <template x-for="s in (set.info?.appRemoval?.steps || [])" :key="s.label">
+                <div class="mt-1.5">
+                  <div class="text-[11.5px]" style="color:var(--text-dim)" x-text="s.label"></div>
+                  <div x-show="s.command" class="mt-1 flex items-center gap-1.5">
+                    <code class="flex-1 rounded-md px-2 py-1 font-mono text-[11px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)" x-text="s.command"></code>
+                    <button class="btn-xs" @click="copy(s.command)">Copy</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <div x-show="set.err" class="text-[12px]" style="color:var(--danger)" x-text="set.err"></div>
+
+            <div class="flex justify-end gap-2 pt-1">
+              <button class="btn-ghost" @click="closeRemove()">Cancel</button>
+              <button class="btn-danger" :disabled="!setPurgeReady() || set.busy" @click="runRemove()"
+                x-text="set.busy ? 'Removing…' : (set.choice==='all' ? 'Delete everything' : 'Remove the service')"></button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Step 2: what actually happened -->
+        <template x-if="set.done">
+          <div class="mt-4 space-y-3">
+            <div class="rounded-xl px-3.5 py-3 text-[12.5px]" style="background:var(--ok-soft);color:var(--ok)"
+              x-text="set.done.stopping ? ('Deleted ' + set.done.removed + ' item(s). The service is stopping now.') : (set.done.removed ? 'The background service has been removed.' : 'No background service was installed.')"></div>
+            <p class="text-[12px] leading-relaxed" style="color:var(--text-dim)">
+              One thing is left, and only you can do it: <span x-text="(set.info?.appRemoval?.steps || [])[0]?.label"></span>
+            </p>
+            <div x-show="!set.done.stopping" class="text-[11.5px]" style="color:var(--text-faint)">
+              Changed your mind? <span class="font-mono" style="color:var(--text-dim)">vops service install</span> puts it back.
+            </div>
+            <div class="flex justify-end"><button class="btn-ghost" @click="closeRemove()">Close</button></div>
+          </div>
+        </template>
+      </div>
+    </div>
+    </template>
+
+    <!-- ============ VAULT UNLOCK (opens only when a request actually needed a credential) ============ -->
+    <template x-if="vault.open">
+    <div class="fixed inset-0 z-[80] flex items-center justify-center px-4">
+      <div class="absolute inset-0" style="background:rgba(8,10,16,.55)" @click="vaultClose()"></div>
+      <div class="relative w-full max-w-[430px] rounded-2xl p-6" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)"
+        x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <div class="mb-2 flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--accent)"><rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>
+          <span class="text-[15px] font-bold tracking-tight" style="color:var(--text)">Unlock your vault</span>
+        </div>
+        <p class="text-[13px] leading-relaxed" style="color:var(--text-dim)">This page needs a provider credential, and your credentials are sealed. Enter the passphrase you set with <span class="font-mono text-[12px]">vops keyring init</span>.</p>
+
+        <form class="mt-4" @submit.prevent="vaultUnlock()">
+          <label class="label" for="vault-pass">Vault passphrase</label>
+          <input id="vault-pass" type="password" autocomplete="current-password" class="field" placeholder="••••••••••••"
+            x-model="vault.pass" :disabled="vault.busy || vault.retryInMs > 0" x-ref="vaultPass" x-init="$nextTick(() => $refs.vaultPass?.focus())" />
+          <div x-show="vault.err" class="mt-2 text-[12px]" style="color:var(--danger)" x-text="vault.err"></div>
+          <div x-show="vault.retryInMs > 0" class="mt-2 text-[12px]" style="color:var(--text-faint)">
+            Too many attempts — try again in <span x-text="vaultRetryLabel()"></span>.
+          </div>
+          <div class="mt-5 flex items-center justify-end gap-2">
+            <button type="button" class="btn-ghost" @click="vaultClose()">Not now</button>
+            <button type="submit" class="btn-primary" :disabled="vault.busy || vault.retryInMs > 0 || !vault.pass"
+              x-text="vault.busy ? 'Unlocking…' : 'Unlock'"></button>
+          </div>
+        </form>
+
+        <p class="mt-4 border-t pt-3 text-[11.5px] leading-relaxed" style="border-color:var(--border);color:var(--text-faint)">
+          The passphrase is turned into a key in memory and never written to disk. It stays open for 12 hours of use, on this machine only — nothing about it leaves your computer.
+        </p>
+      </div>
+    </div>
+    </template>
+
+    <!-- ============ VAULT LOCKED HINT (sealed at startup — informational, not a gate) ============ -->
+    <template x-if="vault.hint && !vault.open && !offline">
+    <div class="fixed bottom-5 right-5 z-[55] max-w-xs rounded-xl p-3.5" style="background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)">
+      <div class="text-[12.5px] font-semibold" style="color:var(--text)">Your vault is locked</div>
+      <p class="mt-1 text-[11.5px] leading-relaxed" style="color:var(--text-dim)">Servers, apps and monitoring all work as usual. Only provider pages — prices, credentials, provisioning — need it open.</p>
+      <div class="mt-2 flex items-center gap-2">
+        <button class="btn-xs" @click="vaultOpen()">Unlock</button>
+        <button class="text-[11px] hover:underline" style="color:var(--text-faint)" @click="dismissVaultHint()">Dismiss</button>
+      </div>
+    </div>
+    </template>
+
     <!-- ============ RECONNECT (local server stopped — covers everything) ============ -->
     <template x-if="offline">
     <div class="fixed inset-0 z-[200] flex items-center justify-center px-6" style="background:var(--bg)">
+      <!-- Removed on purpose: don't show a spinner implying it will come back. -->
+      <template x-if="offlineExpected">
       <div class="max-w-md text-center">
+        <h2 class="text-lg font-bold" style="color:var(--text)">vops has been removed</h2>
+        <p class="mt-2 text-[13px] leading-relaxed" style="color:var(--text-dim)">The background service is gone and this profile's data is deleted. One thing is left, and only you can do it: remove the app icon from your browser.</p>
+        <code class="mt-4 inline-block rounded-lg px-4 py-2 font-mono text-[13px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">chrome://apps</code>
+        <p class="mt-4 text-[11.5px]" style="color:var(--text-faint)">You can close this window.</p>
+      </div>
+      </template>
+
+      <div class="max-w-md text-center" x-show="!offlineExpected">
         <div class="mx-auto mb-5 h-8 w-8 animate-spin rounded-full" style="border:2px solid var(--border);border-top-color:var(--accent)"></div>
         <h2 class="text-lg font-bold" style="color:var(--text)">vops isn't running</h2>
         <p class="mt-2 text-[13px] leading-relaxed" style="color:var(--text-dim)">The dashboard is served by the CLI on this machine. Start it in a terminal — this window reconnects on its own.</p>
         <code class="mt-4 inline-block rounded-lg px-4 py-2 font-mono text-[13px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">vops ui</code>
         <div class="mt-4 text-[12px]" style="color:var(--text-faint)">Reconnecting…</div>
-        <div x-show="pwa" class="mx-auto mt-5 max-w-sm border-t pt-3 text-[11.5px] leading-relaxed" style="border-color:var(--border);color:var(--text-faint)">Desktop app tip: run <span class="font-mono" style="color:var(--text-dim)">vops ui --install</span> so vops starts on its own — you won't land here again.</div>
+        <div x-show="pwa" class="mx-auto mt-5 max-w-sm border-t pt-3 text-[11.5px] leading-relaxed" style="border-color:var(--border);color:var(--text-faint)">Desktop app tip: run <span class="font-mono" style="color:var(--text-dim)">vops service install</span> so vops starts on its own — you won't land here again.</div>
       </div>
     </div>
     </template>
@@ -385,8 +525,8 @@
       <div class="text-[12.5px] font-semibold" style="color:var(--text)">Make vops always-on</div>
       <p class="mt-1 text-[11.5px] leading-relaxed" style="color:var(--text-dim)">You're using the desktop app. Run this once so it's ready without starting vops by hand:</p>
       <div class="mt-2 flex items-center gap-1.5">
-        <code class="flex-1 rounded-md px-2 py-1 font-mono text-[11px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">vops ui --install</code>
-        <button class="btn-xs" @click="copy('vops ui --install')">Copy</button>
+        <code class="flex-1 rounded-md px-2 py-1 font-mono text-[11px]" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text)">vops service install</code>
+        <button class="btn-xs" @click="copy('vops service install')">Copy</button>
       </div>
       <button class="mt-2 text-[11px] hover:underline" style="color:var(--text-faint)" @click="dismissServiceHint()">Dismiss</button>
     </div>

@@ -1,0 +1,91 @@
+<!-- Connect funnel. Two steps: pick the agent, then run one command. vops does not
+     write into an agent's own config from here — it shows the command and the exact
+     three files it touches, so you can see what will change before it changes. -->
+<div x-show="connect.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  @keydown.escape.window="closeAgentConnect()">
+  <div class="absolute inset-0" style="background:rgba(8,10,15,.55)" @click="closeAgentConnect()"></div>
+
+  <div class="relative w-full max-w-[470px] overflow-hidden rounded-xl border"
+    style="border-color:var(--border);background:var(--panel);box-shadow:var(--shadow)"
+    role="dialog" aria-modal="true" aria-labelledby="connect-title">
+
+    <div class="px-5 pt-4">
+      <div class="font-mono text-[10.5px]" style="color:var(--text-faint)">
+        <span :style="connect.step===1 ? 'color:var(--accent);font-weight:600' : ''">1 pick</span>
+        &nbsp;·&nbsp;
+        <span :style="connect.step===2 ? 'color:var(--accent);font-weight:600' : ''">2 run</span>
+      </div>
+
+      <template x-if="connect.step===1">
+        <div>
+          <h3 id="connect-title" class="mt-2 text-[15px] font-semibold">Which agent?</h3>
+          <p class="mt-1 text-xs" style="color:var(--text-faint)">vops wires into these four. Pick the one you code in.</p>
+        </div>
+      </template>
+      <template x-if="connect.step===2">
+        <div>
+          <div class="mt-2 flex items-center gap-3">
+            <span class="agent-mark"><img :src="agentClientIcon(connect.client)" :alt="agentClientLabel(connect.client)" /></span>
+            <h3 id="connect-title" class="text-[15px] font-semibold" x-text="agentClientLabel(connect.client)"></h3>
+          </div>
+          <p class="mt-1 text-xs" style="color:var(--text-faint)">Run this once, in any terminal.</p>
+        </div>
+      </template>
+    </div>
+
+    <div class="px-5 pb-5 pt-4">
+      <template x-if="connect.step===1">
+        <div class="grid gap-2 sm:grid-cols-2">
+          <template x-for="entry in orderedAgentClients()" :key="entry.client">
+            <button class="agent-tile" :class="connect.client===entry.client && 'agent-tile-sel'"
+              @click="pickAgentClient(entry.client)">
+              <span class="agent-mark"><img :src="agentClientIcon(entry.client)" :alt="''" /></span>
+              <span class="flex min-w-0 flex-col leading-tight">
+                <span class="text-[12.5px] font-semibold" x-text="agentClientLabel(entry.client)"></span>
+                <span class="font-mono text-[10px]" style="color:var(--text-faint)"
+                  x-text="agentClientScopeLabel(entry)"></span>
+              </span>
+            </button>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="connect.step===2">
+        <div>
+          <div class="agent-cmd">
+            <span style="color:var(--accent)">$</span>
+            <span class="whitespace-nowrap" x-text="agentSetupCommand(connect.client)"></span>
+            <span class="flex-1"></span>
+            <button class="btn-secondary shrink-0 px-2 py-0.5 text-[11px]" @click="copyAgentCommand(connect.client)">Copy</button>
+          </div>
+
+          <div class="mt-3 space-y-1.5">
+            <template x-for="row in agentConnectPaths(connect.client)" :key="row.part">
+              <div class="grid grid-cols-[68px_1fr] items-baseline gap-2 text-[11px]">
+                <span class="font-mono" style="color:var(--text-dim)" x-text="row.part"></span>
+                <span class="break-all font-mono text-[10.5px]" style="color:var(--text-faint)" x-text="row.path"></span>
+              </div>
+            </template>
+          </div>
+
+          <p class="mt-3 text-xs" style="color:var(--text-faint)">
+            Only these three, each backed up first. Then say
+            <span class="italic" style="color:var(--text-dim)">“deploy this repo to my cheapest server”</span> —
+            the agent reads the skill itself.
+          </p>
+        </div>
+      </template>
+    </div>
+
+    <div class="flex items-center gap-2 border-t px-5 py-3"
+      style="border-color:var(--border);background:var(--panel-2)">
+      <span x-show="connect.step===2" class="font-mono text-[10.5px]" style="color:var(--text-faint)">waiting for the agent…</span>
+      <span class="flex-1"></span>
+      <button x-show="connect.step===1" class="btn-secondary" @click="closeAgentConnect()">Cancel</button>
+      <button x-show="connect.step===2" class="btn-secondary" @click="agentConnectBack()">Back</button>
+      <button x-show="connect.step===1" class="btn-primary" :disabled="!connect.client" @click="agentConnectNext()">Continue</button>
+      <button x-show="connect.step===2" class="btn-primary" :disabled="connect.checking" @click="agentConnectCheck()"
+        x-text="connect.checking ? 'Checking…' : 'Check now'"></button>
+    </div>
+  </div>
+</div>

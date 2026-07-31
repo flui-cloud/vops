@@ -1,0 +1,399 @@
+<!-- @dsCard group="Foundations" -->
+<title>vops — Icon system</title>
+<style>
+  /* ── Tokens. Mirrors src/ui/tailwind.css so the specimen and the product
+   *    cannot drift. Dark is the default here; the viewer's toggle stamps
+   *    data-theme on :root and must win over the media query both ways. ── */
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f7f8fa; --panel-3: #eef0f4;
+    --line: #e4e7ec; --line-soft: #eceef2;
+    --text: #12151b; --text-2: #565e6b; --text-3: #8a93a1;
+    --accent: #2f7ff0; --face: #78b0fb;
+    --accent-soft: rgba(47, 127, 240, .11);
+    --accent-line: rgba(47, 127, 240, .32);
+    --ok: #12a150; --warn: #c8790a; --danger: #e5484d;
+    --sh: 0 1px 2px rgba(16,22,34,.05), 0 6px 20px rgba(16,22,34,.06);
+    --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0c11; --panel: #12141b; --panel-2: #161923; --panel-3: #1b1f2a;
+      --line: #242a36; --line-soft: #1e232e;
+      --text: #eef1f6; --text-2: #9aa3b2; --text-3: #69707e;
+      --accent: #4a90f5; --face: #7db6ff;
+      --accent-soft: rgba(74, 144, 245, .18);
+      --accent-line: rgba(74, 144, 245, .42);
+      --ok: #34d399; --warn: #f5a623; --danger: #ff6b6b;
+      --sh: 0 1px 2px rgba(0,0,0,.32), 0 10px 30px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0c11; --panel: #12141b; --panel-2: #161923; --panel-3: #1b1f2a;
+    --line: #242a36; --line-soft: #1e232e;
+    --text: #eef1f6; --text-2: #9aa3b2; --text-3: #69707e;
+    --accent: #4a90f5; --face: #7db6ff;
+    --accent-soft: rgba(74, 144, 245, .18);
+    --accent-line: rgba(74, 144, 245, .42);
+    --ok: #34d399; --warn: #f5a623; --danger: #ff6b6b;
+    --sh: 0 1px 2px rgba(0,0,0,.32), 0 10px 30px rgba(0,0,0,.4);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f7f8fa; --panel-3: #eef0f4;
+    --line: #e4e7ec; --line-soft: #eceef2;
+    --text: #12151b; --text-2: #565e6b; --text-3: #8a93a1;
+    --accent: #2f7ff0; --face: #78b0fb;
+    --accent-soft: rgba(47, 127, 240, .11);
+    --accent-line: rgba(47, 127, 240, .32);
+    --ok: #12a150; --warn: #c8790a; --danger: #e5484d;
+    --sh: 0 1px 2px rgba(16,22,34,.05), 0 6px 20px rgba(16,22,34,.06);
+  }
+  :root {
+    --r1: 6px; --r2: 9px; --r3: 13px;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 13.5px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 44px 28px 88px; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 12px;
+  }
+  h1 { font-size: 30px; letter-spacing: -.025em; font-weight: 650; margin: 0 0 12px; text-wrap: balance; }
+  .lede { color: var(--text-2); font-size: 14.5px; max-width: 64ch; margin: 0 0 8px; }
+  h2 {
+    font-size: 14.5px; font-weight: 640; letter-spacing: -.01em;
+    margin: 52px 0 5px; padding-top: 24px; border-top: 1px solid var(--line-soft);
+  }
+  .sub { color: var(--text-3); font-size: 12.5px; margin: 0 0 20px; max-width: 66ch; }
+  code {
+    font-family: var(--mono); font-size: 11.5px; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 5px; padding: 1.5px 5px;
+  }
+
+  /* ── The icon primitive. Body strokes inherit currentColor; `.a` (fill) and
+   *    `.as` (stroke) are the single accent shape that makes it duotone. ── */
+  .ic { display: inline-block; vertical-align: middle; flex: none; color: currentColor; }
+  .ic svg {
+    display: block; width: 100%; height: 100%;
+    fill: none; stroke: currentColor; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .ic svg .a { fill: var(--icon-accent, var(--accent)); stroke: none; }
+  .ic svg .as { stroke: var(--icon-accent, var(--accent)); }
+  .ic-14 { width: 14px; height: 14px; } .ic-16 { width: 16px; height: 16px; }
+  .ic-17 { width: 17px; height: 17px; } .ic-20 { width: 20px; height: 20px; }
+  .ic-24 { width: 24px; height: 24px; } .ic-32 { width: 32px; height: 32px; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 1px; background: var(--line-soft);
+    border: 1px solid var(--line); border-radius: var(--r3); overflow: hidden;
+  }
+  .cell {
+    background: var(--panel); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 11px; padding: 20px 8px;
+    transition: background .12s;
+  }
+  .cell:hover { background: var(--panel-2); }
+  .cell .ic { color: var(--text-2); }
+  .cell:hover .ic { color: var(--text); }
+  .cell .name {
+    font-family: var(--mono); font-size: 10.5px; color: var(--text-3);
+    text-align: center; word-break: break-all;
+  }
+
+  /* ── Anatomy: the rule stated once, in the artifact itself. ── */
+  .anat { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); gap: 22px; align-items: center; }
+  @media (max-width: 720px) { .anat { grid-template-columns: 1fr; } }
+  .anat-stage {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r3);
+    padding: 24px 18px; display: flex; align-items: center; justify-content: center; gap: 14px;
+    box-shadow: var(--sh);
+  }
+  .blow { width: 76px; height: 76px; color: var(--text-2); flex: none; }
+  .plus { font-family: var(--mono); color: var(--text-3); font-size: 17px; }
+  .legend { display: flex; flex-direction: column; gap: 13px; margin: 0; padding: 0; list-style: none; }
+  .legend li { display: flex; gap: 11px; align-items: flex-start; }
+  .sw { width: 13px; height: 13px; border-radius: 4px; flex: none; margin-top: 3px; }
+  .sw-body { background: var(--text-2); }
+  .sw-acc { background: var(--accent); }
+  .legend .k { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+  .legend .v { color: var(--text-2); font-size: 12.5px; }
+
+  .sizes { display: flex; align-items: flex-end; gap: 30px; flex-wrap: wrap; }
+  .sz { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .szbox { display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--r2); color: var(--text); }
+  .sz .lbl { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); text-align: center; line-height: 1.5; }
+
+  /* ── The rail, rebuilt on the real product tokens, in both themes. ── */
+  .rails { display: grid; grid-template-columns: repeat(auto-fit, minmax(252px, 1fr)); gap: 18px; }
+  .railwrap { border: 1px solid var(--line); border-radius: var(--r3); overflow: hidden; box-shadow: var(--sh); }
+  .railwrap .cap {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--text-3); padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  .rail { padding: 12px 12px 14px; }
+  .rail .sec {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-3); padding: 12px 10px 4px; font-weight: 600;
+  }
+  .nav {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 8px 12px; border-radius: var(--r2); font-size: 13.5px; color: var(--text-2);
+    background: transparent; border: 0; cursor: pointer; font-family: var(--sans); text-align: left;
+  }
+  .nav .ic { color: var(--text-3); }
+  .nav:hover { background: var(--panel-3); color: var(--text); }
+  .nav:hover .ic { color: var(--text-2); }
+  .nav.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .nav.on .ic { color: var(--accent); --icon-accent: var(--face); }
+  .nav:focus-visible { outline: none; box-shadow: var(--ring); }
+  .pill {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--text-3);
+    background: var(--panel-3); border-radius: 999px; padding: 1px 7px;
+  }
+  /* Force each preview rail to its own theme regardless of the viewer's. */
+  .t-dark {
+    --bg:#0a0c11; --panel:#12141b; --panel-2:#161923; --panel-3:#1b1f2a;
+    --line:#242a36; --line-soft:#1e232e; --text:#eef1f6; --text-2:#9aa3b2; --text-3:#69707e;
+    --accent:#4a90f5; --face:#7db6ff; --accent-soft:rgba(74,144,245,.18);
+  }
+  .t-light {
+    --bg:#f5f6f8; --panel:#ffffff; --panel-2:#f7f8fa; --panel-3:#eef0f4;
+    --line:#e4e7ec; --line-soft:#eceef2; --text:#12151b; --text-2:#565e6b; --text-3:#8a93a1;
+    --accent:#2f7ff0; --face:#78b0fb; --accent-soft:rgba(47,127,240,.11);
+  }
+  .railwrap.t-dark, .railwrap.t-light { background: var(--panel); color: var(--text); }
+  .railwrap.t-dark .rail, .railwrap.t-light .rail { background: var(--panel); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r3); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 560px; }
+  th {
+    text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-3); font-weight: 600;
+    padding: 12px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line-soft); color: var(--text-2); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  td.g { width: 46px; text-align: center; }
+  .mono { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .note { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r3); padding: 17px 19px; }
+  .note .k { font-family: var(--mono); font-size: 11px; color: var(--accent); margin-bottom: 7px; }
+  .note .v { font-size: 12.5px; color: var(--text-2); }
+
+  pre {
+    margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r3);
+    padding: 17px 19px; overflow-x: auto; font-family: var(--mono); font-size: 11.5px;
+    line-height: 1.7; color: var(--text-2);
+  }
+  pre .c { color: var(--text-3); }
+  pre .p { color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">vops · design system</p>
+  <h1>Icon system</h1>
+  <p class="lede">
+    Fifteen icons for the control plane, drawn from what each thing actually <em>is</em> in
+    vops rather than borrowed from a general-purpose set. Each is a monochrome skeleton plus
+    a single accent shape — the same lit-face-over-dark-side reading as the vops mark.
+  </p>
+  <p class="lede" style="margin-bottom:0">
+    Four of them share one form on purpose: a slab that means <em>a machine</em>, differing
+    only in what sits inside it.
+  </p>
+
+  <h2>The rule</h2>
+  <p class="sub">
+    One accent shape per icon. Never two, never zero. It marks the part of the glyph that
+    carries the meaning — the status LED on a server, the shorter bar in a price comparison,
+    the prompt in a terminal — so colour follows sense rather than decorating the outline.
+  </p>
+  <div class="anat">
+    <div class="anat-stage">
+      <span class="ic blow" style="color:var(--text-2)" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/></svg>
+      </span>
+      <span class="plus">+</span>
+      <span class="ic blow" style="color:transparent" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="7" cy="7.25" r="1.5" class="a"/><circle cx="7" cy="16.75" r="1.5" class="a"/></svg>
+      </span>
+      <span class="plus">=</span>
+      <span class="ic blow" style="color:var(--text-2)" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.8"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.8"/><circle cx="7" cy="7.25" r="1.5" class="a"/><circle cx="7" cy="16.75" r="1.5" class="a"/></svg>
+      </span>
+    </div>
+    <ul class="legend">
+      <li><span class="sw sw-body"></span><span><span class="k">currentColor</span><br><span class="v">The skeleton. Inherits the row's text colour, so it dims with the label and brightens on hover exactly like type.</span></span></li>
+      <li><span class="sw sw-acc"></span><span><span class="k">.a / .as</span><br><span class="v">The accent. Resolves through <code>--icon-accent</code>, defaulting to the theme accent — it stays saturated when the label is faint.</span></span></li>
+    </ul>
+  </div>
+
+  <h2>The slab family</h2>
+  <p class="sub">
+    A control plane is mostly one noun — a machine — seen four ways. Repeating the outer form
+    and changing only the interior is what a borrowed set cannot do: it says these four
+    screens are about the same object, and the interior says which question you are asking of it.
+  </p>
+  <div class="grid" id="family"></div>
+
+  <h2>The set</h2>
+  <p class="sub">
+    Thirteen sidebar destinations plus <code>hosts</code> and <code>catalog</code>, which appear in
+    detail views. 24×24 grid, 1.7 stroke, round caps and joins — the same construction as the
+    Dymmi set, so the two products read as siblings without sharing a hue.
+  </p>
+  <div class="grid" id="set"></div>
+
+  <h2>Size ladder</h2>
+  <p class="sub">
+    17px is the sidebar size and the one every glyph is hinted for. Below 16 the accent shape
+    is the first thing to go muddy, which is why none of them rely on a detail smaller than
+    roughly 3 grid units.
+  </p>
+  <div class="sizes" id="ladder"></div>
+
+  <h2>In place</h2>
+  <p class="sub">
+    The rail in both themes. The active row swaps <code>--icon-accent</code> to the lighter
+    face tone so the duotone survives on an accent-tinted background instead of collapsing
+    into one flat colour.
+  </p>
+  <div class="rails">
+    <div class="railwrap t-dark"><div class="cap">dark</div><div class="rail" id="rail-dark"></div></div>
+    <div class="railwrap t-light"><div class="cap">light</div><div class="rail" id="rail-light"></div></div>
+  </div>
+
+  <h2>Why each mark</h2>
+  <p class="sub">
+    The reasoning, so the next person to add an icon has a rule to follow rather than a style
+    to copy. Where the borrowed glyph was not merely generic but <em>wrong</em> — saying
+    something untrue about the feature — it is called out.
+  </p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Is</th><th>Name</th><th>What it is in vops</th><th>Accent marks</th><th>Replaced</th></tr></thead>
+    <tbody id="why"></tbody>
+  </table></div>
+
+  <h2>Implementation</h2>
+  <div class="notes">
+    <div class="note"><div class="k">One set, two themes</div><div class="v">There is no dark file and no light file. The body is <code>currentColor</code> and the accent is a token, so both themes fall out of the variables already in <code>tailwind.css</code>.</div></div>
+    <div class="note"><div class="k">Offline</div><div class="v">Inline SVG in the bundle, same as today. No sprite sheet, no font, no network — the dashboard still opens with the machine unplugged.</div></div>
+    <div class="note"><div class="k">Drop-in</div><div class="v">Keys match the current <code>ICONS</code> object one-for-one. <code>nav</code> and <code>navFooter</code> keep referencing <code>ICONS.x</code> unchanged.</div></div>
+  </div>
+
+  <h2>Wiring</h2>
+  <p class="sub">Two rules in <code>tailwind.css</code> teach the existing markup to render the accent.</p>
+  <pre><span class="c">/* the accent stays saturated while the skeleton dims with the label */</span>
+<span class="p">.nav-item</span> svg <span class="p">.a</span>  { fill: var(--icon-accent, var(--accent)); stroke: none; }
+<span class="p">.nav-item</span> svg <span class="p">.as</span> { stroke: var(--icon-accent, var(--accent)); }
+
+<span class="c">/* on an accent-tinted row, shift the accent up so it does not merge */</span>
+<span class="p">.nav-item-active</span> { --icon-accent: var(--face); }</pre>
+</div>
+
+<script>
+  // Body strokes first, accent shape last — the accent must paint over the skeleton.
+  // THE SLAB FAMILY (servers · hosts · monitoring · apps) shares one outer form and
+  // differs only in what sits inside it. Everything else is drawn from its own concept.
+  const ICONS = {
+    // The home screen is a world map of your fleet. Accent: a region you are in.
+    overview: '<circle cx="12" cy="12" r="9"/><path d="M3.5 9.2h17M3.5 14.8h17M12 3a15.5 15.5 0 0 0 0 18 15.5 15.5 0 0 0 0-18Z"/><circle cx="15.9" cy="7.9" r="2.2" class="a"/>',
+    // Slab + a live trace read over SSH. Accent: the endpoint, i.e. the current reading.
+    monitoring: '<rect x="2.9" y="4.6" width="18.2" height="14.8" rx="2.8"/><path d="M6.1 13.4h2.4l1.7 3.2 2.5-6.6 1.7 3.4h3.5"/><circle cx="17.9" cy="13.4" r="1.9" class="a"/>',
+    // A slot that is empty, and a signal going out to wait for it. Accent: the ping.
+    watchers: '<rect x="2.9" y="8.7" width="6.6" height="6.6" rx="1.7"/><path d="M13.1 8.2a5.3 5.3 0 0 1 0 7.6" class="as"/><path d="M16.8 5.3a10 10 0 0 1 0 13.4" class="as"/>',
+    // Rack units. Accent: the status LEDs — the only part that tells you it is alive.
+    servers: '<rect x="3" y="4" width="18" height="6.5" rx="2"/><rect x="3" y="13.5" width="18" height="6.5" rx="2"/><path d="M13.4 7.25h4.2M13.4 16.75h4.2"/><circle cx="7" cy="7.25" r="1.6" class="a"/><circle cx="7" cy="16.75" r="1.6" class="a"/>',
+    // Snapshots offset in time, newest in front. Accent: the newest one.
+    backups: '<rect x="3" y="3.2" width="13.6" height="13.6" rx="2.2"/><path d="M7.4 20.8h11.2a2.2 2.2 0 0 0 2.2-2.2V7.4"/><rect x="6.6" y="6.8" width="6.4" height="6.4" rx="1.6" class="a"/>',
+    // A pod: containers sharing one namespace. Accent: the primary component.
+    deploy: '<rect x="2.9" y="4.6" width="18.2" height="14.8" rx="2.8"/><rect x="12.7" y="8.1" width="5.4" height="7.8" rx="1.6"/><rect x="5.9" y="8.1" width="5.4" height="7.8" rx="1.6" class="a"/>',
+    // Prices ranked against one axis. Accent: the shortest bar — the cheapest.
+    compare: '<path d="M3.6 4.4v15.2"/><rect x="6.2" y="5.6" width="13.6" height="3.6" rx="1.8"/><rect x="6.2" y="10.2" width="9.4" height="3.6" rx="1.8"/><rect x="6.2" y="14.8" width="5.4" height="3.6" rx="1.8" class="a"/>',
+    // A capacity meter, not a clock. Accent: the portion still in stock.
+    availability: '<path d="M3.4 17.8a8.8 8.8 0 1 1 17.2 0"/><path d="m12 17.8 4.6-6.4"/><path d="M3.4 17.8a8.8 8.8 0 0 1 3.4-6.9" class="as"/>',
+    // An allow-list is defined by its opening. Accent: the one port you opened.
+    // Offset courses so it reads as masonry, not as a window or an envelope.
+    firewalls: '<rect x="3" y="4.8" width="18" height="14.4" rx="2.4"/><path d="M3 9.6h18M3 14.4h18"/><path d="M9.6 4.8v4.8M14.4 4.8v4.8M6.8 14.4v4.8M17.2 14.4v4.8"/><rect x="8.9" y="9.6" width="6.2" height="4.8" class="a"/>',
+    // A private subnet with instances attached. Accent: the subnet itself.
+    vnets: '<circle cx="6.4" cy="5.9" r="2.6"/><circle cx="17.6" cy="5.9" r="2.6"/><circle cx="12" cy="18.1" r="2.6"/><path d="M6.4 8.5v2.4M17.6 8.5v2.4M12 15.5v-2.4"/><rect x="3" y="10.9" width="18" height="2.2" rx="1.1" class="a"/>',
+    // Still legibly a key — the bow is the accent, because the half you hold is the
+    // private one. A bare pair of rings read as two dots, not as a keypair.
+    sshkeys: '<path d="M12.4 12H21m-3.3 0v3.2m-3.2-3.2v2.2"/><circle cx="8" cy="12" r="3.3" class="as" stroke-width="3"/>',
+    // A scoped session that ran because it was approved. Accent: the approval.
+    agents: '<rect x="3" y="4.6" width="18" height="14.8" rx="2.8"/><path d="M3 9.1h18M5.9 6.8h.02"/><path d="m8.6 13.1 2.5 2.5 4.5-5" class="as"/>',
+    // Remote accounts collected into one local store. Accent: the store — it is yours.
+    providers: '<circle cx="6" cy="5.6" r="2.7"/><circle cx="18" cy="5.6" r="2.7"/><path d="M6 8.3v2.5a2.4 2.4 0 0 0 2.4 2.4h7.2a2.4 2.4 0 0 0 2.4-2.4V8.3M12 13.2v2.2"/><rect x="8.9" y="15.4" width="6.2" height="5.2" rx="1.9" class="a"/>',
+    // A machine you hold a shell on. Accent: the prompt — the vops mark itself.
+    hosts: '<rect x="2.9" y="4.6" width="18.2" height="14.8" rx="2.8"/><path d="M13.2 15.4h4.4"/><path d="m7.1 9.6 3.1 2.9-3.1 2.9" class="as"/>',
+    // A shelf of manifests ready to install. Accent: the one you are about to pick.
+    catalog: '<rect x="3.2" y="3.4" width="7.5" height="7.5" rx="1.9"/><rect x="13.3" y="3.4" width="7.5" height="7.5" rx="1.9"/><rect x="13.3" y="13.1" width="7.5" height="7.5" rx="1.9"/><rect x="3.2" y="13.1" width="7.5" height="7.5" rx="1.9" class="a"/>',
+  };
+
+  const ic = (name, size) =>
+    `<span class="ic ic-${size}" role="img" aria-label="${name}"><svg viewBox="0 0 24 24">${ICONS[name]}</svg></span>`;
+
+  document.getElementById('set').innerHTML = Object.keys(ICONS)
+    .map((n) => `<div class="cell">${ic(n, 24)}<span class="name">${n}</span></div>`).join('');
+
+  document.getElementById('ladder').innerHTML = [14, 16, 17, 20, 24, 32]
+    .map((s) => `<div class="sz"><div class="szbox" style="width:${s + 20}px;height:${s + 20}px">${ic('deploy', s)}</div>
+      <span class="lbl">${s}px${s === 17 ? '<br>sidebar' : ''}</span></div>`).join('');
+
+  const RAIL = [
+    ['FLEET', [['overview', 'Overview', null, true], ['monitoring', 'Monitoring', '6'], ['watchers', 'Watchers', null], ['servers', 'Servers', '3']]],
+    ['DEPLOY', [['deploy', 'Apps', '13']]],
+    ['MARKET', [['compare', 'Compare', null], ['availability', 'Availability', null]]],
+    ['NETWORK', [['firewalls', 'Firewalls', null], ['vnets', 'Networks', null], ['sshkeys', 'SSH Keys', '4']]],
+  ];
+  const railHtml = RAIL.map(([sec, items]) => `<div class="sec">${sec}</div>` + items
+    .map(([n, label, pill, on]) =>
+      `<button class="nav${on ? ' on' : ''}" type="button">${ic(n, 17)}<span>${label}</span>${pill ? `<span class="pill">${pill}</span>` : ''}</button>`)
+    .join('')).join('');
+  document.getElementById('rail-dark').innerHTML = railHtml;
+  document.getElementById('rail-light').innerHTML = railHtml;
+
+  const FAMILY = ['servers', 'hosts', 'monitoring', 'deploy'];
+  const FAMILY_WHY = { servers: 'rack + LEDs', hosts: 'shell prompt', monitoring: 'live trace', deploy: 'pod of containers' };
+  document.getElementById('family').innerHTML = FAMILY
+    .map((n) => `<div class="cell">${ic(n, 24)}<span class="name">${n}<br><span style="color:var(--accent)">${FAMILY_WHY[n]}</span></span></div>`).join('');
+
+  // [name, what it is in vops, what the accent marks, what it replaced, wrong?]
+  const WHY = [
+    ['overview', 'A world map of your fleet across every provider — the actual home screen', 'a region you hold', 'four generic dashboard panels', false],
+    ['monitoring', 'Mem, load and disk read live over SSH. No history is stored', 'the endpoint = now', 'a bare pulse line, attached to nothing', false],
+    ['watchers', 'A standing query on a sold-out plan, firing when stock returns', 'the signal going out', 'a bell — said "notifications", not "waiting on stock"', true],
+    ['servers', 'VPS instances vops provisioned, billed by the hour', 'the status LEDs', 'the same rack, without the LEDs meaning anything', false],
+    ['backups', 'restic snapshots, offset in time, newest in front', 'the newest snapshot', 'a database cylinder — said "a database"', true],
+    ['deploy', 'A flui.yaml manifest running as a Quadlet pod of containers', 'the primary component', 'a rocket — said "launch", a stock startup trope', true],
+    ['compare', 'Real-time prices from five providers, ranked against one axis', 'the cheapest bar', 'two opposing arrows — said "swap"', true],
+    ['availability', 'Which plans are in stock in which regions, as a capacity reading', 'the portion still in stock', 'a clock — said "time". It has nothing to do with time', true],
+    ['firewalls', 'A port allow-list. It is defined by what it lets through', 'the one port you opened', 'a shield — generic security, said nothing specific', true],
+    ['vnets', 'A private subnet with instances attached to it', 'the subnet', 'a globe — said "the public internet", the opposite', true],
+    ['sshkeys', 'A keypair whose private half never leaves the machine', 'the bow — the half you hold', 'a key with nothing marking which half is yours', false],
+    ['agents', 'A scoped agent session that ran because it was approved, with an audit trail', 'the approval', 'a robot face — a mascot, not a control', true],
+    ['providers', 'Remote cloud accounts collected into one encrypted local store', 'the local store', 'a chain link — said "a link"', false],
+    ['hosts', 'A machine you hold a shell on, including ones vops did not create', 'the prompt — the vops mark', 'a terminal window; kept, with the chevron promoted', false],
+    ['catalog', '66 bundled app manifests you can browse and install', 'the one you are picking', 'a shop awning', false],
+  ];
+  document.getElementById('why').innerHTML = WHY.map(([n, is, acc, was, wrong]) => `<tr>
+    <td class="g">${ic(n, 20)}</td>
+    <td><span class="mono">${n}</span></td>
+    <td style="color:var(--text-2)">${is}</td>
+    <td style="color:var(--accent)">${acc}</td>
+    <td style="color:var(--text-3)">${wrong ? '<span style="color:var(--warn)">✕</span> ' : ''}${was}</td>
+  </tr>`).join('');
+</script>

@@ -78,7 +78,13 @@ function dashboardModals() {
       }
       if (kind === 'host') {
         await this.api('/hosts/' + encodeURIComponent(item.name), { method: 'DELETE' });
-        this.closeModal(); this.notify('Forgot host ' + item.name); return this.reload();
+        this.closeModal();
+        this.notify('Forgot host ' + item.name);
+        // reload() dispatches on the current view, so forgetting the host you are
+        // looking at used to re-fetch a host that no longer exists and leave the
+        // page sitting on dead data. Leave instead.
+        if (this.view === 'host' && this.modal.mg?.name === item.name) return this.go(this.hvFrom || 'servers');
+        return this.reload();
       }
       const prov = kind === 'server' && item.provider ? item.provider : this.provider;
       const q = '?provider=' + prov + (kind === 'server' ? '&force=true' : '&yes=true');

@@ -326,27 +326,69 @@ function dashboardHosts() {
       await this.loadHosts();
       try {
         if (!mg.name && mg.row) mg.name = await this.ensureHostName(mg.row);
+        // Gone from the inventory (forgotten here or in another window): there is
+        // nothing to show, and staying would leave a page of dead data on screen.
+        if (mg.name && !(this.hosts || []).some(x => x.name === mg.name)) return this.hostVanished(mg.name);
         mg.host = (this.hosts || []).find(x => x.name === mg.name) || mg.host;
         await this.manageCheck();
         if (mg.name) this.fwLoad(mg.name);
         this.monBindVisibility();
+        // Always read the stored snapshot, even for a host SSH can't reach: it is
+        // a local read, and it carries the provider-plane findings — including the
+        // one that says the machine was destroyed. Gating it on mgReady() left the
+        // page unable to explain the very case it most needed to.
+        if (mg.name) await this.monLoadHost(mg.name);
         if (this.mgReady() && mg.host) {
-          await this.monPoll(mg.host);
-          this.mon.interval = setInterval(() => this.hostTick(), MON_INTERVAL);
+          // Paint from what is already stored, then probe only if that is stale —
+          // opening a host page no longer costs an SSH round trip by default.
+          await this.monLoadHistory(mg.name);
+          if (this.hostStale()) await this.monRefresh(mg.name);
+          this.mon.interval = setInterval(() => this.hostTick(), MON_UI_REFRESH_MS);
         }
       } catch (e) { this.notify(e.message, 'error'); }
     },
 
+    /** Leave a host page whose host no longer exists, saying why. */
+    hostVanished(name) {
+      this.monStop();
+      this.notify(name + ' is no longer in your inventory.');
+      this.go(this.hvFrom || 'servers');
+    },
+
+    /**
+     * The provider says this machine is gone — it was destroyed somewhere else
+     * (its console, another tool). Hetzner and Scaleway both normalise that to a
+     * `not-found` power state, which vops already grades as a failure; without
+     * reading it the page offers firewall advice for a server that isn't there.
+     */
+    hostGone() {
+      const f = this.hvFinding('cloud.power');
+      return String(f?.value ?? '').toLowerCase() === 'not-found';
+    },
+
+    /** Forget the host being viewed, then leave — there is nothing left to show. */
+    forgetHost() {
+      const host = this.modal.mg?.host;
+      if (host) this.confirmDelete('host', host);
+    },
+
+    /** Older than one collector cycle, or never checked at all. */
+    hostStale() {
+      const L = this.hvLive();
+      const maxAge = (this.mon.collector?.intervalMs || 120000) / 1000;
+      return L.ageSeconds == null || L.ageSeconds > maxAge;
+    },
+
     hostTick() {
       if (this.view !== 'host') { this.monStop(); return; }
-      const h = this.modal.mg?.host;
-      if (h) this.monPoll(h);
+      const name = this.modal.mg?.name;
+      if (name) this.monLoadHost(name);
     },
 
     async hostRefresh() {
       await this.manageCheck();
-      const h = this.modal.mg?.host;
-      if (this.mgReady() && h) await this.monPoll(h);
+      const name = this.modal.mg?.name;
+      if (this.mgReady() && name) await this.monRefresh(name);
     },
 
     hvBack() { this.go(this.hvFrom || 'servers'); },

@@ -21,7 +21,7 @@
           <div><label class="label" for="cmp-region">Region</label>
             <select id="cmp-region" class="field" x-model="cmp.region">
               <option value="">anywhere</option>
-              <template x-for="g in cmpRegionGroups" :key="g.continent">
+              <template x-for="g in cmpRegionGroups()" :key="g.continent">
                 <optgroup :label="g.label">
                   <option :value="'cont:'+g.continent" x-text="'All of '+g.label"></option>
                   <template x-for="c in g.countries" :key="c"><option :value="'ctry:'+c" x-text="c"></option></template>
@@ -54,7 +54,7 @@
                     <tr class="row"><td class="td" colspan="10"><div class="skel h-4 w-full max-w-[620px]"></div></td></tr>
                   </template>
                 </template>
-                <template x-for="r in filteredCompareRows" :key="r.provider + r.plan + r.region">
+                <template x-for="r in filteredCompareRows()" :key="r.provider + r.plan + r.region">
                   <tr class="row">
                     <td class="td"><span class="inline-flex items-center gap-2 capitalize"><span class="h-2 w-2 rounded-full" :style="'background:' + pinColor(r.provider)"></span><span x-text="r.provider"></span></span></td>
                     <td class="td font-semibold" style="color:var(--text)" x-text="r.plan"></td>
@@ -80,7 +80,7 @@
                     </td>
                   </tr>
                 </template>
-                <tr x-show="!filteredCompareRows.length && !loading"><td class="td" style="color:var(--text-faint)" colspan="10" x-text="comparedOnce ? 'No matching plans for this tier / filters.' : 'Set filters and compare.'"></td></tr>
+                <tr x-show="!filteredCompareRows().length && !loading"><td class="td" style="color:var(--text-faint)" colspan="10" x-text="comparedOnce ? 'No matching plans for this tier / filters.' : 'Set filters and compare.'"></td></tr>
               </tbody>
             </table>
           </div>

@@ -86,20 +86,19 @@ function dashboardApps() {
       ];
     },
 
-    /** Skill directories per coding agent, verified against each agent's own docs (an unverified
-     * path is silently inert, so it's not offered). Codex and Antigravity share `.agents/skills`; OpenCode reads Claude Code's. */
+    /** Native skill directories per coding agent, verified against current client documentation. */
     byopAgents() {
       return [
         { id: 'claude-code', name: 'Claude Code', home: '~/.claude/skills/vops-deploy/', project: '.claude/skills/vops-deploy/' },
         { id: 'codex', name: 'Codex', home: '~/.agents/skills/vops-deploy/', project: '.agents/skills/vops-deploy/' },
         { id: 'antigravity', name: 'Antigravity', home: '~/.gemini/config/skills/vops-deploy/', project: '.agents/skills/vops-deploy/' },
-        { id: 'opencode', name: 'OpenCode', home: '~/.claude/skills/vops-deploy/', note: 'Reads Claude Code’s skills directory — installing for either covers both.' },
+        { id: 'opencode', name: 'OpenCode', home: '~/.config/opencode/skills/vops-deploy/', project: '.opencode/skills/vops-deploy/' },
       ];
     },
     byopAgent() { return this.byopAgents().find((a) => a.id === this.apps.byopAgent) || this.byopAgents()[0]; },
     byopCommand(scope) {
       const a = this.byopAgent();
-      return 'vops agent skill install ' + a.id + (scope === 'project' && a.project ? ' --project .' : '');
+      return 'vops agent setup --client ' + a.id + ' --scope ' + scope;
     },
 
     appKindLabel(t) {

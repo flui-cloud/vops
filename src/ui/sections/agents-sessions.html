@@ -1,0 +1,88 @@
+<div class="card p-5">
+  <div class="mb-4 flex items-center justify-between">
+    <div>
+      <h2 class="text-sm font-semibold">Sessions and what each agent may do</h2>
+      <p class="mt-1 text-xs" style="color:var(--text-faint)">A session is the whole permission it holds. Nothing outside this list is reachable.</p>
+    </div>
+    <span class="count-pill" x-text="activeAgentSessions().length"></span>
+  </div>
+  <div class="space-y-3">
+    <template x-for="session in agentControl.sessions" :key="session.id">
+      <div class="rounded-lg border p-3" style="border-color:var(--border)">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium" x-text="session.actor.displayName"></span>
+              <span class="count-pill" x-text="session.status"></span>
+              <span class="count-pill" x-text="session.mode"></span>
+            </div>
+            <div class="mt-1 text-xs" style="color:var(--text-faint)" x-text="session.objective"></div>
+            <div class="mt-1 font-mono text-[11px]" style="color:var(--text-faint)" x-text="session.id"></div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class="btn-secondary" @click="toggleAgentSession(session.id)"
+              x-text="expandedAgentSession===session.id ? 'Hide permissions' : 'Permissions'"></button>
+            <button x-show="session.status==='active'" class="btn-secondary" @click="agentSessionAction(session.id,'pause')">Pause</button>
+            <button x-show="session.status==='paused'" class="btn-secondary" @click="agentSessionAction(session.id,'resume')">Resume</button>
+            <button x-show="['active','paused'].includes(session.status)" class="btn-danger" @click="agentSessionAction(session.id,'revoke')">Revoke</button>
+          </div>
+        </div>
+
+        <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-5">
+          <div class="rounded p-2" style="background:var(--side)">
+            <div style="color:var(--text-faint)">Servers it may touch</div>
+            <div class="mt-1 font-medium" x-text="session.scope.targets.length ? session.scope.targets.join(', ') : 'any registered server'"></div>
+          </div>
+          <div class="rounded p-2" style="background:var(--side)">
+            <div style="color:var(--text-faint)">Environments</div>
+            <div class="mt-1 font-medium" x-text="session.scope.environments.join(', ') || 'none'"></div>
+          </div>
+          <div class="rounded p-2" style="background:var(--side)">
+            <div style="color:var(--text-faint)">Expires</div>
+            <div class="mt-1 font-medium" x-text="agentSessionExpiry(session)"></div>
+          </div>
+          <div class="rounded p-2" style="background:var(--side)">
+            <div style="color:var(--text-faint)">Runs left</div>
+            <div class="mt-1 font-medium"
+              x-text="Math.max(0, session.limits.maxOperations - session.operationCount) + ' of ' + session.limits.maxOperations"></div>
+            <div class="mt-0.5 text-[10px]" style="color:var(--text-faint)">plans it may still execute</div>
+          </div>
+          <div class="rounded p-2" style="background:var(--side)">
+            <div style="color:var(--text-faint)">Monthly budget left</div>
+            <div class="mt-1 font-medium" x-text="agentSpendLeft(session)"></div>
+            <div class="mt-0.5 text-[10px]" style="color:var(--text-faint)"
+              x-text="session.limits.maxProviderSpendEur === 0 ? 'may not buy anything' : 'recurring cost it may still commit to'"></div>
+          </div>
+        </div>
+
+        <div x-show="expandedAgentSession===session.id" x-cloak class="mt-3 space-y-3">
+          <template x-for="group in agentPermissionGroups(session)" :key="group.key">
+            <div>
+              <div class="text-[11px] font-semibold" x-text="group.label"></div>
+              <div class="mt-1 text-[11px]" style="color:var(--text-faint)" x-text="group.hint"></div>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <template x-for="entry in group.entries" :key="entry.id">
+                  <span class="count-pill text-[11px]" :style="group.style">
+                    <span x-text="entry.action"></span>
+                    <button x-show="group.revocable" class="ml-1" style="color:var(--danger)"
+                      :title="'Revoke ' + entry.action"
+                      @click="narrowAgentSession(session.id,{capabilities:[entry.id]})">×</button>
+                  </span>
+                </template>
+                <span x-show="group.entries.length===0" class="text-[11px]" style="color:var(--text-faint)">none</span>
+              </div>
+            </div>
+          </template>
+          <div x-show="['active','paused'].includes(session.status)" class="flex flex-wrap items-center gap-2 pt-1">
+            <button class="btn-secondary text-[11px]" @click="narrowAgentSession(session.id,{expiresAt:new Date(Date.now()+5*60000).toISOString()})">Expire in 5 min</button>
+            <button class="btn-secondary text-[11px]" @click="narrowAgentSession(session.id,{maxProviderSpendEur:0})"
+              :disabled="session.limits.maxProviderSpendEur===0">Cut spend to €0</button>
+          </div>
+        </div>
+      </div>
+    </template>
+    <div x-show="agentControl.sessions.length===0" class="text-sm" style="color:var(--text-faint)">
+      No agent session yet. An agent asks for one with <span class="font-mono">vops agent session create</span>.
+    </div>
+  </div>
+</div>

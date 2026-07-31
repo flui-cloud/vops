@@ -1,0 +1,34 @@
+<div class="card overflow-hidden">
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4" style="border-color:var(--border)">
+    <div>
+      <div class="text-sm font-semibold">Audit timeline</div>
+      <p class="mt-1 text-xs" style="color:var(--text-faint)">Append-only and chained. Loaded a page at a time, newest first.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <select class="input text-xs" x-model="agentAuditSession" @change="reloadAgentAudit()">
+        <option value="">All sessions</option>
+        <template x-for="session in agentControl.sessions" :key="session.id">
+          <option :value="session.id" x-text="session.actor.displayName + ' · ' + session.id.slice(0,12)"></option>
+        </template>
+      </select>
+      <span class="count-pill" x-text="agentAuditEvents().length + ' shown'"></span>
+    </div>
+  </div>
+  <div class="divide-y" style="border-color:var(--border)">
+    <template x-for="event in agentAuditEvents()" :key="event.eventId">
+      <div class="grid grid-cols-[170px_1fr_auto] gap-4 px-5 py-3 text-xs">
+        <span class="font-mono" style="color:var(--text-faint)" x-text="new Date(event.timestamp).toLocaleString()"></span>
+        <span x-text="event.summary"></span>
+        <span style="color:var(--text-faint)" x-text="event.eventType"></span>
+      </div>
+    </template>
+    <div x-show="agentAuditEvents().length===0" class="px-5 py-6 text-sm" style="color:var(--text-faint)">No audit event yet.</div>
+  </div>
+  <div class="border-t px-5 py-3" style="border-color:var(--border)"
+    x-init="observeAgentAuditTail($el)">
+    <button x-show="agentAuditCursor()!==null" class="btn-secondary text-xs"
+      :disabled="agentAuditLoading" @click="loadMoreAgentAudit()"
+      x-text="agentAuditLoading ? 'Loading…' : 'Load older events'"></button>
+    <span x-show="agentAuditCursor()===null" class="text-xs" style="color:var(--text-faint)">End of the timeline.</span>
+  </div>
+</div>

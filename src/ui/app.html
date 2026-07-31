@@ -4,10 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>vops · control plane</title>
-<link rel="icon" type="image/png" href="assets/icon.png" />
+<link rel="icon" type="image/png" href="/assets/icon.png" />
 <link rel="manifest" href="/manifest.webmanifest" />
-<meta name="theme-color" content="#08080a" />
-<meta name="apple-mobile-web-app-title" content="vops dash" />
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0a0c11" media="(prefers-color-scheme: dark)" />
+<meta name="apple-mobile-web-app-title" content="vops" />
 <!-- Apply the saved theme before first paint — Alpine boots at the end of the
      document, so waiting for init() would flash light at dark-theme users. -->
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('vops-theme')||'light'}catch{}</script>
@@ -38,7 +39,10 @@
       <!--include: sections/vnets.html-->
       <!--include: sections/sshkeys.html-->
       <!--include: sections/apps.html-->
+      <!--include: sections/agents.html-->
+      <!--include: sections/remote.html-->
       <!--include: sections/providers.html-->
+      <!--include: sections/settings.html-->
     </div>
 
     <!--include: sections/overlays.html-->

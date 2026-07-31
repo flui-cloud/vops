@@ -1,19 +1,51 @@
-const ICONS = {
-  overview: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.4"/><rect x="14" y="3" width="7" height="5" rx="1.4"/><rect x="14" y="12" width="7" height="9" rx="1.4"/><rect x="3" y="16" width="7" height="5" rx="1.4"/></svg>',
-  compare: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 8h13M7 8 4 5m3 3-3 3"/><path d="M17 16H4m13 0 3-3m-3 3 3 3"/></svg>',
-  availability: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 12V4.5M12 12l5.3 3"/></svg>',
-  servers: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="6" rx="1.6"/><rect x="3" y="14" width="18" height="6" rx="1.6"/><circle cx="7" cy="7" r=".6" fill="currentColor"/><circle cx="7" cy="17" r=".6" fill="currentColor"/></svg>',
-  firewalls: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 5 6v5c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6l-7-3Z"/></svg>',
-  vnets: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.3 3.6 8.5S14.4 18.2 12 20.5C9.6 18.2 8.4 15.2 8.4 12S9.6 5.8 12 3.5Z"/></svg>',
-  sshkeys: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="12" r="4.5"/><path d="M12 12h9m-3 0v3m-3-3v2"/></svg>',
-  hosts: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>',
-  monitoring: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M3 12h3l2.5 7 5-14L18 12h3"/></svg>',
-  watchers: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
-  backups: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6.5" rx="8" ry="3"/><path d="M4 6.5v11c0 1.7 3.6 3 8 3s8-1.3 8-3v-11"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
-  catalog: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V9.5Z"/><path d="M5 3.5h14l1.5 4a2.2 2.2 0 0 1-4.3.6 2.2 2.2 0 0 1-4.2 0 2.2 2.2 0 0 1-4.2 0 2.2 2.2 0 0 1-4.3-.6L5 3.5Z"/></svg>',
-  deploy: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3c3.4 2.2 5.2 5.7 5.2 9.6L12 16.8l-5.2-4.2C6.8 8.7 8.6 5.2 12 3Z"/><circle cx="12" cy="10" r="1.7"/><path d="m9.2 17.2-1.7 3.3 3-1.1M14.8 17.2l1.7 3.3-3-1.1"/></svg>',
-  providers: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12h6"/><path d="M9.5 8H7a4 4 0 0 0 0 8h2.5M14.5 8H17a4 4 0 0 1 0 8h-2.5"/></svg>',
+/* Duotone icon set — see design/vops-ds/icons.html for the rationale per mark.
+ * Body strokes inherit currentColor; each icon carries exactly ONE accent shape,
+ * `.a` (filled) or `.as` (stroked), which resolves through --icon-accent. Four of
+ * them (servers/hosts/monitoring/deploy) share one outer slab on purpose: same
+ * object, different question. */
+const ICON_ART = {
+  // A world map of the fleet. Accent: a region you hold.
+  overview: '<circle cx="12" cy="12" r="9"/><path d="M3.5 9.2h17M3.5 14.8h17M12 3a15.5 15.5 0 0 0 0 18 15.5 15.5 0 0 0 0-18Z"/><circle cx="15.9" cy="7.9" r="2.2" class="a"/>',
+  // Slab + a trace read live over SSH. Accent: the endpoint, i.e. now.
+  monitoring: '<rect x="2.9" y="4.6" width="18.2" height="14.8" rx="2.8"/><path d="M6.1 13.4h2.4l1.7 3.2 2.5-6.6 1.7 3.4h3.5"/><circle cx="17.9" cy="13.4" r="1.9" class="a"/>',
+  // An empty slot and a signal out, waiting for stock to return. Accent: the ping.
+  watchers: '<rect x="2.9" y="8.7" width="6.6" height="6.6" rx="1.7"/><path d="M13.1 8.2a5.3 5.3 0 0 1 0 7.6" class="as"/><path d="M16.8 5.3a10 10 0 0 1 0 13.4" class="as"/>',
+  // Rack units. Accent: the LEDs — the only part that says it is alive.
+  servers: '<rect x="3" y="4" width="18" height="6.5" rx="2"/><rect x="3" y="13.5" width="18" height="6.5" rx="2"/><path d="M13.4 7.25h4.2M13.4 16.75h4.2"/><circle cx="7" cy="7.25" r="1.6" class="a"/><circle cx="7" cy="16.75" r="1.6" class="a"/>',
+  // Snapshots offset in time, newest in front. Accent: the newest.
+  backups: '<rect x="3" y="3.2" width="13.6" height="13.6" rx="2.2"/><path d="M7.4 20.8h11.2a2.2 2.2 0 0 0 2.2-2.2V7.4"/><rect x="6.6" y="6.8" width="6.4" height="6.4" rx="1.6" class="a"/>',
+  // A Quadlet pod of containers. Accent: the primary component.
+  deploy: '<rect x="2.9" y="4.6" width="18.2" height="14.8" rx="2.8"/><rect x="12.7" y="8.1" width="5.4" height="7.8" rx="1.6"/><rect x="5.9" y="8.1" width="5.4" height="7.8" rx="1.6" class="a"/>',
+  // Prices ranked against one axis. Accent: the cheapest bar.
+  compare: '<path d="M3.6 4.4v15.2"/><rect x="6.2" y="5.6" width="13.6" height="3.6" rx="1.8"/><rect x="6.2" y="10.2" width="9.4" height="3.6" rx="1.8"/><rect x="6.2" y="14.8" width="5.4" height="3.6" rx="1.8" class="a"/>',
+  // A capacity reading, not a clock. Accent: the portion still in stock.
+  availability: '<path d="M3.4 17.8a8.8 8.8 0 1 1 17.2 0"/><path d="m12 17.8 4.6-6.4"/><path d="M3.4 17.8a8.8 8.8 0 0 1 3.4-6.9" class="as"/>',
+  // An allow-list is defined by its opening. Accent: the port you opened.
+  firewalls: '<rect x="3" y="4.8" width="18" height="14.4" rx="2.4"/><path d="M3 9.6h18M3 14.4h18"/><path d="M9.6 4.8v4.8M14.4 4.8v4.8M6.8 14.4v4.8M17.2 14.4v4.8"/><rect x="8.9" y="9.6" width="6.2" height="4.8" class="a"/>',
+  // A private subnet with instances attached. Accent: the subnet.
+  vnets: '<circle cx="6.4" cy="5.9" r="2.6"/><circle cx="17.6" cy="5.9" r="2.6"/><circle cx="12" cy="18.1" r="2.6"/><path d="M6.4 8.5v2.4M17.6 8.5v2.4M12 15.5v-2.4"/><rect x="3" y="10.9" width="18" height="2.2" rx="1.1" class="a"/>',
+  // Accent: the bow — the half you hold is the private one.
+  sshkeys: '<path d="M12.4 12H21m-3.3 0v3.2m-3.2-3.2v2.2"/><circle cx="8" cy="12" r="3.3" class="as" stroke-width="3"/>',
+  // A scoped session that ran because it was approved. Accent: the approval.
+  agents: '<rect x="3" y="4.6" width="18" height="14.8" rx="2.8"/><path d="M3 9.1h18"/><path d="m8.6 13.1 2.5 2.5 4.5-5" class="as"/>',
+  // Remote accounts collected into one local store. Accent: the store — it is yours.
+  providers: '<circle cx="6" cy="5.6" r="2.7"/><circle cx="18" cy="5.6" r="2.7"/><path d="M6 8.3v2.5a2.4 2.4 0 0 0 2.4 2.4h7.2a2.4 2.4 0 0 0 2.4-2.4V8.3M12 13.2v2.2"/><rect x="8.9" y="15.4" width="6.2" height="5.2" rx="1.9" class="a"/>',
+  // A machine you hold a shell on. Accent: the prompt — the vops mark itself.
+  hosts: '<rect x="2.9" y="4.6" width="18.2" height="14.8" rx="2.8"/><path d="M13.2 15.4h4.4"/><path d="m7.1 9.6 3.1 2.9-3.1 2.9" class="as"/>',
+  // This machine, and what vops has put on it. Accent: the part that keeps running.
+  settings: '<rect x="2.9" y="4.6" width="18.2" height="12.4" rx="2.4"/><path d="M8 20.4h8M12 17v3.4"/><circle cx="12" cy="10.8" r="2.4" class="a"/>',
+  // This machine reachable from a phone you hold. Accent: the paired device.
+  remote: '<rect x="2.6" y="4.8" width="12.4" height="9.6" rx="2.4"/><path d="M6 17.6h5.6M8.8 14.4v3.2"/><rect x="16.4" y="7.6" width="5" height="12.8" rx="1.9" class="a"/>',
+  // A shelf of manifests ready to install. Accent: the one you are picking.
+  catalog: '<rect x="3.2" y="3.4" width="7.5" height="7.5" rx="1.9"/><rect x="13.3" y="3.4" width="7.5" height="7.5" rx="1.9"/><rect x="13.3" y="13.1" width="7.5" height="7.5" rx="1.9"/><rect x="3.2" y="13.1" width="7.5" height="7.5" rx="1.9" class="a"/>',
 };
+
+const ICONS = Object.fromEntries(
+  Object.entries(ICON_ART).map(([name, art]) => [
+    name,
+    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${art}</svg>`,
+  ]),
+);
 
 function dashboardCore() {
   return {
@@ -30,6 +62,9 @@ function dashboardCore() {
     loads: 0,
     error: '',
     offline: false,
+    // Set when the server is going away because we asked it to — the reconnect
+    // screen then explains instead of implying something broke.
+    offlineExpected: false,
     pwa: false, svc: null, svcHintDismissed: false,
     comparedOnce: false,
     syncedLabel: 'just now',
@@ -54,9 +89,13 @@ function dashboardCore() {
         { id: 'sshkeys', label: 'SSH Keys', icon: ICONS.sshkeys, pill: true },
       ] },
       { section: 'SETTINGS', items: [
+        { id: 'agents', label: 'Agents', icon: ICONS.agents, pill: true },
+        { id: 'remote', label: 'Remote access', icon: ICONS.remote, pill: true },
         { id: 'providers', label: 'Providers', icon: ICONS.providers },
+        { id: 'settings', label: 'This computer', icon: ICONS.settings },
       ] },
     ],
+    navFade: { top: 0, bottom: 0 },
     providers: [], servers: [], firewalls: [], vnets: [], sshKeys: [], compareRows: [], availabilityRows: [],
     ov: { serverCount: null, byProvider: [], spend: null, alerts: null, cheapest: null, bestValue: [], bvLoaded: false },
     geo: { width: 1000, height: 700, countries: [], pins: [], views: {} },
@@ -79,12 +118,13 @@ function dashboardCore() {
     get serverTabs() { return ['all', ...this.providerIds]; },
     get pageTitle() {
       const m = { overview: 'Overview', monitoring: 'Monitoring', watchers: 'Watchers', compare: 'Compare', servers: 'Servers', availability: 'Availability',
-        firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys', apps: 'Apps', providers: 'Providers' };
+        firewalls: 'Firewalls', vnets: 'Networks', sshkeys: 'SSH Keys', apps: 'Apps', agents: 'Agents', remote: 'Remote access',
+        providers: 'Providers', settings: 'This computer' };
       return m[this.view] || '';
     },
     get subtitle() {
       const m = { overview: 'Your fleet at a glance — servers, spend and live regions across every provider.',
-        monitoring: 'Live health of your fleet — connection, resource metrics and status checks, refreshed over SSH.',
+        monitoring: 'Health of your fleet — checked over SSH in the background, with 7 days of history kept on this machine.',
         watchers: 'Every remote alert on your vops-landing account — availability watches, uptime probes and host monitors.',
         compare: 'Real-time plan comparison across every provider.',
         servers: 'Your fleet — provision, monitor and manage every server in one place.',
@@ -92,7 +132,10 @@ function dashboardCore() {
         firewalls: 'Firewall per server — provider-native or vops nftables, one simple view.',
         vnets: 'Private networks, subnets and routes.',
         sshkeys: 'Local SSH keys — private keys never leave this machine.',
+        settings: 'What vops has installed on this computer — the always-on service, your vault, and how to remove any of it.',
         apps: 'Deploy flui.yaml apps to your hosts over SSH — rootful Podman + Quadlet, no agent installed.',
+        agents: 'Short-lived coding-agent sessions, approvals, operations and audit — controlled locally.',
+        remote: 'Use vops from your phone — pair a device here, then check your fleet and approve actions while you are away.',
         providers: 'Connect your provider accounts — keys are stored encrypted on this machine and never leave it.' };
       return m[this.view] || '';
     },
@@ -104,11 +147,23 @@ function dashboardCore() {
       if (this.view === 'vnets') return this.openVnetForm();
       if (this.view === 'sshkeys') return this.openKeyForm();
     },
+    /** Fade the nav's clipped edge only where content actually continues, so a
+     * list that fits shows no gradient at all. */
+    navScrollState(el) {
+      if (!el) return;
+      const max = el.scrollHeight - el.clientHeight;
+      this.navFade = {
+        top: el.scrollTop > 2 ? 14 : 0,
+        bottom: max > 2 && el.scrollTop < max - 2 ? 18 : 0,
+      };
+    },
     countFor(id) {
       if (id === 'servers') return this.ov.serverCount;
       if (id === 'sshkeys') return this.sshKeys.length || (this.sshKeysLoaded ? 0 : null);
       if (id === 'monitoring' || id === 'hosts') return this.hosts.length || (this.hostsLoaded ? 0 : null);
       if (id === 'apps') return this.apps.installs.length || (this.apps.loaded ? 0 : null);
+      if (id === 'agents') return this.activeAgentSessions().length;
+      if (id === 'remote') return this.remote.loaded ? this.remoteDevices().length : null;
       return null;
     },
     get availGroups() {
@@ -140,6 +195,7 @@ function dashboardCore() {
     async init() {
       this.heartbeat();
       this.pwaInit();
+      this.vaultInit();
       this.applyTheme(this.readTheme());
       this.watched = this.loadWatched();
       try {
@@ -197,19 +253,26 @@ function dashboardCore() {
     setProvider(p) { this.provider = p; this.reload(); },
 
     async reload() {
+      if (this.view !== 'agents') clearTimeout(this._agentTimer);
+      if (this.view !== 'remote') this.remoteStop();
       if (this.view !== 'monitoring' && this.view !== 'host') this.monStop();
-      if (this.view === 'overview') return this.loadOverview();
-      if (this.view === 'monitoring') return this.loadMonitoring();
-      if (this.view === 'watchers') return this.loadWatchers();
-      if (this.view === 'host') return this.loadHostView();
-      if (this.view === 'compare') return this.runCompare();
-      if (this.view === 'servers') { this.plansCache = {}; this.loadHosts(); return this.loadServers(); }
-      if (this.view === 'availability') { this.plansCache = {}; return this.loadAvailability(); }
-      if (this.view === 'firewalls') return this.loadHosts();
-      if (this.view === 'vnets') return this.load('vnets', '/vnets?provider=' + this.provider);
-      if (this.view === 'sshkeys') return this.load('sshKeys', '/ssh-keys');
-      if (this.view === 'apps') return this.loadApps();
-      if (this.view === 'providers') return this.loadCredentials();
+      return ({
+        overview: () => this.loadOverview(),
+        monitoring: () => this.loadMonitoring(),
+        watchers: () => this.loadWatchers(),
+        host: () => this.loadHostView(),
+        compare: () => this.runCompare(),
+        servers: () => { this.plansCache = {}; this.loadHosts(); return this.loadServers(); },
+        availability: () => { this.plansCache = {}; return this.loadAvailability(); },
+        firewalls: () => this.loadHosts(),
+        vnets: () => this.load('vnets', '/vnets?provider=' + this.provider),
+        sshkeys: () => this.load('sshKeys', '/ssh-keys'),
+        apps: () => this.loadApps(),
+        agents: () => this.loadAgentControl(),
+        remote: () => this.loadRemote(),
+        providers: () => this.loadCredentials(),
+        settings: () => this.loadSettings(),
+      })[this.view]?.();
     },
 
     async api(path, opts = {}) {
@@ -222,12 +285,21 @@ function dashboardCore() {
         throw e;
       }
       const text = await r.text();
-      if (!r.ok) throw new Error(this.extract(text) || ('HTTP ' + r.status));
+      if (!r.ok) {
+        // Carry the status and the parsed body: callers that only read `.message`
+        // are unaffected, but a 423 (sealed vault) or a 429 (unlock backoff) can
+        // now be told apart from a generic failure.
+        const err = new Error(this.extract(text) || ('HTTP ' + r.status));
+        err.status = r.status;
+        try { err.body = JSON.parse(text); } catch { /* not JSON */ }
+        if (r.status === 423) this.vaultLocked();
+        throw err;
+      }
       return text ? JSON.parse(text) : null;
     },
 
     // Two independent "installs" exist: the browser PWA and the background service
-    // (`vops ui --install`). A PWA with no service opens onto a dead server, so once installed we nudge the user to finish setup (the browser can't run the command itself).
+    // (`vops service install`). A PWA with no service opens onto a dead server, so once installed we nudge the user to finish setup (the browser can't run the command itself).
     pwaInit() {
       try {
         this.pwa = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -249,7 +321,9 @@ function dashboardCore() {
     // show a reconnect screen and keep polling — the moment the server returns we
     // reload, so the installed PWA springs back to life with no manual step.
     heartbeat() {
-      fetch('/', { method: 'HEAD', cache: 'no-store' })
+      // /healthz, not HEAD / — the latter re-renders the whole inlined dashboard
+      // document server-side every 6s just to throw it away.
+      fetch('/healthz', { cache: 'no-store' })
         .then((r) => {
           if (this.offline && r.ok) { location.reload(); return; }
           this.offline = !r.ok;

@@ -66,8 +66,8 @@ function dashboardCompare() {
       });
     },
 
-    hourlyMonthly(r) { return r.hourly != null ? r.hourly * CMP_HOURS_PER_MONTH : null; },
-    monthlyView(r) { return r.monthly != null ? r.monthly : this.hourlyMonthly(r); },
+    hourlyMonthly(r) { return r.hourly == null ? null : r.hourly * CMP_HOURS_PER_MONTH; },
+    monthlyView(r) { return r.monthly == null ? this.hourlyMonthly(r) : r.monthly; },
     // A committed monthly sits well under pay-as-you-go (big commitment discount).
     isCommitted(r) {
       const pg = this.hourlyMonthly(r);
@@ -79,19 +79,21 @@ function dashboardCompare() {
     cmpMonthlyText(r) {
       if (r.monthly != null) return this.money(r.monthly, 2);
       const pg = this.hourlyMonthly(r);
-      return pg != null ? '~' + this.money(pg, 2) : 'n/a';
+      return pg == null ? 'n/a' : '~' + this.money(pg, 2);
     },
 
     // Rows after tier + billing-availability, before the region filter — feeds the
     // Region dropdown so it only offers places that exist for the current tab.
-    get cmpBase() {
+    // Methods, not getters: this factory is an Object.assign source, and a getter
+    // there is invoked (and flattened to a frozen value) at composition time.
+    cmpBase() {
       return (this.compareRows || []).filter((r) =>
         this.tierOf(r) === this.cmpTab &&
         (this.cmpBilling === 'monthly' || r.hourly != null),
       );
     },
-    get filteredCompareRows() {
-      const rows = this.cmpBase.filter((r) => this.cmpMatchesArea(r, this.cmp.region));
+    filteredCompareRows() {
+      const rows = this.cmpBase().filter((r) => this.cmpMatchesArea(r, this.cmp.region));
       const key = this.cmpBilling === 'monthly'
         ? (r) => this.monthlyView(r) ?? Infinity
         : (r) => (r.hourly == null ? Infinity : r.hourly);
@@ -99,13 +101,16 @@ function dashboardCompare() {
     },
     // Continent → countries present in the current set (a plan counts under every
     // place it serves, so shared cities across providers collapse to one entry).
-    get cmpRegionGroups() {
+    cmpRegionGroups() {
       const byCont = {}, present = new Set();
-      for (const r of this.cmpBase)
+      for (const r of this.cmpBase())
         for (const rg of (r.regions || [])) {
           const a = this.cmpAreaOf(rg.code);
           present.add(a.continent);
-          if (a.country) (byCont[a.continent] = byCont[a.continent] || new Set()).add(a.country);
+          if (a.country) {
+            byCont[a.continent] ??= new Set();
+            byCont[a.continent].add(a.country);
+          }
         }
       return CMP_CONTINENT_ORDER.filter((c) => present.has(c)).map((c) => ({
         continent: c,
@@ -116,12 +121,13 @@ function dashboardCompare() {
     cmpAreaValid() {
       const t = this.cmp.region;
       if (!t) return true;
-      return this.cmpRegionGroups.some((g) => t === 'cont:' + g.continent || g.countries.some((c) => t === 'ctry:' + c));
+      return this.cmpRegionGroups().some((g) => t === 'cont:' + g.continent || g.countries.some((c) => t === 'ctry:' + c));
     },
     cmpDisk(r) {
       const g = r.diskGb;
       if (!g) return '—';
-      return g >= 1000 ? (g / 1000).toFixed(g % 1000 ? 1 : 0) + 'T' : g + 'G';
+      if (g < 1000) return g + 'G';
+      return (g / 1000).toFixed(g % 1000 ? 1 : 0) + 'T';
     },
     cmpTierCaption() {
       if (this.cmpTab === 'dedicated') return 'Dedicated vCPU — reserved physical cores with no noisy neighbours, but still a virtual machine (Hetzner ccx, OVH c3, Contabo Cloud VDS, Cherry VDS).';

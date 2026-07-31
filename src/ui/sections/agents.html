@@ -1,0 +1,121 @@
+<section x-show="view==='agents'" class="space-y-5">
+  <!--include: sections/agents-connect.html-->
+
+  <!-- First run: five empty cards say nothing. One card says the only true thing —
+       nothing is wired yet — and offers the single move that changes it. -->
+  <template x-if="agentControl.loaded && connectedAgentClients()===0">
+    <div class="card p-8 text-center">
+      <div class="flex items-center justify-center gap-2">
+        <template x-for="entry in orderedAgentClients()" :key="entry.client">
+          <span class="agent-mark agent-mark-lg" :title="agentClientLabel(entry.client)">
+            <img :src="agentClientIcon(entry.client)" :alt="agentClientLabel(entry.client)" />
+          </span>
+        </template>
+      </div>
+      <h2 class="mt-5 text-base font-semibold tracking-tight">Connect a coding agent</h2>
+      <p class="mx-auto mt-2 max-w-[44ch] text-xs" style="color:var(--text-dim)">
+        vops gives your agent a deploy skill and a scoped, auditable way to use it.
+        Nothing it asks for runs until you approve it here.
+      </p>
+      <div class="mt-4 flex items-center justify-center gap-2">
+        <button class="btn-primary" @click="openAgentConnect()">Connect an agent</button>
+      </div>
+      <p class="mt-4 text-xs" style="color:var(--text-faint)"
+        x-text="detectedAgentClients() + ' of ' + (agentControl.clients||[]).length + ' supported agents found on this machine'"></p>
+    </div>
+  </template>
+
+  <template x-if="!(agentControl.loaded && connectedAgentClients()===0)">
+    <div class="space-y-5">
+      <!--include: sections/agents-strip.html-->
+
+      <div class="card p-5">
+    <div class="mb-4 flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold">Waiting for your decision</h2>
+        <p class="mt-1 text-xs" style="color:var(--text-faint)">Nothing here executes until you approve it. Approving binds the decision to this exact plan.</p>
+      </div>
+      <span class="count-pill" x-text="pendingAgentApprovals().length"></span>
+    </div>
+    <div class="space-y-3">
+      <template x-for="approval in pendingAgentApprovals()" :key="approval.id">
+        <div class="rounded-lg border p-3" style="border-color:var(--border)">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="count-pill" x-text="approval.planId ? 'plan approval' : 'scope expansion'"></span>
+            <span class="count-pill" :style="agentRiskStyle(approval.risk)" x-text="approval.risk"></span>
+            <span class="count-pill" x-text="approval.environment || 'no environment'"></span>
+            <span x-show="approval.target" class="count-pill" x-text="approval.target"></span>
+          </div>
+          <div class="mt-2 text-sm font-medium" x-text="approval.reason"></div>
+          <div class="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+            <div class="rounded p-2" style="background:var(--side)">
+              <div style="color:var(--text-faint)">Will do</div>
+              <div class="mt-1" x-text="approval.expectedEffects.join(', ') || 'no declared effect'"></div>
+            </div>
+            <div class="rounded p-2" style="background:var(--side)">
+              <div style="color:var(--text-faint)">Reversible</div>
+              <div class="mt-1" x-text="String(approval.reversible)"></div>
+            </div>
+          </div>
+          <template x-if="approval.planId && agentPlan(approval.planId)">
+            <div class="mt-2 rounded p-2 text-[11px]" style="background:var(--side)">
+              <div class="font-mono" style="color:var(--text-faint)"
+                x-text="'plan ' + approval.planId + ' · fingerprint ' + agentPlan(approval.planId).hash.slice(0,12)"></div>
+              <template x-for="step in agentPlan(approval.planId).steps" :key="step.id">
+                <div class="mt-1" x-text="step.id + '  ' + agentCapabilityAction(step.capability) + (agentStepSubject(step) ? '  → ' + agentStepSubject(step) : '')"></div>
+              </template>
+              <div x-show="agentPlan(approval.planId).excludedEffects.length" class="mt-2" style="color:var(--text-faint)"
+                x-text="'Will not: ' + agentPlan(approval.planId).excludedEffects.join(', ')"></div>
+            </div>
+          </template>
+          <div class="mt-3 flex gap-2">
+            <button class="btn-primary" @click="decideAgentApproval(approval.id,'approve')">Approve</button>
+            <button class="btn-danger" @click="decideAgentApproval(approval.id,'deny')">Deny</button>
+          </div>
+        </div>
+      </template>
+      <div x-show="pendingAgentApprovals().length===0" class="text-sm" style="color:var(--text-faint)">Nothing is waiting for approval.</div>
+    </div>
+  </div>
+
+      <!--include: sections/agents-sessions.html-->
+
+      <!--include: sections/agents-activity.html-->
+
+  <div class="card p-5">
+    <div class="mb-4 flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-sm font-semibold">Remote coding-agent contract</h2>
+        <p class="mt-1 text-xs" style="color:var(--text-faint)">Enablement, default and fallback order are local authority. A remote device can select only a ready enabled provider.</p>
+      </div>
+      <button class="btn-secondary" @click="toggleDeterministicAgentFallback()"
+        x-text="'Deterministic: ' + (agentControl.providerPolicy.deterministicFallback ? 'on' : 'off')"></button>
+    </div>
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <template x-for="provider in agentControl.providers" :key="provider.id">
+        <div class="rounded-lg border p-3" style="border-color:var(--border)">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-sm font-medium" x-text="provider.displayName"></div>
+              <div class="mt-1 font-mono text-[11px]" style="color:var(--text-faint)"
+                x-text="provider.state.replaceAll('_',' ') + (provider.version ? ' · ' + provider.version : '')"></div>
+            </div>
+            <span class="count-pill" x-text="provider.isDefault ? 'default' : (provider.fallbackRank ? 'fallback ' + provider.fallbackRank : provider.kind)"></span>
+          </div>
+          <div x-show="provider.detail" class="mt-2 text-xs" style="color:var(--text-faint)" x-text="provider.detail"></div>
+          <div x-show="provider.id!=='deterministic'" class="mt-3 flex flex-wrap gap-2">
+            <button class="btn-secondary" x-show="!provider.enabled" @click="agentProviderAction(provider.id,'enable')">Enable</button>
+            <button class="btn-secondary" x-show="provider.enabled && !provider.isDefault" @click="agentProviderAction(provider.id,'disable')">Disable</button>
+            <button class="btn-primary" x-show="provider.enabled && !provider.isDefault" @click="agentProviderAction(provider.id,'default')">Make default</button>
+            <button class="btn-secondary" x-show="provider.enabled && !provider.fallbackRank && !provider.isDefault" @click="agentProviderFallback(provider.id,true)">Add fallback</button>
+            <button class="btn-secondary" x-show="provider.fallbackRank" @click="agentProviderFallback(provider.id,false)">Remove fallback</button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+      <!--include: sections/agents-audit.html-->
+    </div>
+  </template>
+</section>

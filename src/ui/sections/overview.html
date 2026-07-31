@@ -119,9 +119,9 @@
                 </div>
                 <div class="mt-1 truncate font-mono text-[11px]" style="color:var(--text-faint)" x-text="(h.provider || 'external') + ' · ' + h.address + (h.os?.pretty ? ' · ' + h.os.pretty : '')"></div>
                 <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
-                  <span x-show="(!mon.live[h.name] || mon.live[h.name]?.loading) && !mon.live[h.name]?.findings?.length" style="color:var(--text-faint)">checking…</span>
+                  <span x-show="!mon.live[h.name]?.at" style="color:var(--text-faint)">not checked yet</span>
                   <span x-show="mon.live[h.name]?.reachable === false" style="color:var(--danger)">● unreachable</span>
-                  <template x-if="mon.live[h.name]?.reachable !== false && mon.live[h.name]?.findings?.length">
+                  <template x-if="mon.live[h.name]?.reachable && mon.live[h.name]?.at">
                     <span class="font-semibold" :style="'color:' + (monIssues(h.name) ? 'var(--warn)' : 'var(--ok)')" x-text="monIssues(h.name) ? (monIssues(h.name) + ' to check') : 'all healthy'"></span>
                   </template>
                   <template x-for="k in ['mem','load','disk']" :key="k">

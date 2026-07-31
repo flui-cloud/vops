@@ -1,0 +1,365 @@
+<!-- @dsCard group="Patterns" -->
+<title>vops — Agents page &amp; Connect funnel</title>
+<style>
+  :root {
+    --r1:6px; --r2:9px; --r3:13px; --r4:18px;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f7f8fa; --panel-3: #eef0f4;
+    --line: #e4e7ec; --line-soft: #eceef2;
+    --text: #12151b; --text-2: #565e6b; --text-3: #8a93a1;
+    --accent: #2f7ff0; --face: #78b0fb;
+    --accent-soft: rgba(47,127,240,.11); --accent-line: rgba(47,127,240,.32);
+    --ok: #12a150; --ok-soft: rgba(18,161,80,.12);
+    --warn: #c8790a; --warn-soft: rgba(200,121,10,.12);
+    --danger: #e5484d; --danger-soft: rgba(229,72,77,.12);
+    --sh: 0 1px 2px rgba(16,22,34,.05), 0 6px 20px rgba(16,22,34,.06);
+    --sh-lift: 0 12px 40px -8px rgba(16,22,34,.22);
+    --chip: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0c11; --panel: #12141b; --panel-2: #161923; --panel-3: #1b1f2a;
+      --line: #242a36; --line-soft: #1e232e;
+      --text: #eef1f6; --text-2: #9aa3b2; --text-3: #69707e;
+      --accent: #4a90f5; --face: #7db6ff;
+      --accent-soft: rgba(74,144,245,.18); --accent-line: rgba(74,144,245,.42);
+      --ok: #34d399; --ok-soft: rgba(52,211,153,.14);
+      --warn: #f5a623; --warn-soft: rgba(245,166,35,.14);
+      --danger: #ff6b6b; --danger-soft: rgba(255,107,107,.14);
+      --sh: 0 1px 2px rgba(0,0,0,.32), 0 10px 30px rgba(0,0,0,.4);
+      --sh-lift: 0 20px 60px -10px rgba(0,0,0,.7);
+      --chip: #eef1f6;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0c11; --panel: #12141b; --panel-2: #161923; --panel-3: #1b1f2a;
+    --line: #242a36; --line-soft: #1e232e;
+    --text: #eef1f6; --text-2: #9aa3b2; --text-3: #69707e;
+    --accent: #4a90f5; --face: #7db6ff;
+    --accent-soft: rgba(74,144,245,.18); --accent-line: rgba(74,144,245,.42);
+    --ok: #34d399; --ok-soft: rgba(52,211,153,.14);
+    --warn: #f5a623; --warn-soft: rgba(245,166,35,.14);
+    --danger: #ff6b6b; --danger-soft: rgba(255,107,107,.14);
+    --sh: 0 1px 2px rgba(0,0,0,.32), 0 10px 30px rgba(0,0,0,.4);
+    --sh-lift: 0 20px 60px -10px rgba(0,0,0,.7);
+    --chip: #eef1f6;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f7f8fa; --panel-3: #eef0f4;
+    --line: #e4e7ec; --line-soft: #eceef2;
+    --text: #12151b; --text-2: #565e6b; --text-3: #8a93a1;
+    --accent: #2f7ff0; --face: #78b0fb;
+    --accent-soft: rgba(47,127,240,.11); --accent-line: rgba(47,127,240,.32);
+    --ok: #12a150; --ok-soft: rgba(18,161,80,.12);
+    --warn: #c8790a; --warn-soft: rgba(200,121,10,.12);
+    --danger: #e5484d; --danger-soft: rgba(229,72,77,.12);
+    --sh: 0 1px 2px rgba(16,22,34,.05), 0 6px 20px rgba(16,22,34,.06);
+    --sh-lift: 0 12px 40px -8px rgba(16,22,34,.22);
+    --chip: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+         font-size:13.5px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; padding:44px 28px 88px; }
+  .eyebrow { font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+             color:var(--accent); font-weight:600; margin:0 0 12px; }
+  h1 { font-size:30px; letter-spacing:-.025em; font-weight:650; margin:0 0 12px; text-wrap:balance; }
+  .lede { color:var(--text-2); font-size:14.5px; max-width:64ch; margin:0 0 8px; }
+  h2 { font-size:14.5px; font-weight:640; letter-spacing:-.01em; margin:52px 0 5px;
+       padding-top:24px; border-top:1px solid var(--line-soft); }
+  .sub { color:var(--text-3); font-size:12.5px; margin:0 0 20px; max-width:68ch; }
+  code, .m { font-family:var(--mono); font-size:11.5px; }
+  code { color:var(--text); background:var(--panel-2); border:1px solid var(--line);
+         border-radius:5px; padding:1.5px 5px; }
+
+  /* ── diagnosis ── */
+  .diag { display:grid; gap:1px; background:var(--line-soft); border:1px solid var(--line);
+          border-radius:var(--r3); overflow:hidden; }
+  .drow { background:var(--panel); padding:14px 16px; display:grid; grid-template-columns:150px 1fr; gap:16px; }
+  @media (max-width:640px){ .drow{grid-template-columns:1fr;gap:4px} }
+  .drow .k { font-family:var(--mono); font-size:11px; color:var(--danger); }
+  .drow .v { color:var(--text-2); font-size:12.5px; }
+
+  /* ── mock chrome ── */
+  .mock { border:1px solid var(--line); border-radius:var(--r4); overflow:hidden;
+          background:var(--panel); box-shadow:var(--sh); }
+  .mock .bar { display:flex; align-items:center; gap:7px; padding:10px 14px;
+               background:var(--panel-2); border-bottom:1px solid var(--line); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--line); }
+  .bar .t { margin-left:8px; font-family:var(--mono); font-size:10.5px; color:var(--text-3); }
+  .stage { padding:20px; background:var(--bg); }
+  .caption { font-family:var(--mono); font-size:10.5px; color:var(--text-3); margin:10px 2px 0; }
+
+  /* ── app primitives, mirroring the product ── */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--r3); padding:16px; }
+  .h2a { font-size:13px; font-weight:640; margin:0; }
+  .muted { color:var(--text-3); font-size:11.5px; margin:3px 0 0; }
+  .pill { font-family:var(--mono); font-size:10px; padding:2px 7px; border-radius:999px;
+          background:var(--panel-3); color:var(--text-3); }
+  .pill-warn { background:var(--warn-soft); color:var(--warn); }
+  .pill-ok { background:var(--ok-soft); color:var(--ok); }
+  .btn { font-family:var(--sans); font-size:12.5px; font-weight:600; border-radius:var(--r2);
+         padding:7px 13px; border:1px solid var(--line); background:var(--panel);
+         color:var(--text); cursor:pointer; }
+  .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn-ghost { background:transparent; color:var(--text-2); }
+  .btn-danger { background:transparent; border-color:var(--danger); color:var(--danger); }
+  .row { display:flex; align-items:center; gap:10px; }
+  .grow { flex:1; }
+
+  /* agent mark on a neutral chip: these are third-party logos, several of them
+     near-black, so they need their own ground rather than the page's. */
+  .mk { width:26px; height:26px; border-radius:7px; background:var(--chip); display:grid;
+        place-items:center; flex:none; border:1px solid var(--line); }
+  .mk img { width:16px; height:16px; display:block; }
+  .mk-lg { width:42px; height:42px; border-radius:11px; }
+  .mk-lg img { width:26px; height:26px; }
+  .stack { display:flex; }
+  .stack .mk { margin-left:-7px; }
+  .stack .mk:first-child { margin-left:0; }
+
+  .strip { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .stat { display:flex; flex-direction:column; gap:1px; }
+  .stat .n { font-size:16px; font-weight:660; letter-spacing:-.01em; }
+  .stat .l { font-size:10.5px; color:var(--text-3); }
+  .sep { width:1px; height:26px; background:var(--line); }
+
+  .need { border:1px solid var(--warn); border-radius:var(--r3); background:var(--warn-soft); padding:14px 16px; }
+  .quiet { color:var(--text-3); font-size:12px; }
+
+  .srow { display:flex; align-items:center; gap:11px; padding:10px 0; border-top:1px solid var(--line-soft); }
+  .srow:first-of-type { border-top:0; }
+
+  /* ── modal ── */
+  .scrim { background:var(--panel-3); border-radius:var(--r4); padding:26px; display:grid; place-items:center; }
+  .modal { width:100%; max-width:470px; background:var(--panel); border:1px solid var(--line);
+           border-radius:var(--r4); box-shadow:var(--sh-lift); overflow:hidden; }
+  .mhead { padding:17px 19px 0; }
+  .mbody { padding:15px 19px 19px; }
+  .mfoot { padding:13px 19px; border-top:1px solid var(--line); background:var(--panel-2);
+           display:flex; align-items:center; gap:9px; }
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .tile { display:flex; align-items:center; gap:11px; padding:11px; border:1px solid var(--line);
+          border-radius:var(--r2); background:var(--panel); cursor:pointer; text-align:left; }
+  .tile:hover { border-color:var(--accent-line); background:var(--panel-2); }
+  .tile.sel { border-color:var(--accent); background:var(--accent-soft); }
+  .tile .txt { min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .tile .n { font-size:12.5px; font-weight:600; line-height:1.3; }
+  .tile .s { font-size:10px; color:var(--text-3); font-family:var(--mono); line-height:1.3; }
+  .cmd { display:flex; align-items:center; gap:9px; background:var(--panel-2); border:1px solid var(--line);
+         border-radius:var(--r2); padding:10px 11px; font-family:var(--mono); font-size:11.5px;
+         color:var(--text); overflow-x:auto; }
+  .cmd .p { color:var(--accent); }
+  .writes { list-style:none; margin:11px 0 0; padding:0; display:grid; gap:6px; }
+  .writes li { display:grid; grid-template-columns:74px 1fr; gap:9px; align-items:baseline;
+               font-size:11px; color:var(--text-3); }
+  .writes .w { font-family:var(--mono); color:var(--text-2); }
+  .writes .p { font-family:var(--mono); font-size:10.5px; word-break:break-all; }
+  .step { display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:10.5px; color:var(--text-3); }
+  .step b { color:var(--accent); font-weight:600; }
+
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:860px){ .two{grid-template-columns:1fr} }
+  .notes { display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); gap:14px; }
+  .note { background:var(--panel); border:1px solid var(--line); border-radius:var(--r3); padding:16px 18px; }
+  .note .k { font-family:var(--mono); font-size:11px; color:var(--accent); margin-bottom:7px; }
+  .note .v { font-size:12.5px; color:var(--text-2); }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">vops · design system · pattern</p>
+  <h1>Agents page &amp; the Connect funnel</h1>
+  <p class="lede">
+    The page allocates space in inverse proportion to how often you use it. Connecting an agent
+    happens once; approving what one wants to do happens all day. Today connecting owns the screen
+    and approving is below the fold.
+  </p>
+  <p class="lede" style="margin-bottom:0">
+    This mock inverts that, and moves connection into a single button and a two-step modal.
+  </p>
+
+  <h2>What is wrong now</h2>
+  <p class="sub">Observed on a real install, not hypothetical.</p>
+  <div class="diag">
+    <div class="drow"><div class="k">space</div><div class="v">Four client cards carry <strong>24 file paths</strong> permanently on screen — configuration detail that matters once and never again.</div></div>
+    <div class="drow"><div class="k">order</div><div class="v">The emergency stop sits at the top with the same weight as primary content, and pending approvals — the only thing that blocks work — are last.</div></div>
+    <div class="drow"><div class="k">empty state</div><div class="v">A fresh install renders <strong>five empty cards</strong>. Nothing to read, nothing to do, no obvious first move.</div></div>
+    <div class="drow"><div class="k">wrong promise</div><div class="v">Every client offers <em>Install</em> even when the agent is not on the machine — and the button returns <span class="m">502 ENOENT mkdir '/.claude/skills'</span>, because the local API resolves the project root to <span class="m">/</span>.</div></div>
+    <div class="drow"><div class="k">wrong place</div><div class="v">Wiring is a filesystem operation on the agent's own config. It belongs in a terminal you can see, not behind a dashboard button that writes to hidden paths.</div></div>
+  </div>
+
+  <h2>The page, once something is connected</h2>
+  <p class="sub">
+    A status strip carries the whole connection story in one line — who is wired, what is live, the
+    stop control. Everything below is ordered by whether it needs you.
+  </p>
+  <div class="mock">
+    <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">vops · Agents</span></div>
+    <div class="stage" id="page-live"></div>
+  </div>
+  <p class="caption">approvals first · sessions second · history last · connection collapsed to one row</p>
+
+  <h2>The page, on a fresh install</h2>
+  <p class="sub">
+    Five empty cards say nothing. One card says the only thing that is true: nothing is connected
+    yet, and here is the single move that changes it.
+  </p>
+  <div class="mock">
+    <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">vops · Agents · first run</span></div>
+    <div class="stage" id="page-empty"></div>
+  </div>
+
+  <h2>Connect your agent — the funnel</h2>
+  <p class="sub">
+    Two steps. Pick the agent, then run one command. vops does not write into the agent's config
+    from the dashboard: it shows you the command, and you can see exactly what it touches before
+    it touches it.
+  </p>
+  <div class="two">
+    <div>
+      <div class="mock"><div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">step 1 · pick</span></div>
+        <div class="scrim" id="modal-1"></div></div>
+      <p class="caption">detected agents float to the top and are pre-selected</p>
+    </div>
+    <div>
+      <div class="mock"><div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">step 2 · run</span></div>
+        <div class="scrim" id="modal-2"></div></div>
+      <p class="caption">one command · what it writes · how to check</p>
+    </div>
+  </div>
+
+  <h2>Why these calls</h2>
+  <div class="notes">
+    <div class="note"><div class="k">no install button</div><div class="v">Wiring edits files under <span class="m">~/.claude</span>, <span class="m">~/.codex</span> and friends. A command you run yourself is auditable and portable to a machine with no dashboard open; a dashboard button that silently rewrites agent config is neither.</div></div>
+    <div class="note"><div class="k">paths on demand</div><div class="v">The three files each install touches are still shown — inside the modal, for the one agent you picked. That is 3 paths at the moment you care, not 24 forever.</div></div>
+    <div class="note"><div class="k">strip, not cards</div><div class="v">Connection state is a fact, not a task. Four logos and a count answer "is this wired?" without spending a card on it.</div></div>
+    <div class="note"><div class="k">approvals lead</div><div class="v">It is the only thing on this page that blocks a person. When the queue is empty it collapses to one quiet line, so the page is short when nothing needs you.</div></div>
+  </div>
+</div>
+
+<script>
+  const AGENT_ICON = {"codex":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MDAiIGhlaWdodD0iODAwIiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxwYXRoIGQ9Ik0yMi4yODIgOS44MjFhNiA2IDAgMCAwLS41MTYtNC45MSA2LjA1IDYuMDUgMCAwIDAtNi41MS0yLjlBNi4wNjUgNi4wNjUgMCAwIDAgNC45ODEgNC4xOGE2IDYgMCAwIDAtMy45OTggMi45IDYuMDUgNi4wNSAwIDAgMCAuNzQzIDcuMDk3IDUuOTggNS45OCAwIDAgMCAuNTEgNC45MTEgNi4wNSA2LjA1IDAgMCAwIDYuNTE1IDIuOUE2IDYgMCAwIDAgMTMuMjYgMjRhNi4wNiA2LjA2IDAgMCAwIDUuNzcyLTQuMjA2IDYgNiAwIDAgMCAzLjk5Ny0yLjkgNi4wNiA2LjA2IDAgMCAwLS43NDctNy4wNzNNMTMuMjYgMjIuNDNhNC40OCA0LjQ4IDAgMCAxLTIuODc2LTEuMDRsLjE0MS0uMDgxIDQuNzc5LTIuNzU4YS44LjggMCAwIDAgLjM5Mi0uNjgxdi02LjczN2wyLjAyIDEuMTY4YS4wNy4wNyAwIDAgMSAuMDM4LjA1MnY1LjU4M2E0LjUwNCA0LjUwNCAwIDAgMS00LjQ5NCA0LjQ5NE0zLjYgMTguMzA0YTQuNDcgNC40NyAwIDAgMS0uNTM1LTMuMDE0bC4xNDIuMDg1IDQuNzgzIDIuNzU5YS43Ny43NyAwIDAgMCAuNzggMGw1Ljg0My0zLjM2OXYyLjMzMmEuMDguMDggMCAwIDEtLjAzMy4wNjJMOS43NCAxOS45NWE0LjUgNC41IDAgMCAxLTYuMTQtMS42NDZNMi4zNCA3Ljg5NmE0LjUgNC41IDAgMCAxIDIuMzY2LTEuOTczVjExLjZhLjc3Ljc3IDAgMCAwIC4zODguNjc3bDUuODE1IDMuMzU0LTIuMDIgMS4xNjhhLjA4LjA4IDAgMCAxLS4wNzEgMGwtNC44My0yLjc4NkE0LjUwNCA0LjUwNCAwIDAgMSAyLjM0IDcuODcyem0xNi41OTcgMy44NTUtNS44MzMtMy4zODdMMTUuMTE5IDcuMmEuMDguMDggMCAwIDEgLjA3MSAwbDQuODMgMi43OTFhNC40OTQgNC40OTQgMCAwIDEtLjY3NiA4LjEwNXYtNS42NzhhLjc5Ljc5IDAgMCAwLS40MDctLjY2N20yLjAxLTMuMDIzLS4xNDEtLjA4NS00Ljc3NC0yLjc4MmEuNzguNzggMCAwIDAtLjc4NSAwTDkuNDA5IDkuMjNWNi44OTdhLjA3LjA3IDAgMCAxIC4wMjgtLjA2MWw0LjgzLTIuNzg3YTQuNSA0LjUgMCAwIDEgNi42OCA0LjY2em0tMTIuNjQgNC4xMzUtMi4wMi0xLjE2NGEuMDguMDggMCAwIDEtLjAzOC0uMDU3VjYuMDc1YTQuNSA0LjUgMCAwIDEgNy4zNzUtMy40NTNsLS4xNDIuMDhMOC43MDQgNS40NmEuOC44IDAgMCAwLS4zOTMuNjgxem0xLjA5Ny0yLjM2NSAyLjYwMi0xLjUgMi42MDcgMS41djIuOTk5bC0yLjU5NyAxLjUtMi42MDctMS41WiIvPjwvc3ZnPg==","claude-code":"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQ4IiBoZWlnaHQ9IjI0OCIgdmlld0JveD0iMCAwIDI0OCAyNDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik01Mi40Mjg1IDE2Mi44NzNMOTguNzg0NCAxMzYuODc5TDk5LjU0ODUgMTM0LjYwMkw5OC43ODQ0IDEzMy4zMzRIOTYuNDkyMUw4OC43MjM3IDEzMi44NjJMNjIuMjM0NiAxMzIuMTUzTDM5LjMxMTMgMTMxLjIwN0wxNy4wMjQ5IDEzMC4wMjZMMTEuNDIxNCAxMjguODQ0TDYuMiAxMjEuODczTDYuNzA5NCAxMTguNDQ3TDExLjQyMTQgMTE1LjI1N0wxOC4xNzEgMTE1Ljg0N0wzMy4wNzExIDExNi45MTFMNTUuNDg1IDExOC40NDdMNzEuNjU4NiAxMTkuMzkyTDk1LjcyOCAxMjEuODczSDk5LjU0ODVMMTAwLjA1OCAxMjAuMzM3TDk4Ljc4NDQgMTE5LjM5Mkw5Ny43NjU2IDExOC40NDdMNzQuNTg3NyAxMDIuNzMyTDQ5LjQ5OTUgODYuMTkwNUwzNi4zODIzIDc2LjYyTDI5LjM3NzkgNzEuNzc1N0wyNS44MTIxIDY3LjI4NThMMjQuMjgzOSA1Ny4zNjA4TDMwLjY1MTUgNTAuMjcxNkwzOS4zMTEzIDUwLjg2MjNMNDEuNDc2MyA1MS40NTMxTDUwLjI2MzYgNTguMTg3OUw2OC45ODQyIDcyLjcyMDlMOTMuNDM1NyA5MC42ODA0TDk3LjAwMTUgOTMuNjM0M0w5OC40Mzc0IDkyLjY2NTJMOTguNjU3MSA5MS45ODAxTDk3LjAwMTUgODkuMjYyNUw4My43NTcgNjUuMjc3Mkw2OS42MjEgNDAuODE5Mkw2My4yNTM0IDMwLjY1NzlMNjEuNTk3OCAyNC42MzJDNjAuOTU2NSAyMi4xMDMyIDYwLjU3OSAyMC4wMTExIDYwLjU3OSAxNy40MjQ2TDY3LjgzODEgNy40OTk2NUw3MS45MTMzIDYuMTk5OTVMODEuNzE5MyA3LjQ5OTY1TDg1Ljc5NDYgMTEuMDQ0M0w5MS45MDc0IDI0Ljk4NjVMMTAxLjcxNCA0Ni44NDUxTDExNi45OTYgNzYuNjJMMTIxLjQ1MyA4NS40ODE2TDEyMy44NzMgOTMuNjM0M0wxMjQuNzY0IDk2LjExNTVIMTI2LjI5MlY5NC42OTc2TDEyNy41NjYgNzcuOTE5N0wxMjkuODU4IDU3LjM2MDhMMTMyLjE1IDMwLjg5NDJMMTMyLjkxNSAyMy40NTA1TDEzNi42MDggMTQuNDcwOEwxNDMuOTk0IDkuNjI2NDNMMTQ5LjcyNSAxMi4zNDRMMTU0LjQzNyAxOS4wNzg4TDE1My44IDIzLjQ1MDVMMTUwLjk5OCA0MS42NDYzTDE0NS41MjIgNzAuMTIxNUwxNDEuOTU3IDg5LjI2MjVIMTQzLjk5NEwxNDYuNDE0IDg2Ljc4MTNMMTU2LjA5MyA3NC4wMjA2TDE3Mi4yNjYgNTMuNjk4TDE3OS4zOTggNDUuNjYzNUwxODcuODAzIDM2LjgwMkwxOTMuMTUyIDMyLjU0ODRIMjAzLjM0TDIxMC43MjYgNDMuNjU0OUwyMDcuNDE1IDU1LjExNTlMMTk2Ljk3MiA2OC4zNDkyTDE4OC4zMTIgNzkuNTczOUwxNzUuODk2IDk2LjIwOTVMMTY4LjE5MSAxMDkuNTg1TDE2OC44ODIgMTEwLjY4OUwxNzAuNzM4IDExMC41M0wxOTguNzU1IDEwNC41MDRMMjEzLjkxIDEwMS43ODdMMjMxLjk5NCA5OC43MTQ5TDI0MC4xNDQgMTAyLjQ5NkwyNDEuMDM2IDEwNi4zOTVMMjM3Ljg1MiAxMTQuMzExTDIxOC40OTUgMTE5LjAzN0wxOTUuODI2IDEyMy42NDVMMTYyLjA3IDEzMS41OTJMMTYxLjY5NiAxMzEuODkzTDE2Mi4xMzcgMTMyLjU0N0wxNzcuMzYgMTMzLjkyNUwxODMuODU1IDEzNC4yNzlIMTk5Ljc3NEwyMjkuNDQ3IDEzNi41MjRMMjM3LjIxNSAxNDEuNjA1TDI0MS44IDE0Ny44NjdMMjQxLjAzNiAxNTIuNzExTDIyOS4wNjUgMTU4LjczN0wyMTMuMDE5IDE1NC45NTZMMTc1LjQ1IDE0NS45NzdMMTYyLjU4NyAxNDIuNzg3SDE2MC44MDVWMTQzLjg1TDE3MS41MDIgMTU0LjM2NkwxOTEuMjQyIDE3Mi4wODlMMjE1LjgyIDE5NS4wMTFMMjE3LjA5NCAyMDAuNjgyTDIxMy45MSAyMDUuMTcyTDIxMC41OTkgMjA0LjY5OUwxODguOTQ5IDE4OC4zOTRMMTgwLjU0NCAxODEuMDY5TDE2MS42OTYgMTY1LjExOEgxNjAuNDIyVjE2Ni43NzJMMTY0Ljc1MiAxNzMuMTUyTDE4Ny44MDMgMjA3Ljc3MUwxODguOTQ5IDIxOC40MDVMMTg3LjI5NCAyMjEuODMyTDE4MS4zMDggMjIzLjk1OUwxNzQuODEzIDIyMi43NzdMMTYxLjE4NyAyMDMuNzU0TDE0Ny4zMDUgMTgyLjQ4NkwxMzYuMDk4IDE2My4zNDVMMTM0Ljc0NSAxNjQuMkwxMjguMDc1IDIzNS40MkwxMjUuMDE5IDIzOS4wODJMMTE3Ljg4NyAyNDEuOEwxMTEuOTAyIDIzNy4zMUwxMDguNzE4IDIyOS45ODRMMTExLjkwMiAyMTUuNDUyTDExNS43MjIgMTk2LjU0N0wxMTguNzc5IDE4MS41NDFMMTIxLjU4IDE2Mi44NzNMMTIzLjI5MSAxNTYuNjM2TDEyMy4xNCAxNTYuMjE5TDEyMS43NzMgMTU2LjQ0OUwxMDcuNjk5IDE3NS43NTJMODYuMzA0IDIwNC42OTlMNjkuMzY2MyAyMjIuNzc3TDY1LjI5MSAyMjQuNDMxTDU4LjI4NjcgMjIwLjc2OEw1OC45MjM1IDIxNC4yN0w2Mi44NzEzIDIwOC40OEw4Ni4zMDQgMTc4LjcwNUwxMDAuNDQgMTYwLjE1NUwxMDkuNTUxIDE0OS41MDdMMTA5LjQ2MiAxNDcuOTY3TDEwOC45NTkgMTQ3LjkyNEw0Ni42OTc3IDE4OC41MTJMMzUuNjE4MiAxODkuOTNMMzAuNzc4OCAxODUuNDRMMzEuNDE1NiAxNzguMTE1TDMzLjcwNzkgMTc1Ljc1Mkw1Mi40Mjg1IDE2Mi44NzNaIiBmaWxsPSIjRDk3NzU3Ii8+Cjwvc3ZnPg==","opencode":"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0nMjQwJyBoZWlnaHQ9JzMwMCcgdmlld0JveD0nMCAwIDI0MCAzMDAnIGZpbGw9J25vbmUnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PGcgY2xpcC1wYXRoPSd1cmwoI2NsaXAwXzE0MDFfODYyNzQpJz48bWFzayBpZD0nbWFzazBfMTQwMV84NjI3NCcgc3R5bGU9J21hc2stdHlwZTpsdW1pbmFuY2UnIG1hc2tVbml0cz0ndXNlclNwYWNlT25Vc2UnIHg9JzAnIHk9JzAnIHdpZHRoPScyNDAnIGhlaWdodD0nMzAwJz48cGF0aCBkPSdNMjQwIDBIMFYzMDBIMjQwVjBaJyBmaWxsPSd3aGl0ZScvPjwvbWFzaz48ZyBtYXNrPSd1cmwoI21hc2swXzE0MDFfODYyNzQpJz48cGF0aCBkPSdNMTgwIDI0MEg2MFYxMjBIMTgwVjI0MFonIGZpbGw9JyNDRkNFQ0QnLz48cGF0aCBkPSdNMTgwIDYwSDYwVjI0MEgxODBWNjBaTTI0MCAzMDBIMFYwSDI0MFYzMDBaJyBmaWxsPScjMjExRTFFJy8+PC9nPjwvZz48ZGVmcz48Y2xpcFBhdGggaWQ9J2NsaXAwXzE0MDFfODYyNzQnPjxyZWN0IHdpZHRoPScyNDAnIGhlaWdodD0nMzAwJyBmaWxsPSd3aGl0ZScvPjwvY2xpcFBhdGg+PC9kZWZzPjwvc3ZnPg==","antigravity":"data:image/svg+xml;base64,PHN2ZyBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NSA2NSI+PG1hc2sgaWQ9Im1hc2ttZSIgc3R5bGU9Im1hc2stdHlwZTphbHBoYSIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iMCIgeT0iMCIgd2lkdGg9IjY1IiBoZWlnaHQ9IjY1Ij48cGF0aCBkPSJNMzIuNDQ3IDBjLjY4IDAgMS4yNzMuNDY1IDEuNDM5IDEuMTI1YTM4LjkwNCAzOC45MDQgMCAwMDEuOTk5IDUuOTA1YzIuMTUyIDUgNS4xMDUgOS4zNzYgOC44NTQgMTMuMTI1IDMuNzUxIDMuNzUgOC4xMjYgNi43MDMgMTMuMTI1IDguODU1YTM4Ljk4IDM4Ljk4IDAgMDA1LjkwNiAxLjk5OWMuNjYuMTY2IDEuMTI0Ljc1OCAxLjEyNCAxLjQzOCAwIC42OC0uNDY0IDEuMjczLTEuMTI1IDEuNDM5YTM4LjkwMiAzOC45MDIgMCAwMC01LjkwNSAxLjk5OWMtNSAyLjE1Mi05LjM3NSA1LjEwNS0xMy4xMjUgOC44NTQtMy43NDkgMy43NTEtNi43MDIgOC4xMjYtOC44NTQgMTMuMTI1YTM4Ljk3MyAzOC45NzMgMCAwMC0yIDUuOTA2IDEuNDg1IDEuNDg1IDAgMDEtMS40MzggMS4xMjRjLS42OCAwLTEuMjcyLS40NjQtMS40MzgtMS4xMjVhMzguOTEzIDM4LjkxMyAwIDAwLTItNS45MDVjLTIuMTUxLTUtNS4xMDMtOS4zNzUtOC44NTQtMTMuMTI1LTMuNzUtMy43NDktOC4xMjUtNi43MDItMTMuMTI1LTguODU0YTM4Ljk3MyAzOC45NzMgMCAwMC01LjkwNS0yQTEuNDg1IDEuNDg1IDAgMDEwIDMyLjQ0OGMwLS42OC40NjUtMS4yNzIgMS4xMjUtMS40MzhhMzguOTAzIDM4LjkwMyAwIDAwNS45MDUtMmM1LTIuMTUxIDkuMzc2LTUuMTA0IDEzLjEyNS04Ljg1NCAzLjc1LTMuNzQ5IDYuNzAzLTguMTI1IDguODU1LTEzLjEyNWEzOC45NzIgMzguOTcyIDAgMDAxLjk5OS01LjkwNUExLjQ4NSAxLjQ4NSAwIDAxMzIuNDQ3IDB6IiBmaWxsPSIjMDAwIi8+PHBhdGggZD0iTTMyLjQ0NyAwYy42OCAwIDEuMjczLjQ2NSAxLjQzOSAxLjEyNWEzOC45MDQgMzguOTA0IDAgMDAxLjk5OSA1LjkwNWMyLjE1MiA1IDUuMTA1IDkuMzc2IDguODU0IDEzLjEyNSAzLjc1MSAzLjc1IDguMTI2IDYuNzAzIDEzLjEyNSA4Ljg1NWEzOC45OCAzOC45OCAwIDAwNS45MDYgMS45OTljLjY2LjE2NiAxLjEyNC43NTggMS4xMjQgMS40MzggMCAuNjgtLjQ2NCAxLjI3My0xLjEyNSAxLjQzOWEzOC45MDIgMzguOTAyIDAgMDAtNS45MDUgMS45OTljLTUgMi4xNTItOS4zNzUgNS4xMDUtMTMuMTI1IDguODU0LTMuNzQ5IDMuNzUxLTYuNzAyIDguMTI2LTguODU0IDEzLjEyNWEzOC45NzMgMzguOTczIDAgMDAtMiA1LjkwNiAxLjQ4NSAxLjQ4NSAwIDAxLTEuNDM4IDEuMTI0Yy0uNjggMC0xLjI3Mi0uNDY0LTEuNDM4LTEuMTI1YTM4LjkxMyAzOC45MTMgMCAwMC0yLTUuOTA1Yy0yLjE1MS01LTUuMTAzLTkuMzc1LTguODU0LTEzLjEyNS0zLjc1LTMuNzQ5LTguMTI1LTYuNzAyLTEzLjEyNS04Ljg1NGEzOC45NzMgMzguOTczIDAgMDAtNS45MDUtMkExLjQ4NSAxLjQ4NSAwIDAxMCAzMi40NDhjMC0uNjguNDY1LTEuMjcyIDEuMTI1LTEuNDM4YTM4LjkwMyAzOC45MDMgMCAwMDUuOTA1LTJjNS0yLjE1MSA5LjM3Ni01LjEwNCAxMy4xMjUtOC44NTQgMy43NS0zLjc0OSA2LjcwMy04LjEyNSA4Ljg1NS0xMy4xMjVhMzguOTcyIDM4Ljk3MiAwIDAwMS45OTktNS45MDVBMS40ODUgMS40ODUgMCAwMTMyLjQ0NyAweiIgZmlsbD0idXJsKCNwcmVmaXhfX3BhaW50MF9saW5lYXJfMjAwMV82NykiLz48L21hc2s+PGcgbWFzaz0idXJsKCNtYXNrbWUpIj48ZyBmaWx0ZXI9InVybCgjcHJlZml4X19maWx0ZXIwX2ZfMjAwMV82NykiPjxwYXRoIGQ9Ik0tNS44NTkgNTAuNzM0YzcuNDk4IDIuNjYzIDE2LjExNi0yLjMzIDE5LjI0OS0xMS4xNTIgMy4xMzMtOC44MjEtLjQwNi0xOC4xMzEtNy45MDQtMjAuNzk0LTcuNDk4LTIuNjYzLTE2LjExNiAyLjMzLTE5LjI1IDExLjE1MS0zLjEzMiA4LjgyMi40MDcgMTguMTMyIDcuOTA1IDIwLjc5NXoiIGZpbGw9IiNGRkU0MzIiLz48L2c+PGcgZmlsdGVyPSJ1cmwoI3ByZWZpeF9fZmlsdGVyMV9mXzIwMDFfNjcpIj48cGF0aCBkPSJNMjcuNDMzIDIxLjY0OWMxMC4zIDAgMTguNjUxLTguNTM1IDE4LjY1MS0xOS4wNjIgMC0xMC41MjgtOC4zNS0xOS4wNjItMTguNjUxLTE5LjA2MlM4Ljc4LTcuOTQgOC43OCAyLjU4N2MwIDEwLjUyNyA4LjM1IDE5LjA2MiAxOC42NTIgMTkuMDYyeiIgZmlsbD0iI0ZDNDEzRCIvPjwvZz48ZyBmaWx0ZXI9InVybCgjcHJlZml4X19maWx0ZXIyX2ZfMjAwMV82NykiPjxwYXRoIGQ9Ik0yMC4xODQgODIuNjA4YzEwLjc1My0uNTI1IDE4LjkxOC0xMi4yNDQgMTguMjM3LTI2LjE3NC0uNjgtMTMuOTMtOS45NS0yNC43OTctMjAuNzAzLTI0LjI3MUM2Ljk2NSAzMi42ODktMS4yIDQ0LjQwNy0uNTE5IDU4LjMzN2MuNjgxIDEzLjkzIDkuOTUgMjQuNzk3IDIwLjcwMyAyNC4yNzF6IiBmaWxsPSIjMDBCOTVDIi8+PC9nPjxnIGZpbHRlcj0idXJsKCNwcmVmaXhfX2ZpbHRlcjNfZl8yMDAxXzY3KSI+PHBhdGggZD0iTTIwLjE4NCA4Mi42MDhjMTAuNzUzLS41MjUgMTguOTE4LTEyLjI0NCAxOC4yMzctMjYuMTc0LS42OC0xMy45My05Ljk1LTI0Ljc5Ny0yMC43MDMtMjQuMjcxQzYuOTY1IDMyLjY4OS0xLjIgNDQuNDA3LS41MTkgNTguMzM3Yy42ODEgMTMuOTMgOS45NSAyNC43OTcgMjAuNzAzIDI0LjI3MXoiIGZpbGw9IiMwMEI5NUMiLz48L2c+PGcgZmlsdGVyPSJ1cmwoI3ByZWZpeF9fZmlsdGVyNF9mXzIwMDFfNjcpIj48cGF0aCBkPSJNMzAuOTU0IDc0LjE4MWM5LjAxNC01LjQ4NSAxMS40MjctMTcuOTc2IDUuMzg5LTI3LjktNi4wMzgtOS45MjUtMTguMjQxLTEzLjUyNC0yNy4yNTYtOC4wNC05LjAxNSA1LjQ4Ni0xMS40MjggMTcuOTc3LTUuMzkgMjcuOTAyIDYuMDQgOS45MjQgMTguMjQyIDEzLjUyMyAyNy4yNTcgOC4wMzh6IiBmaWxsPSIjMDBCOTVDIi8+PC9nPjxnIGZpbHRlcj0idXJsKCNwcmVmaXhfX2ZpbHRlcjVfZl8yMDAxXzY3KSI+PHBhdGggZD0iTTY3LjM5MSA0Mi45OTNjMTAuMTMyIDAgMTguMzQ2LTcuOTEgMTguMzQ2LTE3LjY2NiAwLTkuNzU3LTguMjE0LTE3LjY2Ny0xOC4zNDYtMTcuNjY3cy0xOC4zNDYgNy45MS0xOC4zNDYgMTcuNjY3YzAgOS43NTcgOC4yMTQgMTcuNjY2IDE4LjM0NiAxNy42NjZ6IiBmaWxsPSIjMzE4NkZGIi8+PC9nPjxnIGZpbHRlcj0idXJsKCNwcmVmaXhfX2ZpbHRlcjZfZl8yMDAxXzY3KSI+PHBhdGggZD0iTS0xMy4wNjUgNDAuOTQ0YzkuMzMgNy4wOTQgMjIuOTU5IDQuODY5IDMwLjQ0Mi00Ljk3MiA3LjQ4My05Ljg0IDUuOTg3LTIzLjU2OS0zLjM0My0zMC42NjNDNC43MDQtMS43ODYtOC45MjQuNDM5LTE2LjQwOCAxMC4yOGMtNy40ODMgOS44NC01Ljk4NiAyMy41NyAzLjM0MyAzMC42NjR6IiBmaWxsPSIjRkJCQzA0Ii8+PC9nPjxnIGZpbHRlcj0idXJsKCNwcmVmaXhfX2ZpbHRlcjdfZl8yMDAxXzY3KSI+PHBhdGggZD0iTTM0Ljc0IDUxLjQzYzExLjEzNSA3LjY1NiAyNS44OTYgNS41MjQgMzIuOTY4LTQuNzY0IDcuMDczLTEwLjI4NyAzLjc3OS0yNC44MzItNy4zNTctMzIuNDg4QzQ5LjIxNSA2LjUyIDM0LjQ1NSA4LjY1NCAyNy4zODIgMTguOTRjLTcuMDcyIDEwLjI4OC0zLjc3OSAyNC44MzMgNy4zNTcgMzIuNDl6IiBmaWxsPSIjMzE4NkZGIi8+PC9nPjxnIGZpbHRlcj0idXJsKCNwcmVmaXhfX2ZpbHRlcjhfZl8yMDAxXzY3KSI+PHBhdGggZD0iTTU0Ljk4NC0yLjMzNmMyLjgzMyAzLjg1Mi0uODA4IDExLjM0LTguMTMxIDE2LjcyNy03LjMyNCA1LjM4Ny0xNS41NTcgNi42MzEtMTguMzkgMi43OC0yLjgzMy0zLjg1My44MDctMTEuMzQyIDguMTMtMTYuNzI4IDcuMzI0LTUuMzg3IDE1LjU1OC02LjYzMSAxOC4zOS0yLjc4eiIgZmlsbD0iIzc0OUJGRiIvPjwvZz48ZyBmaWx0ZXI9InVybCgjcHJlZml4X19maWx0ZXI5X2ZfMjAwMV82NykiPjxwYXRoIGQ9Ik0zMS43MjcgMTYuMTA0QzQzLjA1MyA1LjU5OCA0Ni45NC04LjYyNiA0MC40MS0xNS42NjZjLTYuNTMtNy4wNC0yMS4wMDYtNC4yMzItMzIuMzMyIDYuMjc0cy0xNS4yMTQgMjQuNzMtOC42ODMgMzEuNzdjNi41MyA3LjA0IDIxLjAwNiA0LjIzMiAzMi4zMzItNi4yNzR6IiBmaWxsPSIjRkM0MTNEIi8+PC9nPjxnIGZpbHRlcj0idXJsKCNwcmVmaXhfX2ZpbHRlcjEwX2ZfMjAwMV82NykiPjxwYXRoIGQ9Ik04LjUxIDUzLjgzOGM2LjczMiA0LjgxOCAxNC40NiA1LjU1IDE3LjI2MiAxLjYzNiAyLjgwMi0zLjkxNS0uMzg0LTEwLjk5NC03LjExNi0xNS44MTItNi43MzEtNC44MTgtMTQuNDYtNS41NS0xNy4yNjEtMS42MzYtMi44MDIgMy45MTUuMzgzIDEwLjk5NCA3LjExNSAxNS44MTJ6IiBmaWxsPSIjRkZFRTQ4Ii8+PC9nPjwvZz48ZGVmcz48ZmlsdGVyIGlkPSJwcmVmaXhfX2ZpbHRlcjBfZl8yMDAxXzY3IiB4PSItMTkuODI0IiB5PSIxMy4xNTIiIHdpZHRoPSIzOS4yNzQiIGhlaWdodD0iNDMuMjE3IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+PGZlRmxvb2QgZmxvb2Qtb3BhY2l0eT0iMCIgcmVzdWx0PSJCYWNrZ3JvdW5kSW1hZ2VGaXgiLz48ZmVCbGVuZCBpbj0iU291cmNlR3JhcGhpYyIgaW4yPSJCYWNrZ3JvdW5kSW1hZ2VGaXgiIHJlc3VsdD0ic2hhcGUiLz48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyLjQ2IiByZXN1bHQ9ImVmZmVjdDFfZm9yZWdyb3VuZEJsdXJfMjAwMV82NyIvPjwvZmlsdGVyPjxmaWx0ZXIgaWQ9InByZWZpeF9fZmlsdGVyMV9mXzIwMDFfNjciIHg9Ii0xNS4wMDEiIHk9Ii00MC4yNTciIHdpZHRoPSI4NC44NjgiIGhlaWdodD0iODUuNjg4IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+PGZlRmxvb2QgZmxvb2Qtb3BhY2l0eT0iMCIgcmVzdWx0PSJCYWNrZ3JvdW5kSW1hZ2VGaXgiLz48ZmVCbGVuZCBpbj0iU291cmNlR3JhcGhpYyIgaW4yPSJCYWNrZ3JvdW5kSW1hZ2VGaXgiIHJlc3VsdD0ic2hhcGUiLz48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIxMS44OTEiIHJlc3VsdD0iZWZmZWN0MV9mb3JlZ3JvdW5kQmx1cl8yMDAxXzY3Ii8+PC9maWx0ZXI+PGZpbHRlciBpZD0icHJlZml4X19maWx0ZXIyX2ZfMjAwMV82NyIgeD0iLTIwLjc3NiIgeT0iMTEuOTI3IiB3aWR0aD0iNzkuNDU0IiBoZWlnaHQ9IjkwLjkxNiIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPjxmZUZsb29kIGZsb29kLW9wYWNpdHk9IjAiIHJlc3VsdD0iQmFja2dyb3VuZEltYWdlRml4Ii8+PGZlQmxlbmQgaW49IlNvdXJjZUdyYXBoaWMiIGluMj0iQmFja2dyb3VuZEltYWdlRml4IiByZXN1bHQ9InNoYXBlIi8+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMTAuMTA5IiByZXN1bHQ9ImVmZmVjdDFfZm9yZWdyb3VuZEJsdXJfMjAwMV82NyIvPjwvZmlsdGVyPjxmaWx0ZXIgaWQ9InByZWZpeF9fZmlsdGVyM19mXzIwMDFfNjciIHg9Ii0yMC43NzYiIHk9IjExLjkyNyIgd2lkdGg9Ijc5LjQ1NCIgaGVpZ2h0PSI5MC45MTYiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVGbG9vZCBmbG9vZC1vcGFjaXR5PSIwIiByZXN1bHQ9IkJhY2tncm91bmRJbWFnZUZpeCIvPjxmZUJsZW5kIGluPSJTb3VyY2VHcmFwaGljIiBpbjI9IkJhY2tncm91bmRJbWFnZUZpeCIgcmVzdWx0PSJzaGFwZSIvPjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249IjEwLjEwOSIgcmVzdWx0PSJlZmZlY3QxX2ZvcmVncm91bmRCbHVyXzIwMDFfNjciLz48L2ZpbHRlcj48ZmlsdGVyIGlkPSJwcmVmaXhfX2ZpbHRlcjRfZl8yMDAxXzY3IiB4PSItMTkuODQ1IiB5PSIxNS40NTkiIHdpZHRoPSI3OS43MzEiIGhlaWdodD0iODEuNTA1IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+PGZlRmxvb2QgZmxvb2Qtb3BhY2l0eT0iMCIgcmVzdWx0PSJCYWNrZ3JvdW5kSW1hZ2VGaXgiLz48ZmVCbGVuZCBpbj0iU291cmNlR3JhcGhpYyIgaW4yPSJCYWNrZ3JvdW5kSW1hZ2VGaXgiIHJlc3VsdD0ic2hhcGUiLz48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIxMC4xMDkiIHJlc3VsdD0iZWZmZWN0MV9mb3JlZ3JvdW5kQmx1cl8yMDAxXzY3Ii8+PC9maWx0ZXI+PGZpbHRlciBpZD0icHJlZml4X19maWx0ZXI1X2ZfMjAwMV82NyIgeD0iMjkuODMyIiB5PSItMTEuNTUyIiB3aWR0aD0iNzUuMTE3IiBoZWlnaHQ9IjczLjc1OCIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPjxmZUZsb29kIGZsb29kLW9wYWNpdHk9IjAiIHJlc3VsdD0iQmFja2dyb3VuZEltYWdlRml4Ii8+PGZlQmxlbmQgaW49IlNvdXJjZUdyYXBoaWMiIGluMj0iQmFja2dyb3VuZEltYWdlRml4IiByZXN1bHQ9InNoYXBlIi8+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iOS42MDYiIHJlc3VsdD0iZWZmZWN0MV9mb3JlZ3JvdW5kQmx1cl8yMDAxXzY3Ii8+PC9maWx0ZXI+PGZpbHRlciBpZD0icHJlZml4X19maWx0ZXI2X2ZfMjAwMV82NyIgeD0iLTM4LjU4MyIgeT0iLTE2LjI1MyIgd2lkdGg9Ijc4LjEzNSIgaGVpZ2h0PSI3OC43NTgiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVGbG9vZCBmbG9vZC1vcGFjaXR5PSIwIiByZXN1bHQ9IkJhY2tncm91bmRJbWFnZUZpeCIvPjxmZUJsZW5kIGluPSJTb3VyY2VHcmFwaGljIiBpbjI9IkJhY2tncm91bmRJbWFnZUZpeCIgcmVzdWx0PSJzaGFwZSIvPjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249IjguNzA2IiByZXN1bHQ9ImVmZmVjdDFfZm9yZWdyb3VuZEJsdXJfMjAwMV82NyIvPjwvZmlsdGVyPjxmaWx0ZXIgaWQ9InByZWZpeF9fZmlsdGVyN19mXzIwMDFfNjciIHg9IjguMTA3IiB5PSItNS45NjYiIHdpZHRoPSI3OC44NzciIGhlaWdodD0iNzcuNTM5IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+PGZlRmxvb2QgZmxvb2Qtb3BhY2l0eT0iMCIgcmVzdWx0PSJCYWNrZ3JvdW5kSW1hZ2VGaXgiLz48ZmVCbGVuZCBpbj0iU291cmNlR3JhcGhpYyIgaW4yPSJCYWNrZ3JvdW5kSW1hZ2VGaXgiIHJlc3VsdD0ic2hhcGUiLz48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSI3Ljc3NSIgcmVzdWx0PSJlZmZlY3QxX2ZvcmVncm91bmRCbHVyXzIwMDFfNjciLz48L2ZpbHRlcj48ZmlsdGVyIGlkPSJwcmVmaXhfX2ZpbHRlcjhfZl8yMDAxXzY3IiB4PSIxMy41ODciIHk9Ii0xOC40ODgiIHdpZHRoPSI1Ni4yNzIiIGhlaWdodD0iNTEuODEiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj48ZmVGbG9vZCBmbG9vZC1vcGFjaXR5PSIwIiByZXN1bHQ9IkJhY2tncm91bmRJbWFnZUZpeCIvPjxmZUJsZW5kIGluPSJTb3VyY2VHcmFwaGljIiBpbjI9IkJhY2tncm91bmRJbWFnZUZpeCIgcmVzdWx0PSJzaGFwZSIvPjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249IjYuOTU3IiByZXN1bHQ9ImVmZmVjdDFfZm9yZWdyb3VuZEJsdXJfMjAwMV82NyIvPjwvZmlsdGVyPjxmaWx0ZXIgaWQ9InByZWZpeF9fZmlsdGVyOV9mXzIwMDFfNjciIHg9Ii0xNS41MjYiIHk9Ii0zMS4yOTciIHdpZHRoPSI3MC44NTYiIGhlaWdodD0iNjkuMzA2IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+PGZlRmxvb2QgZmxvb2Qtb3BhY2l0eT0iMCIgcmVzdWx0PSJCYWNrZ3JvdW5kSW1hZ2VGaXgiLz48ZmVCbGVuZCBpbj0iU291cmNlR3JhcGhpYyIgaW4yPSJCYWNrZ3JvdW5kSW1hZ2VGaXgiIHJlc3VsdD0ic2hhcGUiLz48ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSI1Ljg3NiIgcmVzdWx0PSJlZmZlY3QxX2ZvcmVncm91bmRCbHVyXzIwMDFfNjciLz48L2ZpbHRlcj48ZmlsdGVyIGlkPSJwcmVmaXhfX2ZpbHRlcjEwX2ZfMjAwMV82NyIgeD0iLTE0LjE2OCIgeT0iMjAuOTY0IiB3aWR0aD0iNTUuNTAxIiBoZWlnaHQ9IjUxLjU3MSIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPjxmZUZsb29kIGZsb29kLW9wYWNpdHk9IjAiIHJlc3VsdD0iQmFja2dyb3VuZEltYWdlRml4Ii8+PGZlQmxlbmQgaW49IlNvdXJjZUdyYXBoaWMiIGluMj0iQmFja2dyb3VuZEltYWdlRml4IiByZXN1bHQ9InNoYXBlIi8+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iNy4yNzMiIHJlc3VsdD0iZWZmZWN0MV9mb3JlZ3JvdW5kQmx1cl8yMDAxXzY3Ii8+PC9maWx0ZXI+PGxpbmVhckdyYWRpZW50IGlkPSJwcmVmaXhfX3BhaW50MF9saW5lYXJfMjAwMV82NyIgeDE9IjE4LjQ0NyIgeTE9IjQzLjQyIiB4Mj0iNTIuMTUzIiB5Mj0iMTUuMDA0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzQ4OTNGQyIvPjxzdG9wIG9mZnNldD0iLjI3IiBzdG9wLWNvbG9yPSIjNDg5M0ZDIi8+PHN0b3Agb2Zmc2V0PSIuNzc3IiBzdG9wLWNvbG9yPSIjOTY5REZGIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjQkQ5OUZFIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PC9zdmc+"};
+</script>
+<script>
+  const AGENTS = [
+    { id:'claude-code', name:'Claude Code', detected:true,
+      cmd:'vops agent setup claude-code --scope user',
+      skill:'~/.claude/skills/vops-deploy', cfg:'~/.claude.json', boot:'~/.claude/CLAUDE.md' },
+    { id:'codex', name:'Codex', detected:true,
+      cmd:'vops agent setup codex --scope user',
+      skill:'~/.agents/skills/vops-deploy', cfg:'~/.codex/config.toml', boot:'~/.codex/AGENTS.md' },
+    { id:'antigravity', name:'Antigravity', detected:true,
+      cmd:'vops agent setup antigravity --scope user',
+      skill:'~/.gemini/config/skills/vops-deploy', cfg:'~/.gemini/config/mcp_config.json', boot:'~/.gemini/GEMINI.md' },
+    { id:'opencode', name:'OpenCode', detected:false,
+      cmd:'vops agent setup opencode --scope user',
+      skill:'~/.config/opencode/skills/vops-deploy', cfg:'~/.config/opencode/opencode.json', boot:'~/.config/opencode/AGENTS.md' },
+  ];
+  const mk = (id, lg) => `<span class="mk${lg?' mk-lg':''}"><img src="${AGENT_ICON[id]}" alt=""></span>`;
+
+  document.getElementById('page-live').innerHTML = `
+    <div class="card" style="padding:13px 16px">
+      <div class="strip">
+        <div class="stack">${AGENTS.filter(a=>a.detected).map(a=>mk(a.id)).join('')}</div>
+        <div class="stat"><span class="n">3</span><span class="l">agents wired</span></div>
+        <div class="sep"></div>
+        <div class="stat"><span class="n">1</span><span class="l">live session</span></div>
+        <div class="sep"></div>
+        <div class="stat"><span class="n" style="color:var(--warn)">2</span><span class="l">need you</span></div>
+        <span class="grow"></span>
+        <button class="btn btn-ghost">Connect an agent</button>
+        <button class="btn btn-danger">Stop everything</button>
+      </div>
+    </div>
+
+    <div class="need" style="margin-top:14px">
+      <div class="row"><span class="pill pill-warn">plan approval</span><span class="pill">staging</span>
+        <span class="pill">web1</span><span class="grow"></span><span class="m" style="color:var(--text-3)">plan a91b4a2 · 4 steps</span></div>
+      <div style="margin-top:9px;font-size:13px;font-weight:600">Deploy gitea to web1 and point blog.example.com at it</div>
+      <div class="muted">Will create 1 pod, write 1 route, request 1 certificate. Reversible.</div>
+      <div class="row" style="margin-top:11px"><button class="btn btn-primary">Approve</button>
+        <button class="btn">Deny</button><button class="btn btn-ghost">See the plan</button></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="row"><h3 class="h2a">Live sessions</h3><span class="pill">1</span></div>
+      <div class="srow" style="margin-top:8px">
+        ${mk('claude-code')}
+        <div class="grow"><div style="font-size:12.5px;font-weight:600">Claude Code · staging</div>
+          <div class="muted m">ses_091e3fc6 · any registered server · 49 of 50 runs left</div></div>
+        <span class="pill pill-ok">42 min left</span>
+        <button class="btn btn-ghost">Revoke</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="row"><h3 class="h2a">Recent activity</h3><span class="grow"></span>
+        <button class="btn btn-ghost" style="padding:3px 8px">Full audit →</button></div>
+      <div class="srow" style="margin-top:8px"><span class="pill pill-ok">ok</span>
+        <span class="grow" style="font-size:12.5px">Deployed <strong>uptime-kuma</strong> to vmi3399032</span>
+        <span class="muted m">14:02</span></div>
+      <div class="srow"><span class="pill pill-warn">denied</span>
+        <span class="grow" style="font-size:12.5px">Scope expansion to <strong>production</strong></span>
+        <span class="muted m">13:47</span></div>
+    </div>`;
+
+  document.getElementById('page-empty').innerHTML = `
+    <div class="card" style="text-align:center;padding:34px 22px">
+      <div class="row" style="justify-content:center;gap:9px">${AGENTS.map(a=>mk(a.id,true)).join('')}</div>
+      <h3 style="margin:18px 0 0;font-size:16px;font-weight:640;letter-spacing:-.01em">Connect a coding agent</h3>
+      <p style="margin:7px auto 0;max-width:44ch;color:var(--text-2);font-size:12.5px">
+        vops gives your agent a deploy skill and a scoped, auditable way to use it. Nothing it asks
+        for runs until you approve it here.</p>
+      <div class="row" style="justify-content:center;margin-top:17px">
+        <button class="btn btn-primary">Connect an agent</button>
+        <button class="btn btn-ghost">What can it do?</button>
+      </div>
+      <p class="muted" style="margin-top:15px">3 of 4 supported agents found on this machine</p>
+    </div>`;
+
+  const tile = (a, sel) => `<button class="tile${sel?' sel':''}">${mk(a.id)}
+    <span class="txt"><span class="n">${a.name}</span><span class="s">${a.detected?'detected':'not installed'}</span></span></button>`;
+
+  document.getElementById('modal-1').innerHTML = `
+    <div class="modal">
+      <div class="mhead">
+        <div class="step"><b>1</b> pick &nbsp;·&nbsp; 2 run</div>
+        <h3 style="margin:7px 0 0;font-size:15px;font-weight:640">Which agent?</h3>
+        <p class="muted">vops wires into these four. Pick the one you code in.</p>
+      </div>
+      <div class="mbody"><div class="tiles">
+        ${AGENTS.map((a,i)=>tile(a,i===0)).join('')}
+      </div></div>
+      <div class="mfoot"><span class="grow"></span><button class="btn btn-ghost">Cancel</button>
+        <button class="btn btn-primary">Continue</button></div>
+    </div>`;
+
+  const a = AGENTS[0];
+  document.getElementById('modal-2').innerHTML = `
+    <div class="modal">
+      <div class="mhead">
+        <div class="step">1 pick &nbsp;·&nbsp; <b>2</b> run</div>
+        <div class="row" style="margin-top:7px">${mk(a.id)}
+          <h3 style="margin:0;font-size:15px;font-weight:640">${a.name}</h3></div>
+        <p class="muted">Run this once, in any terminal.</p>
+      </div>
+      <div class="mbody">
+        <div class="cmd"><span class="p">$</span><span>${a.cmd}</span><span class="grow"></span>
+          <button class="btn btn-ghost" style="padding:2px 7px;font-size:11px">Copy</button></div>
+        <ul class="writes">
+          <li><span class="w">skill</span><span class="p">${a.skill}</span></li>
+          <li><span class="w">mcp</span><span class="p">${a.cfg}</span></li>
+          <li><span class="w">bootstrap</span><span class="p">${a.boot}</span></li>
+        </ul>
+        <p class="muted" style="margin-top:11px">
+          Only these three, each backed up first. Then say
+          <em style="color:var(--text-2)">“deploy this repo to my cheapest server”</em> — the agent
+          reads the skill itself.</p>
+      </div>
+      <div class="mfoot"><span class="m" style="color:var(--text-3)">waiting for the agent…</span>
+        <span class="grow"></span><button class="btn btn-ghost">Back</button>
+        <button class="btn">Check now</button></div>
+    </div>`;
+</script>

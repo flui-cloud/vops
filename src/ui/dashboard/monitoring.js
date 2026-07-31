@@ -1,15 +1,6 @@
 // Live host monitoring — polls the SSH status battery on an interval while the
 // page is open and keeps a short in-memory rolling window per host. Nothing is
 // persisted: the sparklines/uptime strip are real-time only and reset on reload.
-const MON_SIGNALS = [
-  // Guest-measured CPU first: it is normalised 0-100 across cores. cloud.cpu is a
-  // last resort — the hypervisor scale is not per-machine and is not comparable.
-  { key: 'cpu', label: 'CPU', ids: ['sys.cpu', 'agent.cpu', 'cloud.cpu'], pct: true },
-  { key: 'mem', label: 'Mem used', ids: ['sys.memory', 'agent.mem'], pct: true, invert: true },
-  { key: 'disk', label: 'Disk used', ids: ['sys.disk', 'agent.disk'], pct: true },
-  { key: 'load', label: 'Load', ids: ['sys.load'], pct: false },
-  { key: 'io', label: 'Disk I/O', ids: ['sys.io'], pct: false, unit: 'MB/s' },
-];
 // Gauge colour thresholds — utilisation signals go amber then red; load is
 // judged per core (load1 / cores). Independent of the backend check severity.
 const MON_THRESH = {
@@ -21,6 +12,7 @@ const MON_THRESH = {
 // Plain-language name + one-line explanation per check id (target audience is a
 // flui user with little devops background) — surfaced as a title + hover tooltip.
 const MON_HELP = {
+  'ssh.reach': { title: 'SSH reachable', help: 'Whether vops could open an SSH session at all. Everything else on this page depends on it: no connection, no readings.' },
   'sys.cpu': { title: 'CPU', help: 'Share of total CPU capacity in use, measured inside the server across all cores — the same 0-100% scale as standard monitoring tools. Brief peaks are normal; what matters is a sustained high value.' },
   'sys.disk': { title: 'Disk space', help:'How full the fullest disk is. Above ~85% things start to fail — logs, updates, databases.' },
   'sys.memory': { title: 'Memory', help: 'Share of RAM in use. Constantly near 100% means the server is starved and may slow down or kill processes.' },
@@ -45,12 +37,18 @@ const MON_HELP = {
   'agent.mem': { title: 'Memory (agent)', help: 'Memory usage from the optional vops agent running on the host.' },
   'agent.disk': { title: 'Disk (agent)', help: 'Disk usage from the optional vops agent running on the host.' },
 };
-const MON_CAP = 48;          // rolling points kept per series
-const MON_INTERVAL = 30000;  // ms between polls (each poll is a ~5s SSH battery)
+// How often this page re-reads the server's stored state. No SSH is involved —
+// the collector does the probing in the background, whether or not anyone is
+// looking — so this is one cheap local read, not a fleet-wide poll.
+const MON_UI_REFRESH_MS = 20000;
+const MON_RANGES = ['1h', '6h', '24h', '7d'];
 
 function dashboardMonitoring() {
   return {
-    mon: { live: {}, series: {}, interval: null, visBound: false, lastAt: '' },
+    mon: {
+      live: {}, hist: {}, range: '24h', ranges: MON_RANGES,
+      interval: null, visBound: false, lastAt: '', collector: null, loaded: false, info: false,
+    },
 
     // The monitoring surface is every SSH-managed host; provider-only rows are excluded.
     monHosts() { return (this.hosts || []).filter(h => h.sshManaged !== false); },
@@ -72,15 +70,18 @@ function dashboardMonitoring() {
       this.monStop();
       await this.loadHosts();
       this.monBindVisibility();
-      await this.monPollAll();
-      this.mon.interval = setInterval(() => this.monPollAll(), MON_INTERVAL);
+      await this.monLoadFleet();
+      // Details and history are separate reads, but all of them are local SQLite —
+      // the whole page costs no SSH at all.
+      await Promise.all(this.monHosts().flatMap(h => [this.monLoadHost(h.name), this.monLoadHistory(h.name)]));
+      this.mon.interval = setInterval(() => this.monLoadFleet(), MON_UI_REFRESH_MS);
     },
 
     monStop() {
       if (this.mon.interval) { clearInterval(this.mon.interval); this.mon.interval = null; }
     },
 
-    // Pause polling when the tab is hidden; resume on return if still on the page.
+    // Pause refreshing when the tab is hidden; resume on return if still on the page.
     monBindVisibility() {
       if (this.mon.visBound) return;
       this.mon.visBound = true;
@@ -88,92 +89,127 @@ function dashboardMonitoring() {
         if (document.hidden) { this.monStop(); return; }
         if (this.mon.interval) return;
         if (this.view === 'monitoring') {
-          this.monPollAll();
-          this.mon.interval = setInterval(() => this.monPollAll(), MON_INTERVAL);
+          this.monLoadFleet();
+          this.mon.interval = setInterval(() => this.monLoadFleet(), MON_UI_REFRESH_MS);
         } else if (this.view === 'host') {
           this.hostTick();
-          this.mon.interval = setInterval(() => this.hostTick(), MON_INTERVAL);
+          this.mon.interval = setInterval(() => this.hostTick(), MON_UI_REFRESH_MS);
         }
       });
     },
 
-    async monPollAll() {
-      if (this.view !== 'monitoring') { this.monStop(); return; }
-      const targets = this.monHosts().filter(h => this.monReady(h));
-      await Promise.all(targets.map(h => this.monPoll(h)));
-      this.mon.lastAt = new Date().toLocaleTimeString();
-    },
-
-    async monPoll(h) {
-      const name = h.name;
-      if (!this.mon.live[name]) this.mon.live[name] = { loading: false, error: '', reachable: null, latencyMs: null, findings: [], signals: [] };
-      const L = this.mon.live[name];
-      L.loading = true;
+    // One read of what the collector already stored — for the whole fleet, without
+    // a single SSH connection. The old version opened one per host per tab.
+    async monLoadFleet() {
       try {
-        const res = await this.api('/hosts/' + encodeURIComponent(name) + '/status');
-        L.findings = res.report?.findings || [];
-        L.latencyMs = res.latencyMs;
-        L.reachable = res.reachable !== false;
-        L.error = '';
-        L.signals = this.monSignals(L.findings);
+        const res = await this.api('/metrics');
+        this.mon.collector = res.collector;
+        for (const row of (res.hosts || [])) this.monApply(row);
+        this.mon.lastAt = new Date().toLocaleTimeString();
       } catch (e) {
-        L.reachable = false; L.error = e.message; L.signals = [];
+        this.error = e.message;
       } finally {
-        L.loading = false;
-        L.at = Date.now();
-        this.monRecord(name, L);
+        this.mon.loaded = true;
       }
     },
 
-    // Pull the charted numeric signals out of the status findings by id.
-    monSignals(findings) {
-      const byId = {};
-      for (const f of (findings || [])) {
-        if (f?.value != null && byId[f.id] === undefined) byId[f.id] = f;
+    // The findings only come with the per-host read; the fleet read is deliberately
+    // light so opening the page stays one small response.
+    async monLoadHost(name) {
+      try {
+        this.monApply(await this.api('/metrics/' + encodeURIComponent(name)));
+      } catch (e) {
+        const L = this.monEntry(name);
+        L.error = e.message;
       }
-      return MON_SIGNALS.map(def => this.monSignalFor(def, byId)).filter(Boolean);
     },
 
-    monSignalFor(def, byId) {
-      const f = def.ids.map(id => byId[id]).find(Boolean);
-      if (!f) return null;
-      let n = Number(f.value);
-      if (!Number.isFinite(n)) return null;
-      if (def.invert) n = Math.max(0, 100 - n);   // sys.memory reports free → show used
-      const sig = { key: def.key, label: def.label, value: Math.round(n * 100) / 100, unit: def.unit || (def.pct ? '%' : ''), pct: def.pct, severity: f.severity || 'info', summary: f.summary };
-      if (def.key === 'load') {
-        const m = /on (\d+) core/.exec(f.summary || '');
-        sig.cores = m ? Number(m[1]) : 1;
-      }
-      return sig;
+    monEntry(name) {
+      this.mon.live[name] ??= { loading: false, error: '', reachable: null, latencyMs: null, findings: [], signals: [] };
+      return this.mon.live[name];
     },
 
-    // Append this poll to the rolling window: an up/down tick plus each signal value.
-    monRecord(name, L) {
-      if (!this.mon.series[name]) this.mon.series[name] = {};
-      const s = this.mon.series[name];
-      const push = (k, v) => {
-        if (!s[k]) { s[k] = []; }
-        s[k].push(v);
-        if (s[k].length > MON_CAP) { s[k].shift(); }
-      };
-      push('up', L.reachable ? 1 : 0);
-      for (const sig of (L.signals || [])) { push(sig.key, sig.value); }
+    /** Fold one API row into the shape every page already binds to. */
+    monApply(row) {
+      const L = this.monEntry(row.name);
+      L.reachable = row.reachable;
+      L.latencyMs = row.latencyMs;
+      L.signals = row.signals || [];
+      L.worst = row.worst;
+      L.issues = row.issues;
+      L.ageSeconds = row.ageSeconds;
+      L.at = row.at ? Date.parse(row.at) : null;
+      L.eligible = row.eligible;
+      L.nextAt = row.nextAt ? Date.parse(row.nextAt) : null;
+      L.reason = row.reason || '';
+      L.loading = !!row.collecting;
+      L.error = '';
+      if (row.report) L.findings = row.report.findings || [];
+      return L;
     },
 
-    monSeries(name, key) { return this.mon.series[name]?.[key] || []; },
+    async monLoadHistory(name) {
+      try {
+        const res = await this.api('/metrics/' + encodeURIComponent(name) + '/history?range=' + this.mon.range);
+        this.mon.hist[name] = res;
+      } catch { /* a host with no history yet simply has no chart */ }
+    },
+
+    async monSetRange(range) {
+      if (!MON_RANGES.includes(range) || range === this.mon.range) return;
+      this.mon.range = range;
+      await Promise.all(this.monHosts().map(h => this.monLoadHistory(h.name)));
+    },
+
+    monSeries(name, key) { return this.mon.hist[name]?.series?.[key] || []; },
+    monSamples(name) { return this.mon.hist[name]?.samples ?? 0; },
+
+    /** True while a host has been seen but has too little history to draw. */
+    monCollecting(name) {
+      return this.mon.loaded && this.monSamples(name) < 2;
+    },
+
+    // One bucket of the uptime strip. `null` is a real state — the collector was
+    // not running — and must not look the same as "up".
+    monUpColor(v) {
+      if (v === null || v === undefined) return 'var(--panel-3)';
+      if (v >= 0.999) return 'var(--ok)';
+      return v > 0 ? 'var(--warn)' : 'var(--danger)';
+    },
+    monUpTitle(v) {
+      if (v === null || v === undefined) return 'no checks in this window';
+      if (v >= 0.999) return 'up';
+      return v > 0 ? Math.round(v * 100) + '% of checks answered' : 'down';
+    },
+
+    /** Human note under a card: when it was last collected, and how often. */
+    monAgeLabel(name) {
+      const s = this.mon.live[name]?.ageSeconds;
+      if (s == null) return 'never checked';
+      if (s < 90) return 'checked just now';
+      if (s < 3600) return 'checked ' + Math.round(s / 60) + ' min ago';
+      return 'checked ' + Math.round(s / 3600) + 'h ago';
+    },
 
     // Sparkline points fitted to a 100×30 viewBox (svg uses preserveAspectRatio="none").
+    // Nulls are skipped rather than drawn through: a bucketed history has holes
+    // where nothing was collected, and joining across one would invent a reading.
+    // For a gap-free array the output is byte-identical to the pre-history version,
+    // which is what keeps the bench steal-time charts working — see test/mon-spark.
     monSpark(series) {
       const a = series || [];
-      if (a.length < 2) return '';
-      const min = Math.min(...a), max = Math.max(...a), span = (max - min) || 1;
+      const vals = a.filter(v => Number.isFinite(v));
+      if (vals.length < 2) return '';
+      const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
       const n = a.length;
-      return a.map((v, i) => {
+      const pts = [];
+      for (const [i, v] of a.entries()) {
+        if (!Number.isFinite(v)) continue;
         const x = (i / (n - 1)) * 100;
         const y = 28 - ((v - min) / span) * 26;
-        return x.toFixed(1) + ',' + y.toFixed(1);
-      }).join(' ');
+        pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+      }
+      return pts.join(' ');
     },
 
     monBarPct(sig) {
@@ -194,46 +230,47 @@ function dashboardMonitoring() {
     monTitle(id) { return MON_HELP[id]?.title || id; },
     monHelp(id) { return MON_HELP[id]?.help || ''; },
 
-    // Session uptime = share of polls this host answered, as a percentage.
+    // Uptime over the selected range, computed server-side from stored checks —
+    // it survives a reload, and it says how many checks it is based on.
     monUp(name) {
-      const a = this.monSeries(name, 'up');
-      if (!a.length) return null;
-      return Math.round((a.reduce((n, v) => n + v, 0) / a.length) * 1000) / 10;
+      return this.mon.hist[name]?.uptimePct ?? null;
     },
 
     // Worst check severity + how many checks want attention (for the home summary).
-    monWorst(name) {
-      const rank = { fail: 3, warn: 2, info: 1, ok: 0 };
-      let worst = 'ok';
-      for (const f of (this.mon.live[name]?.findings || [])) {
-        if ((rank[f.severity] || 0) > rank[worst]) worst = f.severity;
-      }
-      return worst;
-    },
-    monIssues(name) {
-      return (this.mon.live[name]?.findings || []).filter(f => f.severity === 'warn' || f.severity === 'fail').length;
-    },
+    // Both come from the stored snapshot, so the home card is right before any
+    // findings have been fetched for the detail view.
+    monWorst(name) { return this.mon.live[name]?.worst || 'ok'; },
+    monIssues(name) { return this.mon.live[name]?.issues || 0; },
     monSig(name, key) { return (this.mon.live[name]?.signals || []).find(s => s.key === key) || null; },
     fleetDot(h) {
-      return this.mon.live[h.name]?.findings?.length
+      return this.mon.live[h.name]?.at
         ? this.sevColor(this.monWorst(h.name))
         : this.connMeta(h.conn?.state || 'unknown').color;
     },
 
-    // One-shot status fetch for the home card — configured hosts only, and skip any
-    // whose live data is still fresh (reused from the Monitoring poller if warm).
+    // The home card now reads what the collector stored, so Overview contributes
+    // nothing to the SSH load it used to generate one connection at a time.
     async fleetHealthLoad() {
-      const now = Date.now();
-      const due = this.fleetHosts().filter(h => {
-        const L = this.mon.live[h.name];
-        return !L || (!L.loading && now - (L.at || 0) > 20000);
-      });
-      await Promise.all(due.map(h => this.monPoll(h)));
+      await this.monLoadFleet();
     },
 
-    monRefresh(name) {
-      const h = (this.hosts || []).find(x => x.name === name);
-      if (h) this.monPoll(h);
+    // An explicit "check it now": a real probe, server-side, whose result is stored
+    // like any other. Everything else on this page is a read.
+    async monRefresh(name) {
+      const L = this.monEntry(name);
+      L.loading = true;
+      try {
+        this.monApply(await this.api('/metrics/' + encodeURIComponent(name) + '/refresh', { method: 'POST' }));
+        await this.monLoadHistory(name);
+      } catch (e) {
+        L.error = e.message;
+      } finally {
+        L.loading = false;
+      }
+    },
+
+    async monRefreshAll() {
+      await Promise.all(this.monHosts().filter(h => this.monReady(h)).map(h => this.monRefresh(h.name)));
     },
 
     // Open the dedicated host detail page from a host record.

@@ -11,6 +11,8 @@
     --border: #e4e7ec; --border-2: #eceef2;
     --text: #12151b; --text-dim: #565e6b; --text-faint: #8a93a1;
     --accent: #2f7ff0;
+    /* The lit face of the logo's extrusion — the icon accent on an accent-tinted row. */
+    --face: #78b0fb;
     --accent-2: color-mix(in srgb, var(--accent) 72%, #ffffff);
     --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
     --accent-border: color-mix(in srgb, var(--accent) 32%, transparent);
@@ -21,12 +23,16 @@
     --map-bg: #eaeef4; --map-land: #d9dfe9; --map-land-eu: #cdd6e6; --dot: #c6cdda;
     --shadow: 0 1px 2px rgba(16, 22, 34, .05), 0 6px 20px rgba(16, 22, 34, .06);
     --side: #ffffff;
+    /* Ground for third-party logos, which carry their own colours and cannot be
+     * recoloured — stays light in both themes so near-black marks stay visible. */
+    --chip: #ffffff;
   }
   :root[data-theme="dark"] {
     --bg: #0a0c11; --panel: #12141b; --panel-2: #161923; --panel-3: #1b1f2a;
     --border: #242a36; --border-2: #1e232e;
     --text: #eef1f6; --text-dim: #9aa3b2; --text-faint: #69707e;
     --accent: #4a90f5;
+    --face: #7db6ff;
     --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
     --accent-border: color-mix(in srgb, var(--accent) 42%, transparent);
     --ok: #34d399; --ok-soft: rgba(52, 211, 153, .14);
@@ -35,6 +41,7 @@
     --map-bg: #0c0f15; --map-land: #1b2230; --map-land-eu: #212c3f; --dot: #2a303d;
     --shadow: 0 1px 2px rgba(0, 0, 0, .32), 0 10px 30px rgba(0, 0, 0, .4);
     --side: #0c0e14;
+    --chip: #eef1f6;
   }
   body { background: var(--bg); color: var(--text); }
   ::selection { background: var(--accent-soft); }
@@ -103,7 +110,7 @@
     background: var(--panel-3);
   }
   .seg-btn {
-    @apply cursor-pointer rounded-lg border-0 px-3.5 py-1.5 text-[13px] font-semibold transition;
+    @apply cursor-pointer whitespace-nowrap rounded-lg border-0 px-3.5 py-1.5 text-[13px] font-semibold transition;
     color: var(--text-dim); background: transparent;
   }
   .seg-btn:hover { color: var(--text); }
@@ -169,15 +176,70 @@
 
   /* Sidebar nav */
   .nav-item {
-    @apply relative flex w-full cursor-pointer items-center gap-3 rounded-[9px] px-3 py-2.5 text-sm transition;
+    @apply relative flex w-full cursor-pointer items-center gap-3 rounded-[9px] px-3 py-2 text-sm transition;
     color: var(--text-dim); background: transparent;
   }
   .nav-item:hover { background: var(--panel-3); color: var(--text); }
   .nav-item-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .nav-item-active:hover { background: var(--accent-soft); color: var(--accent); }
+  /* Duotone: the skeleton rides currentColor and dims with the label, while the one
+   * accent shape stays saturated — which is what keeps a faint row from reading grey.
+   * On an accent-tinted row the whole glyph is already the accent, so shift the accent
+   * to the lighter face tone or the two tones merge into one flat colour. */
+  .nav-item svg .a, .nav-icon svg .a { fill: var(--icon-accent, var(--accent)); stroke: none; }
+  .nav-item svg .as, .nav-icon svg .as { stroke: var(--icon-accent, var(--accent)); }
+  .nav-item-active, .nav-icon-active { --icon-accent: var(--face); }
   .nav-section {
-    @apply px-2.5 pb-1.5 pt-4 text-[10.5px] font-semibold uppercase;
+    @apply px-2.5 pb-1 pt-3 text-[10.5px] font-semibold uppercase;
     letter-spacing: .09em; color: var(--text-faint);
+  }
+  /* The nav grows with every feature, so it will overflow a short window sooner
+     or later. No bar (the global 10px rule is heavy in a 252px column); instead
+     the clipped edge fades, and only on the side that actually has more content
+     — both offsets are 0 when the list fits, making the mask a no-op. */
+  .nav-scroll {
+    scrollbar-width: none;
+    --fade-top: 0px; --fade-bottom: 0px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+  }
+  .nav-scroll::-webkit-scrollbar { width: 0; height: 0; }
+  .nav-icon {
+    @apply relative flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-lg transition;
+    color: var(--text-faint); background: transparent;
+  }
+  .nav-icon:hover { background: var(--panel-3); color: var(--text); }
+  .nav-icon-active { background: var(--accent-soft); color: var(--accent); }
+
+  /* Agent marks are third-party logos, several of them near-black, so they get
+   * their own light ground instead of inheriting the panel's. */
+  .agent-mark {
+    @apply grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] border;
+    background: var(--chip); border-color: var(--border);
+  }
+  .agent-mark img { @apply block h-4 w-4; }
+  .agent-mark-lg { @apply h-[42px] w-[42px] rounded-[11px]; }
+  .agent-mark-lg img { @apply h-[26px] w-[26px]; }
+  .agent-stack { @apply flex; }
+  .agent-stack .agent-mark { margin-left: -7px; }
+  .agent-stack .agent-mark:first-child { margin-left: 0; }
+
+  /* Connection state is a fact, not a task: one strip, not a card per client. */
+  .agent-strip { @apply flex flex-wrap items-center gap-x-4 gap-y-3; }
+  .agent-stat { @apply flex flex-col leading-tight; }
+  .agent-stat .n { @apply text-base font-semibold tracking-tight; }
+  .agent-stat .l { @apply text-[10.5px]; color: var(--text-faint); }
+  .agent-sep { @apply h-[26px] w-px shrink-0; background: var(--border); }
+
+  .agent-tile {
+    @apply flex w-full cursor-pointer items-center gap-3 rounded-[9px] border p-3 text-left transition;
+    border-color: var(--border); background: var(--panel);
+  }
+  .agent-tile:hover { border-color: var(--accent-border); background: var(--panel-2); }
+  .agent-tile-sel { border-color: var(--accent); background: var(--accent-soft); }
+  .agent-cmd {
+    @apply flex items-center gap-2 overflow-x-auto rounded-[9px] border px-3 py-2.5 font-mono text-[11.5px];
+    border-color: var(--border); background: var(--panel-2); color: var(--text);
   }
   .icon-link {
     @apply inline-flex h-8 w-8 items-center justify-center rounded-lg transition;
