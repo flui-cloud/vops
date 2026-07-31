@@ -1,0 +1,4 @@
+interface:
+  display_name: "vOps Deploy"
+  short_description: "Governed VPS deployment through vOps"
+  default_prompt: "Use $vops-deploy to deploy this repository through the local vOps control plane."

@@ -1,0 +1,21 @@
+kind: Application
+apiVersion: flui.cloud/v1beta1
+
+metadata:
+  name: node-api
+
+build:
+  strategy: dockerfile
+  dockerfile: "./Dockerfile"
+
+deploy:
+  port: 3000
+  exposure: public
+  healthcheck:
+    path: /health
+    port: 3000
+  domain:
+    auto: true
+    tls: true
+    certChallenge: http-01
+    certificateProvider: lets-encrypt

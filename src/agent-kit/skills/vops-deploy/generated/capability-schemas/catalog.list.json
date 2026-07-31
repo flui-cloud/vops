@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "all",
+        "products",
+        "blocks"
+      ],
+      "default": "all"
+    }
+  },
+  "additionalProperties": false
+}

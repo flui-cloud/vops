@@ -9,7 +9,7 @@ binary download, no install script piped to a shell, and no service to enable.
 vops --version
 ```
 
-Prints a version → it is installed; go straight to `vops agent capabilities --json`.
+Prints a version → it is installed; go straight to `vops capability list --all`.
 
 ## Install
 
@@ -27,7 +27,7 @@ do not fetch a binary from an unofficial source.
 
 ```bash
 vops --version
-vops agent capabilities --json
+vops capability list --all
 ```
 
 The second call must return `status: "success"`. Its `capabilities` block is the
@@ -47,7 +47,7 @@ plane, no daemon.
 
 ```bash
 npm install -g @flui-cloud/vops@latest
-vops agent capabilities --json
+vops capability list --all
 ```
 
 Re-read capabilities after upgrading: they are how a newer build announces what it

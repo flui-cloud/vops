@@ -1,4 +1,4 @@
-# Security boundaries
+# Security and permissions
 
 ## What needs approval
 

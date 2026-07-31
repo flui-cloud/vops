@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "properties": {
+    "projectDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "spec": {
+      "type": "string",
+      "minLength": 1
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1
+    },
+    "image": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "tls": {
+      "type": "boolean"
+    },
+    "staging": {
+      "type": "boolean"
+    },
+    "auth": {
+      "type": "string",
+      "enum": [
+        "none",
+        "basic"
+      ]
+    },
+    "public": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "projectDir",
+    "spec",
+    "host"
+  ],
+  "additionalProperties": false
+}

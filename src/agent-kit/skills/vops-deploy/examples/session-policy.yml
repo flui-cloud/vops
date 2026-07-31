@@ -1,0 +1,6 @@
+mode: advisory
+expiresInMinutes: 60
+maxOperations: 25
+maxProviderSpendEur: 0
+environments:
+  - staging

@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "minVcpu": {
+      "type": "number",
+      "minimum": 0
+    },
+    "minMemoryGiB": {
+      "type": "number",
+      "minimum": 0
+    },
+    "refresh": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "additionalProperties": false
+}

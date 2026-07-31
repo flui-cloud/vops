@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "file": {
+      "type": "string",
+      "default": "flui.yaml"
+    }
+  },
+  "required": [
+    "repository"
+  ],
+  "additionalProperties": false
+}

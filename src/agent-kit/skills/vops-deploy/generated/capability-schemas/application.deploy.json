@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "projectDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "planId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{6,64}$"
+    }
+  },
+  "required": [
+    "projectDir",
+    "planId"
+  ],
+  "additionalProperties": false
+}

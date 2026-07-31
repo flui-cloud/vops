@@ -1,0 +1,21 @@
+kind: Application
+apiVersion: flui.cloud/v1beta1
+
+metadata:
+  name: static-site
+
+build:
+  strategy: dockerfile
+  dockerfile: "./Dockerfile"
+
+deploy:
+  port: 8080
+  exposure: public
+  healthcheck:
+    path: /
+    port: 8080
+  domain:
+    auto: true
+    tls: true
+    certChallenge: http-01
+    certificateProvider: lets-encrypt

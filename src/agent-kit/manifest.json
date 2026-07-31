@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kitVersion": "1.0.0",
+  "skill": "skills/vops-deploy",
+  "bootstrap": "AGENTS.bootstrap.md",
+  "knowledge": [
+    "skills/vops-deploy/references/index.md",
+    "skills/vops-deploy/references/product-model.md",
+    "skills/vops-deploy/references/target-and-credential-model.md",
+    "skills/vops-deploy/references/operation-lifecycle.md",
+    "skills/vops-deploy/references/deploy-repository.md",
+    "skills/vops-deploy/references/install-catalog-app.md",
+    "skills/vops-deploy/references/provision-and-deploy.md",
+    "skills/vops-deploy/references/diagnose-deployment.md",
+    "skills/vops-deploy/references/rollback.md",
+    "skills/vops-deploy/references/flui-yml.md",
+    "skills/vops-deploy/references/security-and-permissions.md",
+    "skills/vops-deploy/references/troubleshooting.md",
+    "skills/vops-deploy/generated/capabilities.md",
+    "skills/vops-deploy/generated/errors.md",
+    "skills/vops-deploy/generated/capability-command-map.md"
+  ]
+}
