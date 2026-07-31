@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { canonicalSkillDir } from '../agent-kit/agent-kit-paths';
 
 /** Ships the canonical `vops-deploy` skill into a coding agent's skill directory. Every path is
  * taken from that agent's own documentation, never inferred from a directory that happens to
@@ -49,11 +50,9 @@ export const SKILL_TARGETS: SkillTargetInfo[] = [
   {
     id: 'opencode',
     label: 'OpenCode',
-    homeDir: '.claude/skills',
-    docs: 'https://opencode.ai/docs/rules/',
-    note:
-      'OpenCode has no skills directory of its own — it reads Claude Code’s. Installing for either covers both, ' +
-      'unless OPENCODE_DISABLE_CLAUDE_CODE_SKILLS is set.',
+    projectDir: '.opencode/skills',
+    homeDir: '.config/opencode/skills',
+    docs: 'https://opencode.ai/docs/skills/',
   },
 ];
 
@@ -93,9 +92,9 @@ export function skillInstructions(): SkillInstructions[] {
   }));
 }
 
-/** The bundled skill sources: `src/agent-api/skill` in dev, `lib/agent-api/skill` once built. */
+/** The bundled canonical skill source in development and packaged builds. */
 export function skillSourceDir(): string {
-  return path.join(__dirname, 'skill');
+  return canonicalSkillDir();
 }
 
 export function resolveTargetDir(opts: InstallSkillOptions): { label: string; dir: string } {

@@ -6,8 +6,7 @@ import { DeployPlanView, DeployResult, VopsAppsService } from '../apps/vops-apps
 import { AppSource } from '../apps/app-source';
 import { vopsVersion } from '../build/vops-build.service';
 import { LocalConfigStore } from '../lib/config/local-config-store';
-import { vaultKey } from '../lib/keyring/vault-session';
-import { vaultExists } from '../lib/keyring/vault-store';
+import { VaultState, vaultState } from '../lib/keyring/vault-state';
 import { ensureVaultUnlocked } from '../lib/keyring/unlock';
 import { FRAMEWORK_TEMPLATES } from '../spec/template-registry';
 import { specVersion } from '../spec/spec-versions';
@@ -130,8 +129,8 @@ export class VopsAgentApiService {
     return (await this.apps.deploy(this.source(req), req.host, { ...this.deployOptions(req), ...(registry ? { registry } : {}) })) as DeployResult;
   }
 
-  async verify(app: string): Promise<VerifyReport> {
-    const { install, units, containers } = await this.apps.status(app);
+  async verify(app: string, host?: string): Promise<VerifyReport> {
+    const { install, units, containers } = await this.apps.status(app, host);
     return verifyDeployment(install, { units, containers });
   }
 
@@ -161,10 +160,9 @@ export class VopsAgentApiService {
 
   /** Read the credential state WITHOUT unlocking anything — discovery is read-only and must never
    * trigger a passphrase prompt (the whole premise of the progressive unlock). */
-  private vaultState(store: LocalConfigStore): { vault: 'legacy' | 'locked' | 'unlocked'; configured: string[] | null } {
-    if (!vaultExists(store.profileDir)) return { vault: 'legacy', configured: safeConfigured(store) };
-    if (!vaultKey()) return { vault: 'locked', configured: null };
-    return { vault: 'unlocked', configured: safeConfigured(store) };
+  private vaultState(store: LocalConfigStore): { vault: VaultState; configured: string[] | null } {
+    const vault = vaultState(store.profileDir);
+    return { vault, configured: vault === 'locked' ? null : safeConfigured(store) };
   }
 
   private source(req: PlanRequest): AppSource {

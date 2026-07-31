@@ -1,0 +1,610 @@
+{
+  "schemaVersion": 1,
+  "capabilities": [
+    {
+      "id": "repository.inspect",
+      "version": 1,
+      "summary": "Inspect safe repository metadata without reading credentials or files outside the repository.",
+      "action": "Inspect the repository",
+      "category": "repository",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "repository": { "type": "string", "minLength": 1 } },
+        "required": ["repository"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "flui_spec.read",
+      "version": 1,
+      "summary": "Read a flui.yaml manifest inside the session repository.",
+      "action": "Read flui.yaml",
+      "category": "spec",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repository": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "default": "flui.yaml" }
+        },
+        "required": ["repository"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "flui_spec.generate",
+      "version": 1,
+      "summary": "Generate a deterministic base flui.yaml from a bundled framework template.",
+      "action": "Write a flui.yaml",
+      "category": "spec",
+      "access": "local_write",
+      "risk": "low",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": true,
+      "possibleEffects": ["write_repository_file"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "plan_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repository": { "type": "string", "minLength": 1 },
+          "template": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "outputFile": { "type": "string", "default": "flui.yaml" },
+          "force": { "type": "boolean", "default": false }
+        },
+        "required": ["repository", "template", "name"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "flui_spec.validate",
+      "version": 1,
+      "summary": "Validate a flui.yaml manifest against the installed flui specification.",
+      "action": "Validate flui.yaml",
+      "category": "spec",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "file": { "type": "string", "minLength": 1 } },
+        "required": ["file"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "catalog.list",
+      "version": 1,
+      "summary": "List packaged applications and reusable building blocks.",
+      "action": "Browse the app catalog",
+      "category": "catalog",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "kind": { "type": "string", "enum": ["all", "products", "blocks"], "default": "all" } },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "catalog.describe",
+      "version": 1,
+      "summary": "Describe one packaged catalog application and its required inputs.",
+      "action": "Describe a catalog app",
+      "category": "catalog",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "minLength": 1 } },
+        "required": ["id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "catalog.install",
+      "version": 1,
+      "summary": "Install one bundled catalog application on a registered target.",
+      "action": "Install a catalog app",
+      "category": "catalog",
+      "access": "remote_write",
+      "risk": "medium",
+      "reversible": "conditional",
+      "idempotent": "conditional",
+      "supportsPlan": true,
+      "supportsDryRun": true,
+      "possibleEffects": ["upload_files", "create_or_update_containers", "create_system_service", "alter_application_network_bindings"],
+      "approvalDefaults": { "development": "plan_approval", "staging": "plan_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "public": { "type": "boolean", "default": false }
+        },
+        "required": ["catalog", "host"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "provider.list",
+      "version": 1,
+      "summary": "List supported VPS providers and their static capability summary.",
+      "action": "List providers",
+      "category": "provider",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "id": "provider.prices.compare",
+      "version": 1,
+      "summary": "Compare live provider plans and prices as a planning aid.",
+      "action": "Compare provider prices",
+      "category": "provider",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["provider_api_read"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "providers": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "minVcpu": { "type": "number", "minimum": 0 },
+          "minMemoryGiB": { "type": "number", "minimum": 0 },
+          "refresh": { "type": "boolean", "default": false }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "target.list",
+      "version": 1,
+      "summary": "List locally registered vOps host targets.",
+      "action": "List your servers",
+      "category": "target",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": [],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "id": "target.inspect",
+      "version": 1,
+      "summary": "Inspect one registered target and run bounded read-only health probes.",
+      "action": "Inspect a server",
+      "category": "target",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["ssh_read_only_probe"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "target": { "type": "string", "minLength": 1 } },
+        "required": ["target"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "server.list",
+      "version": 1,
+      "summary": "List servers from one configured provider.",
+      "action": "List provider servers",
+      "category": "server",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["provider_api_read"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "provider": { "type": "string", "minLength": 1 } },
+        "required": ["provider"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "server.inspect",
+      "version": 1,
+      "summary": "Inspect one server from a configured provider.",
+      "action": "Inspect a provider server",
+      "category": "server",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["provider_api_read"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "minLength": 1 },
+          "id": { "type": "string", "minLength": 1 }
+        },
+        "required": ["provider", "id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "server.harden",
+      "version": 1,
+      "summary": "Apply the bounded idempotent vOps host-hardening workflow to one target.",
+      "action": "Harden a server",
+      "category": "server",
+      "access": "remote_write",
+      "risk": "high",
+      "reversible": "conditional",
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": true,
+      "possibleEffects": ["modify_ssh_configuration", "install_ops_key", "enable_updates", "modify_host_firewall"],
+      "approvalDefaults": { "development": "explicit_approval", "staging": "explicit_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": { "type": "string", "minLength": 1 },
+          "user": { "type": "string", "minLength": 1 },
+          "steps": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+        },
+        "required": ["target"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "application.plan_deploy",
+      "version": 1,
+      "summary": "Render and persist an immutable deployment plan without changing the target.",
+      "action": "Plan a deployment",
+      "category": "application",
+      "access": "local_write",
+      "risk": "low",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": true,
+      "possibleEffects": ["write_local_plan"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "plan_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectDir": { "type": "string", "minLength": 1 },
+          "spec": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 },
+          "image": { "type": "string" },
+          "name": { "type": "string" },
+          "domain": { "type": "string" },
+          "tls": { "type": "boolean" },
+          "staging": { "type": "boolean" },
+          "auth": { "type": "string", "enum": ["none", "basic"] },
+          "public": { "type": "boolean" }
+        },
+        "required": ["projectDir", "spec", "host"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "application.deploy",
+      "version": 1,
+      "summary": "Apply a previously rendered immutable deployment plan to one target.",
+      "action": "Deploy an application",
+      "category": "application",
+      "access": "remote_write",
+      "risk": "medium",
+      "reversible": "conditional",
+      "idempotent": "conditional",
+      "supportsPlan": true,
+      "supportsDryRun": false,
+      "possibleEffects": ["upload_files", "create_or_update_containers", "create_system_service", "restart_application", "alter_application_network_bindings"],
+      "approvalDefaults": { "development": "plan_approval", "staging": "plan_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectDir": { "type": "string", "minLength": 1 },
+          "planId": { "type": "string", "pattern": "^[a-f0-9]{6,64}$" }
+        },
+        "required": ["projectDir", "planId"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "application.status",
+      "version": 1,
+      "summary": "Read live systemd and container status for one installed application.",
+      "action": "Read application status",
+      "category": "application",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["ssh_read_only_probe"],
+      "hostScoped": true,
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "application.restart",
+      "version": 1,
+      "summary": "Restart one installed application and return its resulting state.",
+      "action": "Restart an application",
+      "category": "application",
+      "access": "remote_write",
+      "risk": "medium",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": false,
+      "possibleEffects": ["restart_application", "temporary_downtime"],
+      "hostScoped": true,
+      "approvalDefaults": { "development": "plan_approval", "staging": "plan_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "logs.read_recent",
+      "version": 1,
+      "summary": "Read a bounded number of recent application log lines.",
+      "action": "Read recent logs",
+      "category": "diagnostics",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["ssh_read_only_probe"],
+      "hostScoped": true,
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 },
+          "lines": { "type": "integer", "minimum": 1, "maximum": 500, "default": 200 }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "healthcheck.run",
+      "version": 1,
+      "summary": "Run the configured post-deployment verification for an application.",
+      "action": "Run a healthcheck",
+      "category": "diagnostics",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["ssh_read_only_probe", "http_probe"],
+      "hostScoped": true,
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "host": { "type": "string", "minLength": 1 }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "firewall.inspect",
+      "version": 1,
+      "summary": "Inspect effective vOps-managed or detected firewall state for one target.",
+      "action": "Inspect the firewall",
+      "category": "firewall",
+      "access": "read",
+      "risk": "read_only",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": false,
+      "supportsDryRun": true,
+      "possibleEffects": ["ssh_read_only_probe", "provider_api_read"],
+      "approvalDefaults": { "development": "session_grant", "staging": "session_grant", "production": "session_grant" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "target": { "type": "string", "minLength": 1 } },
+        "required": ["target"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "firewall.open_port",
+      "version": 1,
+      "summary": "Add one validated inbound service to the target firewall without removing existing services.",
+      "action": "Open a firewall port",
+      "category": "firewall",
+      "access": "remote_write",
+      "risk": "high",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": true,
+      "possibleEffects": ["modify_firewall", "increase_network_exposure"],
+      "approvalDefaults": { "development": "explicit_approval", "staging": "explicit_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": { "type": "string", "minLength": 1 },
+          "service": { "type": "string", "pattern": "^(ssh|http|https|[0-9,-]+(?:/(?:tcp|udp))?)(?:@[0-9a-fA-F:./]+)?$" }
+        },
+        "required": ["target", "service"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "firewall.close_port",
+      "version": 1,
+      "summary": "Remove one validated inbound service while preserving all other target firewall services.",
+      "action": "Close a firewall port",
+      "category": "firewall",
+      "access": "remote_write",
+      "risk": "high",
+      "reversible": true,
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": true,
+      "possibleEffects": ["modify_firewall", "reduce_network_access"],
+      "approvalDefaults": { "development": "explicit_approval", "staging": "explicit_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": { "type": "string", "minLength": 1 },
+          "service": { "type": "string", "pattern": "^(ssh|http|https|[0-9,-]+(?:/(?:tcp|udp))?)$" }
+        },
+        "required": ["target", "service"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "server.provision",
+      "version": 1,
+      "summary": "Provision an hourly-billed server from a vOps plan file.",
+      "action": "Buy and provision a server",
+      "category": "server",
+      "access": "provider_write",
+      "risk": "high",
+      "reversible": true,
+      "idempotent": false,
+      "supportsPlan": true,
+      "supportsDryRun": false,
+      "possibleEffects": ["provider_spend", "create_server", "register_host"],
+      "approvalDefaults": { "development": "explicit_approval", "staging": "explicit_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "minLength": 1 },
+          "planFile": { "type": "string", "minLength": 1 }
+        },
+        "required": ["provider", "planFile"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "server.destroy",
+      "version": 1,
+      "summary": "Destroy one vOps-managed provider server.",
+      "action": "Destroy a server",
+      "category": "server",
+      "access": "provider_write",
+      "risk": "destructive",
+      "reversible": false,
+      "idempotent": true,
+      "supportsPlan": true,
+      "supportsDryRun": false,
+      "possibleEffects": ["terminate_server", "data_loss", "stop_billing"],
+      "approvalDefaults": { "development": "explicit_approval", "staging": "explicit_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "minLength": 1 },
+          "id": { "type": "string", "minLength": 1 }
+        },
+        "required": ["provider", "id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "application.rollback",
+      "version": 1,
+      "summary": "Restore a captured previous application revision when one is available.",
+      "action": "Roll back a deployment",
+      "category": "application",
+      "access": "remote_write",
+      "risk": "high",
+      "reversible": "conditional",
+      "idempotent": "conditional",
+      "supportsPlan": true,
+      "supportsDryRun": false,
+      "enabled": false,
+      "unavailableReason": "vOps currently rolls back a failed deploy internally but does not expose a durable previous-revision restore operation.",
+      "possibleEffects": ["replace_application_revision", "temporary_downtime"],
+      "approvalDefaults": { "development": "explicit_approval", "staging": "explicit_approval", "production": "explicit_approval" },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "operationId": { "type": "string", "minLength": 1 } },
+        "required": ["operationId"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

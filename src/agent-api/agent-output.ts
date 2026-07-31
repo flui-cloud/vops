@@ -13,6 +13,7 @@ import {
   exitCodeFor,
 } from './agent-envelope';
 import { AgentBadRequest } from './agent-http-errors';
+import { AgentControlError } from '../agent-control/agent-control-error';
 
 /** `--json` on every agent-facing command. Human output stays the default. */
 export const agentJsonFlag = {
@@ -121,6 +122,7 @@ function stringify(err: unknown): string {
 export function toFailure(err: unknown): AgentFailure {
   if (err instanceof AgentFailure) return err;
   if (err instanceof AgentBadRequest) return new AgentFailure(err.agent, err.exitCode);
+  if (err instanceof AgentControlError) return controlPlaneFailure(err);
   const message = err instanceof Error ? err.message : stringify(err);
   if (isCredentialRejected(err)) {
     return new AgentFailure(
@@ -153,4 +155,24 @@ export function toFailure(err: unknown): AgentFailure {
     );
   }
   return new AgentFailure(agentError('VOPS_OPERATION_FAILED', 'operational', message), ExitCode.FAILURE);
+}
+
+function controlPlaneFailure(err: AgentControlError): AgentFailure {
+  const category = {
+    VOPS_AGENT_AUTH_REQUIRED: 'auth',
+    VOPS_AGENT_TOKEN_INVALID: 'auth',
+    VOPS_AGENT_SESSION_EXPIRED: 'auth',
+    VOPS_AGENT_SESSION_INACTIVE: 'auth',
+    VOPS_AGENT_SCOPE_DENIED: 'auth',
+    VOPS_AGENT_APPROVAL_REQUIRED: 'approval',
+    VOPS_AGENT_PLAN_INVALID: 'validation',
+    VOPS_AGENT_PLAN_STALE: 'validation',
+    VOPS_AGENT_NOT_FOUND: 'input',
+    VOPS_AGENT_UNSUPPORTED: 'unsupported',
+    VOPS_AGENT_OPERATION_FAILED: 'operational',
+  } as const;
+  return new AgentFailure(
+    agentError(err.code, category[err.code], err.message, { recoverable: err.recoverable }),
+    exitCodeFor(category[err.code]),
+  );
 }
