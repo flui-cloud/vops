@@ -6,8 +6,9 @@ import * as path from 'node:path';
 import { BenchResultV1, BenchRunSummary, benchSummary } from '../../bench/bench.model';
 import { AppInstallSummary, AppInstallV1, installSummary } from '../../apps/app.model';
 import { createInstallsTable, migrateInstallKey } from './install-migration';
+import { createMetricsTables } from './metrics-migration';
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 /**
  * Local operational store backed by a standard SQLite file (via libSQL) at
@@ -125,11 +126,19 @@ export class LocalStore implements OnModuleDestroy {
     this.client = null;
   }
 
+  /** Shared with `MetricsStore`, which owns its own tables but must not open a
+   * second connection: two clients on this file would race the migration and
+   * double the WAL readers. */
+  connection(): Promise<Client> {
+    return this.db();
+  }
+
   private async db(): Promise<Client> {
     if (this.client) return this.client;
     const dir = profileDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    this.client = createClient({ url: `file:${path.join(dir, 'vops.db')}` });
+    const dbPath = path.join(dir, 'vops.db');
+    this.client = createClient({ url: `file:${dbPath}` });
     // WAL lets a reader (the UI polling installs) run without blocking a writer
     // (a deploy/remove committing) — the default `delete` journal takes a
     // whole-DB lock, so any overlap turned into a SQLITE_BUSY hang. busy_timeout
@@ -137,6 +146,11 @@ export class LocalStore implements OnModuleDestroy {
     await this.client.execute('PRAGMA journal_mode = WAL');
     await this.client.execute('PRAGMA busy_timeout = 5000');
     await this.migrate(this.client);
+    // The file is created with the process umask. It now holds the latest status
+    // report per host, which carries source IPs and listening process names.
+    for (const p of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+      if (fs.existsSync(p)) fs.chmodSync(p, 0o600);
+    }
     return this.client;
   }
 
@@ -166,6 +180,7 @@ export class LocalStore implements OnModuleDestroy {
     );
     await db.execute(createInstallsTable('app_installs'));
     await migrateInstallKey(db);
+    await createMetricsTables(db);
     await db.execute(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   }
 }

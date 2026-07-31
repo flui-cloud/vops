@@ -9,6 +9,7 @@ import { keyringRequest } from './keyring-client';
 import { keyringCookie } from './keyring-cookie';
 import { promptSecret } from './prompt';
 import { keyringSocket } from './socket-path';
+import { VaultAuthError } from './vault-format';
 import { VaultLockedError, clearVaultKey, setVaultKey, vaultKey } from './vault-session';
 import { domainKeyFrom, readHeader, readWith, vaultExists, vaultKeyFrom } from './vault-store';
 
@@ -175,8 +176,10 @@ async function unlockDaemon(
   if (!unlocked) return null;
   if (isKeyringError(unlocked)) {
     // A daemon that is present but rejects the passphrase is a real answer, not
-    // a reason to fall back to local derivation with the same wrong input.
-    if (unlocked.code === 'bad-passphrase') throw new Error(unlocked.error);
+    // a reason to fall back to local derivation with the same wrong input. It is
+    // typed, not a plain Error, so callers can tell a bad passphrase apart from
+    // an unreadable vault without matching on message text.
+    if (unlocked.code === 'bad-passphrase') throw new VaultAuthError(unlocked.error);
     return null;
   }
   return keyOp(socket, cookie, domain);

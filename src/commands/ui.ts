@@ -5,12 +5,8 @@ import chalk from 'chalk';
 import { DEFAULT_UI_PORT, startLocalApi } from '../local-api/bootstrap';
 import { isInteractive } from '../lib/keyring/prompt';
 import { ensureVaultUnlocked } from '../lib/keyring/unlock';
-import {
-  installUiService,
-  uninstallUiService,
-  uiServiceStatus,
-  uiServiceSupported,
-} from '../local-api/ui-service';
+import { resolveContext, serviceStatus } from '../service/index';
+import { statusLines } from '../service/service-report';
 
 export default class Ui extends Command {
   static readonly description =
@@ -28,15 +24,15 @@ export default class Ui extends Command {
       allowNo: true,
     }),
     install: Flags.boolean({
-      description: 'Install a login-time background service so the UI is always running (macOS)',
+      description: 'Alias for `vops service install`',
       default: false,
     }),
     uninstall: Flags.boolean({
-      description: 'Remove the background service',
+      description: 'Alias for `vops service uninstall`',
       default: false,
     }),
     status: Flags.boolean({
-      description: 'Show whether the background service is installed and running',
+      description: 'Alias for `vops service status`',
       default: false,
     }),
   };
@@ -44,15 +40,26 @@ export default class Ui extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Ui);
     if (flags.status) return this.serviceStatus();
-    if ((flags.install || flags.uninstall) && !uiServiceSupported()) {
-      this.log(chalk.yellow('The background service is macOS-only for now.'));
-      this.log(chalk.dim('On Linux, add a systemd --user unit running `vops ui --no-open`.'));
+    if (flags.uninstall) return this.delegate('uninstall');
+    if (flags.install) return this.delegate('install');
+    await this.unlockVault();
+    // No terminal means we are the supervised service: it must wait its turn
+    // rather than hand over and exit, or the supervisor respawns it forever.
+    const { url, port, onDefaultPort, adopted } = await startLocalApi({
+      standBy: !isInteractive(),
+      onStandBy: (p) => this.log(chalk.dim(`  Another vops for this profile holds ${p} — standing by until it stops.`)),
+    });
+
+    // Someone — almost always the background service — is already serving this
+    // profile. A second server would be a second origin for the installed app
+    // and a second set of background probes, so hand over and get out of the way.
+    if (adopted) {
+      this.log(chalk.green(`\n✓ vops is already running at ${chalk.underline(url)}`));
+      if (flags.open) openBrowser(url);
+      this.log(chalk.dim('  Started by the background service. Stop it with: vops service stop\n'));
       return;
     }
-    if (flags.uninstall) return this.serviceUninstall();
-    if (flags.install) return this.serviceInstall();
-    await this.unlockVault();
-    const { url, port, onDefaultPort } = await startLocalApi();
+
     this.log(chalk.green(`\n✓ vops running at ${chalk.underline(url)}`));
     this.log(
       chalk.dim(
@@ -81,7 +88,9 @@ export default class Ui extends Command {
       ),
     );
 
-    if (!onDefaultPort) {
+    // Only when we actually fell back. A port the user pinned is not a surprise
+    // that needs explaining.
+    if (!onDefaultPort && !process.env.VOPS_PORT?.trim()) {
       this.log(
         chalk.yellow(`  ! Port ${DEFAULT_UI_PORT} was busy, so this run uses ${port}.`) +
           chalk.dim(
@@ -107,40 +116,18 @@ export default class Ui extends Command {
     }
   }
 
-  private serviceInstall(): void {
-    const ctx = { node: process.execPath, binRun: path.join(this.config.root, 'bin', 'run') };
-    const { plist, log } = installUiService(ctx);
-    this.log(chalk.green('\n✓ Background service installed and started.'));
-    this.log(
-      chalk.dim(
-        `  vops keeps the dashboard running at login now, so the installed app opens\n` +
-          `  straight to your fleet — no need to start it by hand.\n` +
-          `  plist: ${plist}\n` +
-          `  logs:  ${log}\n` +
-          `  Remove it any time: vops ui --uninstall\n`,
-      ),
-    );
-  }
-
-  private serviceUninstall(): void {
-    const { removed } = uninstallUiService();
-    this.log(
-      removed
-        ? chalk.green('\n✓ Background service removed.\n')
-        : chalk.dim('\nNo background service was installed.\n'),
-    );
+  /** The service flags moved to their own topic. They stay as aliases because the
+   * old spelling is printed in docs, in the dashboard and in people's notes. */
+  private async delegate(command: string): Promise<void> {
+    this.log(chalk.dim(`  (moved to \`vops service ${command}\` — running it for you)`));
+    await this.config.runCommand(`service:${command}`, []);
   }
 
   private serviceStatus(): void {
-    const s = uiServiceStatus();
-    if (!s.supported) {
-      this.log(chalk.yellow('Background service: not supported on this platform (macOS only).'));
-      return;
-    }
-    const installed = s.installed ? chalk.green('installed') : chalk.dim('not installed');
-    const running = s.running ? chalk.green('running') : chalk.dim('stopped');
-    this.log(`Background service: ${installed} · ${running}`);
-    if (s.installed) this.log(chalk.dim(`  plist: ${s.plist}`));
+    const ctx = resolveContext({ binRun: path.join(this.config.root, 'bin', 'run') });
+    this.log('');
+    for (const line of statusLines(serviceStatus(ctx))) this.log(line);
+    this.log(chalk.dim('\n  Full control: vops service status | start | stop | restart | logs\n'));
   }
 }
 

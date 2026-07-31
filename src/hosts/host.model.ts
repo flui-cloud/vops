@@ -52,6 +52,13 @@ export interface HostConn {
 export interface VopsHost {
   /** Unique handle (same charset rule as key names). */
   name: string;
+  /**
+   * Stable local identity for stored time series. Minted on add/import and never
+   * reused: it survives a rename, a change of address and provider adoption,
+   * while a host removed and re-added is correctly a different machine. Optional
+   * because inventories written before it exist — see `hostKey` for the fallback.
+   */
+  uid?: string;
   /** IP or FQDN. */
   address: string;
   /** Login user for USER sessions (default root). */

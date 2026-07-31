@@ -6,7 +6,8 @@ import { resolveProvider } from '../lib/providers';
 import { OPS_KEY_NAME, VopsSshKeysService } from '../ssh-keys/vops-ssh-keys.service';
 import { VopsHostsService } from '../hosts/vops-hosts.service';
 import { VopsHost } from '../hosts/host.model';
-import { buildBatteryScript, parseBattery } from './status-battery';
+import { inChunks } from '../lib/chunked';
+import { BatteryDepth, buildBatteryScript, parseBattery } from './status-battery';
 import { buildPendingUpdatesScript, parsePendingUpdates, PendingUpdates } from './pkg-updates';
 import { cloudPowerFinding, hungGuestFinding, metricFindings } from './cloud-plane';
 import { AGENT_REMOTE_PATH, agentFindings } from '../agent/vops-agent.service';
@@ -18,7 +19,18 @@ export interface HostStatusResult {
   reachable: boolean;
 }
 
-const FLEET_CONCURRENCY = 5;
+export const FLEET_CONCURRENCY = 5;
+
+/** What a host that could not be probed at all looks like — the shape every caller
+ * already handles, rather than a hole in the result array. */
+function unreachable(name: string): HostStatusResult {
+  return {
+    host: name,
+    latencyMs: 0,
+    reachable: false,
+    report: buildReport(name, [{ id: 'ssh.reach', severity: 'fail', summary: 'Host could not be probed.' }]),
+  };
+}
 
 /**
  * `host status` — one SSH session, a fixed battery of read-only probes, a findings
@@ -34,20 +46,18 @@ export class VopsHostStatusService {
     @Inject('SshExec') private readonly ssh: SshExec,
   ) {}
 
-  async status(name: string): Promise<HostStatusResult> {
-    return this.run(this.hosts.show(name));
+  async status(name: string, depth: BatteryDepth = 'full'): Promise<HostStatusResult> {
+    return this.run(this.hosts.show(name), depth);
   }
 
-  async fleet(names?: string[]): Promise<HostStatusResult[]> {
+  async fleet(names?: string[], depth: BatteryDepth = 'full'): Promise<HostStatusResult[]> {
     const hosts = names?.length
       ? names.map((n) => this.hosts.show(n))
       : this.hosts.list();
-    const results: HostStatusResult[] = [];
-    for (let i = 0; i < hosts.length; i += FLEET_CONCURRENCY) {
-      const chunk = hosts.slice(i, i + FLEET_CONCURRENCY);
-      results.push(...(await Promise.all(chunk.map((h) => this.run(h)))));
-    }
-    return results;
+    // A host removed mid-run, or a parser that throws, must cost one row — not
+    // the other four in its chunk.
+    const results = await inChunks(hosts, FLEET_CONCURRENCY, (h) => this.run(h, depth));
+    return results.map((r, i) => r ?? unreachable(hosts[i].name));
   }
 
   /** Read-only: `systemctl status` + recent journal for one unit, over SSH. */
@@ -73,9 +83,9 @@ export class VopsHostStatusService {
     return { host: name, ...parsePendingUpdates(family, res.stdout) };
   }
 
-  private async run(host: VopsHost): Promise<HostStatusResult> {
+  private async run(host: VopsHost, depth: BatteryDepth = 'full'): Promise<HostStatusResult> {
     const started = Date.now();
-    const res = await this.probeSsh(host);
+    const res = await this.probeSsh(host, depth);
     const cloud = await this.cloudFindings(host);
     const latencyMs = Date.now() - started;
     const reachable = res.stdout.includes('@@disk');
@@ -112,9 +122,9 @@ export class VopsHostStatusService {
     }
   }
 
-  private async probeSsh(host: VopsHost): Promise<{ stdout: string; stderr: string }> {
+  private async probeSsh(host: VopsHost, depth: BatteryDepth): Promise<{ stdout: string; stderr: string }> {
     try {
-      const script = buildBatteryScript(host.os?.family ?? 'unknown');
+      const script = buildBatteryScript(host.os?.family ?? 'unknown', depth);
       return await this.ssh.runScript(this.target(host), script, { timeoutMs: 20_000 });
     } catch (err) {
       // No usable key etc. — the SSH plane is simply unavailable; the cloud plane may still speak.

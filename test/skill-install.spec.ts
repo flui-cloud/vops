@@ -16,7 +16,7 @@ describe('skill install targets', () => {
       'claude-code': path.join(home, '.claude/skills/vops-deploy'),
       codex: path.join(home, '.agents/skills/vops-deploy'),
       antigravity: path.join(home, '.gemini/config/skills/vops-deploy'),
-      opencode: path.join(home, '.claude/skills/vops-deploy'),
+      opencode: path.join(home, '.config/opencode/skills/vops-deploy'),
     };
     for (const [id, dir] of Object.entries(expected)) {
       expect({ id, dir: resolveTargetDir({ target: id as never }).dir }).toEqual({ id, dir });
@@ -27,12 +27,7 @@ describe('skill install targets', () => {
     expect(resolveTargetDir({ target: 'claude-code', project: '/repo' }).dir).toBe('/repo/.claude/skills/vops-deploy');
     expect(resolveTargetDir({ target: 'codex', project: '/repo' }).dir).toBe('/repo/.agents/skills/vops-deploy');
     expect(resolveTargetDir({ target: 'antigravity', project: '/repo' }).dir).toBe('/repo/.agents/skills/vops-deploy');
-  });
-
-  it('falls back to the home directory for an agent with no project scope', () => {
-    // OpenCode reads Claude Code's skills and has no project-local convention of
-    // its own, so --project must not invent one.
-    expect(resolveTargetDir({ target: 'opencode', project: '/repo' }).dir).toBe(path.join(home, '.claude/skills/vops-deploy'));
+    expect(resolveTargetDir({ target: 'opencode', project: '/repo' }).dir).toBe('/repo/.opencode/skills/vops-deploy');
   });
 
   it('refuses an agent whose layout has not been verified', () => {
@@ -47,10 +42,10 @@ describe('skill install targets', () => {
     for (const t of SKILL_TARGETS) expect(t.docs).toMatch(/^https:\/\//);
   });
 
-  it('surfaces that OpenCode has no directory of its own', () => {
+  it('uses OpenCode native project and user directories', () => {
     const oc = skillInstructions().find((t) => t.id === 'opencode')!;
-    expect(oc.note).toMatch(/reads Claude Code/i);
-    expect(oc.projectCommand).toBeUndefined();
+    expect(oc.homePath).toBe('~/.config/opencode/skills/vops-deploy/');
+    expect(oc.projectPath).toBe('.opencode/skills/vops-deploy/');
   });
 
   it('gives each agent a copy-pasteable command and path', () => {

@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CloudProvider, ProviderFactory } from '@flui-cloud/infra';
 import { LocalStore } from '../lib/store/local-store';
+import { newHostUid } from '../lib/store/host-key';
 import { profileDir } from '../lib/profile';
 import { SshExec } from '../lib/ssh-exec';
 import { resolveProvider, defaultSshUser } from '../lib/providers';
@@ -98,6 +99,7 @@ export class VopsHostsService {
     if (this.get(name)) throw new BadRequestException(`Host '${name}' already exists.`);
     const host: VopsHost = {
       name,
+      uid: newHostUid(),
       address: input.address,
       user: input.user ?? 'root',
       port: input.port ?? 22,
@@ -137,6 +139,7 @@ export class VopsHostsService {
     if (this.get(server.name)) throw new BadRequestException(`Host '${server.name}' already exists.`);
     const host: VopsHost = {
       name: server.name,
+      uid: newHostUid(),
       address: server.public_ip,
       user: defaultSshUser(provider),
       port: 22,
