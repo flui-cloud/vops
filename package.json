@@ -1,6 +1,6 @@
 {
   "name": "@flui-cloud/vops",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Local-first, real-time VPS provider comparison and safe provisioning using provider APIs.",
   "author": "Flui <hello@flui.cloud>",
   "license": "Apache-2.0",
@@ -34,8 +34,8 @@
   },
   "scripts": {
     "build": "tsc && tsc-alias",
-    "postbuild": "node scripts/build-map.js && node scripts/build-ui.js && pnpm link --global",
-    "prepack": "tsc && tsc-alias && node scripts/build-map.js && node scripts/build-ui.js",
+    "postbuild": "node scripts/build-map.js && node scripts/build-agent-kit.js && node scripts/build-ui.js && pnpm link --global",
+    "prepack": "tsc && tsc-alias && node scripts/build-map.js && node scripts/build-agent-kit.js && node scripts/build-ui.js",
     "dev": "ts-node -r tsconfig-paths/register src/index.ts",
     "test": "jest",
     "sonar:scan": "dotenv -e .env.local -- bash -c 'docker run --rm -e SONAR_HOST_URL=http://host.docker.internal:9000 -e SONAR_TOKEN=$SONAR_TOKEN -v \"$PWD:/usr/src\" sonarsource/sonar-scanner-cli'",
@@ -44,25 +44,32 @@
     "sonar:loop": "pnpm run sonar:scan && pnpm run sonar:report"
   },
   "dependencies": {
-    "@flui-cloud/infra": "^0.4.0",
+    "@flui-cloud/infra": "^0.5.0",
     "@flui-cloud/spec": "^0.9.0",
     "@libsql/client": "^0.14.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/swagger": "^7.0.0",
     "@oclif/core": "^3.0.0",
+    "ajv": "^8.20.0",
     "axios": "^1.6.0",
     "bcryptjs": "^3.0.3",
+    "canonicalize": "^2.1.0",
     "chalk": "^5.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "dotenv": "^17.4.2",
+    "json5": "^2.2.3",
+    "libsodium-wrappers": "^0.8.4",
     "module-alias": "^2.2.3",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "ws": "^8.21.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/d3-geo": "^3.1.0",
@@ -71,6 +78,7 @@
     "@types/node": "^20.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/topojson-client": "^3.1.5",
+    "@types/ws": "^8.18.1",
     "alpinejs": "^3.14.1",
     "d3-geo": "^3.1.1",
     "dotenv-cli": "^11.0.0",
@@ -98,7 +106,19 @@
         "description": "Research and compare cloud providers (capabilities, prices, availability)"
       },
       "agent": {
-        "description": "Agent-first surface: capability discovery, the deployment workflow map, project init, skill install"
+        "description": "Governed coding-agent setup, sessions, approvals and operations"
+      },
+      "mcp": {
+        "description": "Local vOps MCP server over stdio or authenticated loopback HTTP"
+      },
+      "remote": {
+        "description": "Outbound-only encrypted remote control, pairing and device governance"
+      },
+      "knowledge": {
+        "description": "Search and read the canonical vOps agent knowledge kit"
+      },
+      "capability": {
+        "description": "Inspect the authoritative semantic capability registry"
       },
       "spec": {
         "description": "flui.yaml: framework templates, deterministic generation, schema validation"
@@ -117,6 +137,9 @@
       },
       "keyring": {
         "description": "Passphrase-derived vault for local secrets (the key is derived, never stored)"
+      },
+      "service": {
+        "description": "Always-on local service: the dashboard and metrics collector, started for you"
       },
       "servers": {
         "description": "Plan and safely provision VPS resources (hourly-billed only)"
@@ -163,12 +186,6 @@
       "ingress": {
         "description": "Per-host Traefik ingress: real hostnames + ACME TLS for deployed apps"
       }
-    }
-  },
-  "pnpm": {
-    "overrides": {
-      "@flui-cloud/infra": "file:../flui-infra",
-      "@flui-cloud/spec": "file:../flui-spec/packages/flui-spec-js"
     }
   }
 }
