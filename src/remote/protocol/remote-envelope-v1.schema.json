@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vops.flui.cloud/protocol/remote-envelope-v1.schema.json",
+  "title": "vOps remote opaque envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "message_id",
+    "sender_id",
+    "recipient_id",
+    "channel",
+    "created_at",
+    "expires_at",
+    "key_id",
+    "sequence",
+    "ciphertext"
+  ],
+  "properties": {
+    "protocol_version": { "const": 1 },
+    "message_id": {
+      "type": "string",
+      "pattern": "^msg_[A-Za-z0-9_-]{16,128}$"
+    },
+    "sender_id": { "$ref": "#/$defs/routeId" },
+    "recipient_id": { "$ref": "#/$defs/routeId" },
+    "channel": {
+      "enum": [
+        "presence",
+        "notification",
+        "state_sync",
+        "chat_request",
+        "chat_stream",
+        "approval",
+        "remote_command",
+        "delivery_ack",
+        "key_management"
+      ]
+    },
+    "created_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+    "expires_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+    "key_id": {
+      "type": "string",
+      "pattern": "^key_[A-Za-z0-9_-]{8,96}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "ciphertext": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 24,
+      "maxLength": 349568
+    }
+  },
+  "$defs": {
+    "routeId": {
+      "type": "string",
+      "pattern": "^(node|device)_[A-Za-z0-9_-]{16,128}$"
+    }
+  }
+}

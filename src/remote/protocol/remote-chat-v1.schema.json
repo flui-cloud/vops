@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vops.flui.cloud/protocol/remote-chat-v1.schema.json",
+  "title": "vOps encrypted remote chat payload v1",
+  "oneOf": [
+    { "$ref": "#/$defs/userMessage" },
+    { "$ref": "#/$defs/cancelRequest" },
+    { "$ref": "#/$defs/accepted" },
+    { "$ref": "#/$defs/status" },
+    { "$ref": "#/$defs/textDelta" },
+    { "$ref": "#/$defs/completed" },
+    { "$ref": "#/$defs/cancelled" },
+    { "$ref": "#/$defs/failed" }
+  ],
+  "$defs": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "conversationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "provider": {
+      "enum": [
+        "codex",
+        "claude-code",
+        "opencode",
+        "antigravity",
+        "openai-compatible"
+      ]
+    },
+    "resultProvider": {
+      "enum": [
+        "codex",
+        "claude-code",
+        "opencode",
+        "antigravity",
+        "openai-compatible",
+        "deterministic"
+      ]
+    },
+    "userMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "request_id", "content"],
+      "properties": {
+        "type": { "const": "chat.user_message" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "provider": { "$ref": "#/$defs/provider" },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        }
+      }
+    },
+    "cancelRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "request_id", "target_request_id"],
+      "properties": {
+        "type": { "const": "chat.cancel" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "target_request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" }
+      }
+    },
+    "accepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "request_id", "conversation_id", "provider"],
+      "properties": {
+        "type": { "const": "chat.accepted" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "provider": { "$ref": "#/$defs/resultProvider" }
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "request_id", "conversation_id", "status"],
+      "properties": {
+        "type": { "const": "chat.status" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "status": { "enum": ["thinking", "using_tool"] },
+        "detail": {
+          "type": "string",
+          "maxLength": 240
+        }
+      }
+    },
+    "textDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "request_id", "conversation_id", "sequence", "delta"],
+      "properties": {
+        "type": { "const": "chat.text_delta" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "delta": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      }
+    },
+    "completed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "request_id",
+        "conversation_id",
+        "message_id",
+        "final_sequence",
+        "provider"
+      ],
+      "properties": {
+        "type": { "const": "chat.completed" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "message_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "final_sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provider": { "$ref": "#/$defs/resultProvider" }
+      }
+    },
+    "cancelled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "request_id",
+        "target_request_id",
+        "authoritative"
+      ],
+      "properties": {
+        "type": { "const": "chat.cancelled" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "target_request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "authoritative": { "const": true },
+        "already_terminal": { "type": "boolean" }
+      }
+    },
+    "failed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "request_id",
+        "code",
+        "message",
+        "recoverable"
+      ],
+      "properties": {
+        "type": { "const": "chat.failed" },
+        "request_id": { "$ref": "#/$defs/requestId" },
+        "conversation_id": { "$ref": "#/$defs/conversationId" },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "recoverable": { "type": "boolean" }
+      }
+    }
+  }
+}

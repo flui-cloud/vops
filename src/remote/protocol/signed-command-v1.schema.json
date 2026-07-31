@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vops.flui.cloud/protocol/signed-command-v1.schema.json",
+  "title": "vOps signed remote command v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["payload", "key_id", "signature"],
+  "properties": {
+    "key_id": {
+      "type": "string",
+      "pattern": "^key_[A-Za-z0-9_-]{8,96}$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 80,
+      "maxLength": 128
+    },
+    "payload": { "$ref": "#/$defs/payload" }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "command_id",
+        "device_id",
+        "node_id",
+        "type",
+        "subject",
+        "issued_at",
+        "expires_at",
+        "nonce",
+        "parameters"
+      ],
+      "properties": {
+        "protocol_version": { "const": 1 },
+        "command_id": {
+          "type": "string",
+          "pattern": "^cmd_[A-Za-z0-9_-]{16,128}$"
+        },
+        "device_id": {
+          "type": "string",
+          "pattern": "^device_[A-Za-z0-9_-]{16,128}$"
+        },
+        "node_id": {
+          "type": "string",
+          "pattern": "^node_[A-Za-z0-9_-]{16,128}$"
+        },
+        "type": {
+          "enum": [
+            "approval.decision",
+            "operation.cancel_request",
+            "operation.rollback_request",
+            "agent.pause_request",
+            "agent.resume_request",
+            "agent.revoke_request",
+            "agents.stop_all_request",
+            "notification.dismiss_request",
+            "intent.create_request",
+            "intent.pause_request",
+            "intent.revoke_request"
+          ]
+        },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "version"],
+          "properties": {
+            "kind": {
+              "enum": ["approval", "operation", "agent_session", "notification", "intent", "control_node"]
+            },
+            "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "version": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "plan_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "issued_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+        "expires_at": { "type": "string", "format": "date-time", "maxLength": 40 },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,128}$"
+        },
+        "parameters": {
+          "type": "object",
+          "maxProperties": 32
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "approval.decision" } },
+            "required": ["type"]
+          },
+          "then": { "required": ["plan_hash"] }
+        }
+      ]
+    }
+  }
+}
