@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { renderUi } from '../ui/index';
+import { runtimeInfo } from './runtime-info';
 import { tokenMatches } from './session-token';
 import { providedToken, SESSION_COOKIE } from './session.guard';
 
@@ -30,6 +31,28 @@ export class RootController {
       });
     }
     return renderUi();
+  }
+
+  /**
+   * Liveness + identity, deliberately outside `/api` so `SessionGuard` lets it
+   * through (the guard bypasses any path that isn't /api — no @Public() hole to
+   * punch in a global guard). Readable by any local process, so it carries
+   * nothing but what a second vops needs to recognise the first one.
+   */
+  @Get('healthz')
+  @Header('Cache-Control', 'no-store')
+  healthz(): Record<string, unknown> {
+    const info = runtimeInfo();
+    if (!info) return { ok: true, service: 'vops' };
+    return {
+      ok: true,
+      service: 'vops',
+      version: info.version,
+      port: info.port,
+      profile: info.profile,
+      startedAt: info.startedAt,
+      uptimeSeconds: Math.floor((Date.now() - Date.parse(info.startedAt)) / 1000),
+    };
   }
 
   @Get('manifest.webmanifest')

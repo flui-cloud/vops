@@ -173,6 +173,80 @@ Exit 2. The bundle could not be written where it was aimed; `message` carries th
 error. Usually the directory does not exist or is not writable — check it, or aim elsewhere
 with `--output-dir`.
 
+## Agent control plane
+
+### VOPS_AGENT_AUTH_REQUIRED
+Exit 7. The MCP request did not include a session token. Create a scoped advisory session with
+`vops agent session create`, then pass its token only to the local vOps MCP server.
+
+### VOPS_AGENT_TOKEN_INVALID
+Exit 7. The session token does not match an active local session. Do not retry the same value;
+ask the user to create a session or provide the intended current token.
+
+### VOPS_AGENT_SESSION_EXPIRED
+Exit 7. The session reached its configured expiry. Its permissions do not carry forward: the
+user must create a new scoped session.
+
+### VOPS_AGENT_SESSION_INACTIVE
+Exit 7. The session is paused, revoked or otherwise inactive. A paused session can be resumed
+by the user; a revoked session must be replaced.
+
+### VOPS_AGENT_SCOPE_DENIED
+Exit 7. The requested capability, target, environment or operation count is outside the session
+grant. Do not bypass the control plane; ask the user for a deliberate scope expansion.
+
+### VOPS_AGENT_APPROVAL_REQUIRED
+Exit 5. The immutable plan needs local approval before execution. Present its effects and risk,
+then wait for the user to approve the reported request id.
+
+### VOPS_AGENT_PLAN_INVALID
+Exit 3. The proposed plan or one of its capability inputs violates the registry, policy or
+session scope. Correct the reported input and create or validate the plan again.
+
+### VOPS_AGENT_PLAN_STALE
+Exit 3. The persisted plan no longer matches its immutable hash or current inputs. Never execute
+it; create a replacement plan and obtain a new approval if required.
+
+### VOPS_AGENT_NOT_FOUND
+Exit 2. A requested session, plan, approval, operation, capability or knowledge resource does
+not exist locally. List the corresponding resources and use an id from that result.
+
+### VOPS_AGENT_UNSUPPORTED
+Exit 6. The requested control-plane mode or capability is declared but not implemented by this
+vOps build. Use an available advisory capability; do not replace it with raw shell or SSH.
+
+### VOPS_AGENT_OPERATION_FAILED
+Exit 1. An approved operation started but failed. Inspect its operation record and verification
+output before deciding whether retry or rollback is safe.
+
+### VOPS_AGENT_APPROVAL_ID_MISSING
+Exit 2. `agent approvals approve|deny` needs the approval id returned by the pending approval
+list or MCP response.
+
+### VOPS_AGENT_CAPABILITY_ID_MISSING
+Exit 2. `agent capability describe` needs a capability id. Obtain one with
+`vops agent capability list --json`.
+
+### VOPS_AGENT_CLIENT_MISSING
+Exit 2. `agent setup` or `agent uninstall` needs one supported client name: `codex`,
+`claude-code`, `opencode` or `antigravity`.
+
+### VOPS_AGENT_KNOWLEDGE_VALUE_MISSING
+Exit 2. `agent knowledge search|read` needs a query or published resource path. List the
+knowledge index first when the path is unknown.
+
+### VOPS_AGENT_OPERATION_ID_MISSING
+Exit 2. `agent operations show|cancel` needs an operation id returned by the operation list or
+MCP execution response.
+
+### VOPS_AGENT_SESSION_ID_MISSING
+Exit 2. `agent session show|pause|resume|revoke` needs a session id returned by
+`vops agent session list --json`.
+
+### VOPS_AGENT_SESSION_OBJECTIVE_MISSING
+Exit 2. `agent session create` needs `--objective`; state the bounded task the agent is allowed
+to pursue.
+
 ## Fleet
 
 ### VOPS_HOST_NOT_FOUND

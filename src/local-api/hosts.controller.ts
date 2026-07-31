@@ -12,6 +12,7 @@ import { VopsHostShellService } from '../host-ops/host-shell.service';
 import { VopsMonitorService } from '../monitor/vops-monitor.service';
 import { VopsServerFirewallService } from '../firewall/vops-server-firewall.service';
 import { FirewallService } from '../firewall/firewall-services';
+import { MetricsProbeService } from '../metrics/metrics-probe.service';
 
 /** Host operations for the local UI — the same services the CLI uses. */
 @Controller('api/hosts')
@@ -20,6 +21,7 @@ export class HostsController {
     private readonly hosts: VopsHostsService,
     private readonly keys: VopsHostKeysService,
     private readonly status: VopsHostStatusService,
+    private readonly probe: MetricsProbeService,
     private readonly harden: VopsHostHardenService,
     private readonly updates: VopsHostUpdateService,
     private readonly rotation: VopsOpsRotationService,
@@ -92,9 +94,12 @@ export class HostsController {
     return { removed: name };
   }
 
+  /** Through the prober, not the status service directly: overlapping callers then
+   * share one SSH session instead of opening one each, and the result feeds the
+   * stored history like any other check. */
   @Get(':name/status')
   hostStatus(@Param('name') name: string) {
-    return this.status.status(name);
+    return this.probe.probe(name, 'full');
   }
 
   @Get(':name/unit-logs')

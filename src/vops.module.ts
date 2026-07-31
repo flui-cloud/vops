@@ -31,6 +31,8 @@ import {
 } from '@flui-cloud/infra';
 import { LocalCredentialProvider } from './lib/credentials/local-credential-provider';
 import { LocalStore } from './lib/store/local-store';
+import { MetricsStore } from './lib/store/metrics-store';
+import { MetricsProbeService } from './metrics/metrics-probe.service';
 import { vopsEnvFiles } from './lib/env-files';
 import { VopsProvidersService } from './providers/vops-providers.service';
 import { VopsCredentialsService } from './credentials/vops-credentials.service';
@@ -63,6 +65,39 @@ import { VopsSpecService } from './spec/vops-spec.service';
 import { VopsBuildService } from './build/vops-build.service';
 import { VopsAppShellService } from './apps/app-shell.service';
 import { VopsIngressService } from './apps/vops-ingress.service';
+import { CapabilityRegistry } from './agent-control/capability-registry';
+import { AgentStore } from './agent-control/agent-store';
+import { AgentSessionManager } from './agent-control/agent-session-manager';
+import { PolicyEngine } from './agent-control/policy-engine';
+import { ApprovalManager } from './agent-control/approval-manager';
+import { PlanEngine } from './agent-control/plan-engine';
+import { OperationManager } from './agent-control/operation-manager';
+import { CredentialResolver } from './agent-control/credential-resolver';
+import { CoreActionExecutor } from './agent-control/core-action-executor';
+import { ActionBroker } from './agent-control/action-broker';
+import { AgentSafetyState } from './agent-control/agent-safety-state';
+import { KnowledgeService } from './agent-kit/knowledge.service';
+import { RelayClient } from './remote/relay-client';
+import { RemoteStore } from './remote/remote-store';
+import { RemoteCryptoService } from './remote/remote-crypto.service';
+import { DeviceRegistry } from './remote/device-registry';
+import { PairingService } from './remote/pairing.service';
+import { RemoteGateway } from './remote/remote-gateway';
+import { RemoteMessenger } from './remote/remote-messenger';
+import { RemoteSyncService } from './remote/remote-sync.service';
+import { CodexAppServerAdapter } from './remote/codex-app-server.adapter';
+import { RemoteAgentRouter } from './remote/remote-agent-router';
+import { ConversationService } from './remote/conversation.service';
+import { RemoteCommandHandler } from './remote/remote-command.handler';
+import { IntentService } from './remote/intent.service';
+import { OpenAICompatibleAgentAdapter } from './remote/openai-compatible-agent.adapter';
+import { RemoteAgentToolsService } from './remote/remote-agent-tools.service';
+import { RemoteAgentMcpBridge } from './remote/remote-agent-mcp-bridge';
+import { RemoteAgentPolicyStore } from './remote/remote-agent-policy';
+import { RemoteAgentRegistry } from './remote/remote-agent-registry';
+import { ClaudeCodeAdapter } from './remote/claude-code.adapter';
+import { OpenCodeAdapter } from './remote/opencode.adapter';
+import { AntigravityAdapter } from './remote/antigravity.adapter';
 
 /**
  * vops runtime. Deliberately light: it wires the Hetzner + Scaleway provider and
@@ -187,6 +222,8 @@ const ENV_FILES = vopsEnvFiles({
     },
 
     LocalStore,
+    MetricsStore,
+    MetricsProbeService,
     VopsProvidersService,
     VopsCredentialsService,
     VopsCatalogService,
@@ -218,6 +255,39 @@ const ENV_FILES = vopsEnvFiles({
     VopsAgentApiService,
     VopsSpecService,
     VopsBuildService,
+    CapabilityRegistry,
+    AgentStore,
+    AgentSessionManager,
+    AgentSafetyState,
+    PolicyEngine,
+    ApprovalManager,
+    PlanEngine,
+    OperationManager,
+    CredentialResolver,
+    CoreActionExecutor,
+    ActionBroker,
+    KnowledgeService,
+    RelayClient,
+    RemoteStore,
+    RemoteCryptoService,
+    DeviceRegistry,
+    PairingService,
+    RemoteMessenger,
+    RemoteSyncService,
+    RemoteAgentToolsService,
+    RemoteAgentMcpBridge,
+    RemoteAgentPolicyStore,
+    CodexAppServerAdapter,
+    ClaudeCodeAdapter,
+    OpenCodeAdapter,
+    AntigravityAdapter,
+    OpenAICompatibleAgentAdapter,
+    RemoteAgentRegistry,
+    RemoteAgentRouter,
+    ConversationService,
+    IntentService,
+    RemoteCommandHandler,
+    RemoteGateway,
   ],
   exports: [
     VopsProvidersService,
@@ -250,6 +320,41 @@ const ENV_FILES = vopsEnvFiles({
     VopsSpecService,
     VopsBuildService,
     LocalStore,
+    MetricsStore,
+    MetricsProbeService,
+    CapabilityRegistry,
+    AgentStore,
+    AgentSessionManager,
+    AgentSafetyState,
+    PolicyEngine,
+    ApprovalManager,
+    PlanEngine,
+    OperationManager,
+    CredentialResolver,
+    CoreActionExecutor,
+    ActionBroker,
+    KnowledgeService,
+    RelayClient,
+    RemoteStore,
+    RemoteCryptoService,
+    DeviceRegistry,
+    PairingService,
+    RemoteMessenger,
+    RemoteSyncService,
+    RemoteAgentToolsService,
+    RemoteAgentMcpBridge,
+    RemoteAgentPolicyStore,
+    CodexAppServerAdapter,
+    ClaudeCodeAdapter,
+    OpenCodeAdapter,
+    AntigravityAdapter,
+    OpenAICompatibleAgentAdapter,
+    RemoteAgentRegistry,
+    RemoteAgentRouter,
+    ConversationService,
+    IntentService,
+    RemoteCommandHandler,
+    RemoteGateway,
   ],
 })
 export class VopsModule {}
